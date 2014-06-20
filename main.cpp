@@ -22,6 +22,8 @@
 #include <algorithm>
 
 #include "khash.h"
+#include "kstring.h"
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define if_ever(err)    if (unlikely(err))
@@ -30,75 +32,87 @@
 using namespace std;
 
 struct uniqct {
-    uniqct(char* buf, size_t bl) : b(buf), bstart(b), bend(b + bl), buflen(bl)
+    uniqct(char* b, kstring_t* s, size_t l, size_t n) :
+        Bstart(b), B(b), Bend(b + l),
+        Sstart(s), S(s), Send(s + n)
     {
-        h = kh_init(UQCT);
-        is_err = (h == NULL);
+        H = kh_init(UQCT);
+        is_err = (H == NULL);
     }
-    bool ok() { return not is_err; }
-    void put(const char* key)
+    void put(const char* key, const char* val)
     {
         if_ever (is_err) return;
-        khiter_t k = kh_get(UQCT, h, key);
-        if (k == kh_end(h)) {
+        khiter_t k = kh_get(UQCT, H, key);
+        if (k == kh_end(H)) {
             size_t l = strlen(key) + 1; /* include '\0' */
-            is_err = (b + l >= bend);
+            is_err = (B + l >= Bend);
             expected (ok()) {
-                strncpy(b, key, l);
-                k = kh_put(UQCT, h, b, &is_err); //
+                strncpy(B, key, l);
+                k = kh_put(UQCT, H, B, &is_err); //
                 is_err = (is_err < 0);
-                b += l;
+                B += l;
             }
             if_ever (is_err) return;
-            kh_val(h, k) = 1;
+            S->l = S->m = 0;
+            S->s = NULL;
+            kputs(val, S);
+            kh_val(H, k) = S++ - Sstart;
+        } else {
+            kputs(val, &Sstart[kh_val(H, k)]);
         }
-        kh_val(h, k)++;
     }
     void dump() {
         unsigned l;
         khiter_t *ks;
         if_ever (is_err) goto err;
-        ks = (khiter_t*)malloc(kh_size(h) * sizeof(khiter_t));
+        ks = (khiter_t*)malloc(kh_size(H) * sizeof(khiter_t));
         is_err = (ks == NULL);
         if_ever (is_err) goto err;
         l = 0;
-        for (khiter_t k = kh_begin(h); k != kh_end(h); ++k)
-            if (kh_exist(h, k)) ks[l++] = k;
+        for (khiter_t k = kh_begin(H); k != kh_end(H); ++k)
+            if (kh_exist(H, k)) ks[l++] = k;
 
         std::sort(ks, ks + l, *this);
 
         while (l--)
-            cout << kh_val(h, ks[l]) << "\t" << kh_key(h, ks[l]) << endl;
+            cout << kh_key(H, ks[l]) << "\n" << Sstart[kh_val(H, ks[l])].s;
 
         free(ks);
-err:	kh_destroy(UQCT, h);
+err:	while (S-- != Sstart) free(S->s);
+        kh_destroy(UQCT, H);
 
     }
     bool operator() (khiter_t a, khiter_t b) /* needed by sort */
     {
-        return kh_val(h, a) != kh_val(h, b) ?
-            kh_val(h, a) > kh_val(h, b) : strcmp(kh_key(h, a), kh_key(h, b)) > 0;
+        size_t ma = Sstart[kh_val(H, a)].m;
+        size_t mb = Sstart[kh_val(H, b)].m;
+        return ma != mb ? ma > mb : strcmp(kh_key(H, a), kh_key(H, b)) > 0;
     }
+    bool ok() { return not is_err; }
 private:
     KHASH_INIT2(UQCT, kh_inline, const char*, uint32_t, 1, kh_str_hash_func, kh_str_hash_equal)
-    char *b, *bstart, *bend;
-    khash_t(UQCT) *h;
-    uint64_t buflen;
+    char *Bstart, *B, *Bend;
+    kstring_t *Sstart, *S, *Send;
+    khash_t(UQCT) *H;
     int is_err;
 };
 
 int main(int argc, const char* argv[])
 {
-    unsigned buflen = 1ul << 31;
+    unsigned buflen = 1ul << 30, splen = 1ul << 28; // 268,435,456 reads, 
     char* buf = (char*)malloc(buflen * sizeof(char));
-    struct uniqct uqct(buf, buflen);
+    kstring_t* sp = (kstring_t*)malloc(buflen * sizeof(kstring_t));
+    struct uniqct uqct(buf, sp, buflen, splen);
 
-    string line;
-    while (uqct.ok() && cin && getline(cin, line))
-        uqct.put(line.c_str());
+    string nm, sq, np, ql;
+    while (uqct.ok() && getline(cin, nm) && getline(cin, sq) && getline(cin, np) && getline(cin, ql)) {
+        nm += "\t" + ql + "\n";
+        uqct.put(sq.c_str(), nm.c_str());
+    }
 
     uqct.dump();
     free(buf);
+    free(sp);
 
     return uqct.ok() ? EXIT_SUCCESS : EXIT_FAILURE;
 }
