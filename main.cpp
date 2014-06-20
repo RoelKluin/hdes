@@ -15,6 +15,8 @@
  *
  * =====================================================================================
  */
+// make && zgrep -E -o "^[ACTGN]{6}" /home/roel/dev/rproject/rmap/hg19.fa.gz | head -n 100000 | valgrind ./uqct
+
 #include <stdint.h>
 #include <iostream>
 #include <algorithm>
@@ -22,70 +24,77 @@
 #include "khash.h"
 
 using namespace std;
-KHASH_MAP_INIT_INT(RD, uint32_t)
 
 struct uniqct {
-    uniqct() : ks(NULL), maxlen(0), at(0) { h = kh_init(RD); }
-    int put(uint32_t key)
+    uniqct(char* buf, size_t bl) : b(buf), bstart(b), bend(b + bl), buflen(bl)
     {
-        khiter_t k = kh_get(RD, h, key);
+        h = kh_init(UQCT);
+        is_err = (h == NULL);
+    }
+    bool ok() { return not is_err; }
+    void put(const char* key)
+    {
+        if (is_err) return;
+        khiter_t k = kh_get(UQCT, h, key);
         if (k == kh_end(h)) {
-            int ret = 0;
-            k = kh_put(RD, h, key, &ret);
-            if ((ret < 0) || ((at >= maxlen) && ks_realloc(maxlen << 1))) {
-                at = 0;
-                dump();
-                return -1;
+            size_t l = strlen(key) + 1; /* include '\0' */
+            is_err = (b + l >= bend);
+            if (ok()) {
+                strncpy(b, key, l);
+                k = kh_put(UQCT, h, b, &is_err); //
+                is_err = (is_err < 0);
+                b += l;
             }
-            ks[at++] = k;
-            kh_val(h, k) = 0;
-        } else {
-            kh_val(h, k)++;
+            if (is_err) return;
+            kh_val(h, k) = 1;
         }
-        return 0;
+        kh_val(h, k)++;
     }
-    int ks_realloc(int ml) {
-        if (ml == 0) ml = 1024;
-        khiter_t* t = (khiter_t*)realloc(ks, ml * sizeof(khiter_t));
-        if (t == NULL) return -1;
-        ks = t;
-        maxlen = ml;
-        return 0;
-    }
-
-    void sort() { if (ks) std::sort(ks, ks + at, *this); }
     void dump() {
-        while (at--)
-            cout << kh_val(h, ks[at]) << "\t" << kh_key(h, ks[at]) << endl;
+        unsigned l;
+        khiter_t *ks;
+        if (is_err) goto err;
+        ks = (khiter_t*)malloc(kh_size(h) * sizeof(khiter_t));
+        is_err = (ks == NULL);
+        if (is_err) goto err;
+        l = 0;
+        for (khiter_t k = kh_begin(h); k != kh_end(h); ++k)
+            if (kh_exist(h, k)) ks[l++] = k;
+
+        std::sort(ks, ks + l, *this);
+
+        while (l--)
+            cout << kh_val(h, ks[l]) << "\t" << kh_key(h, ks[l]) << endl;
+
         free(ks);
-        kh_destroy(RD, h);
+err:	kh_destroy(UQCT, h);
+
     }
-    bool operator() (khiter_t a, khiter_t b)
+    bool operator() (khiter_t a, khiter_t b) /* needed by sort */
     {
         return kh_val(h, a) != kh_val(h, b) ?
-            kh_val(h, a) < kh_val(h, b) : kh_key(h, a) < kh_key(h, b);
+            kh_val(h, a) > kh_val(h, b) : strcmp(kh_key(h, a), kh_key(h, b)) > 0;
     }
 private:
-    khash_t(RD) *h;
-    khiter_t* ks;
-    int maxlen, at;
+    KHASH_INIT2(UQCT, kh_inline, const char*, uint32_t, 1, kh_str_hash_func, kh_str_hash_equal)
+    char *b, *bstart, *bend;
+    khash_t(UQCT) *h;
+    uint64_t buflen;
+    int is_err;
 };
 
 int main(int argc, const char* argv[])
 {
-    struct uniqct uqt;
-    
+    unsigned buflen = 1ul << 31;
+    char* buf = (char*)malloc(buflen * sizeof(char));
+    struct uniqct uqct(buf, buflen);
+
     string line;
-    while (cin) {
-        getline(cin, line);
-        if (uqt.put(atoi(line.c_str())) < 0)
-            return EXIT_FAILURE;
-    }
-    //for (int i = 1; i != argc; ++i)
+    while (uqct.ok() && cin && getline(cin, line))
+        uqct.put(line.c_str());
 
-    //std::sort(ks, ks + kc.size(), h);
-    uqt.sort();
-    uqt.dump();
+    uqct.dump();
+    free(buf);
 
-    return EXIT_SUCCESS;
+    return uqct.ok() ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -4,7 +4,7 @@ CFLAGS=		-g -Wall -Wno-unused-function -O2
 WRAP_MALLOC=-DUSE_MALLOC_WRAPPERS
 AR=                     ar
 LOBJS=		 malloc_wrap.o
-PROG=		redo
+PROG=		uqct
 INCLUDES=	
 SUBDIRS=	.
 
@@ -15,7 +15,7 @@ SUBDIRS=	.
 
 all:$(PROG)
 
-redo: main.o
+uqct: main.o
 		$(CC) $(CFLAGS) main.o -o $@ -L.
 
 libbwa.a:$(LOBJS)
