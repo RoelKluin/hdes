@@ -22,6 +22,10 @@
 #include <algorithm>
 
 #include "khash.h"
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+#define if_ever(err)    if (unlikely(err))
+#define expected(T)     if (likely(T))
 
 using namespace std;
 
@@ -34,18 +38,18 @@ struct uniqct {
     bool ok() { return not is_err; }
     void put(const char* key)
     {
-        if (is_err) return;
+        if_ever (is_err) return;
         khiter_t k = kh_get(UQCT, h, key);
         if (k == kh_end(h)) {
             size_t l = strlen(key) + 1; /* include '\0' */
             is_err = (b + l >= bend);
-            if (ok()) {
+            expected (ok()) {
                 strncpy(b, key, l);
                 k = kh_put(UQCT, h, b, &is_err); //
                 is_err = (is_err < 0);
                 b += l;
             }
-            if (is_err) return;
+            if_ever (is_err) return;
             kh_val(h, k) = 1;
         }
         kh_val(h, k)++;
@@ -53,10 +57,10 @@ struct uniqct {
     void dump() {
         unsigned l;
         khiter_t *ks;
-        if (is_err) goto err;
+        if_ever (is_err) goto err;
         ks = (khiter_t*)malloc(kh_size(h) * sizeof(khiter_t));
         is_err = (ks == NULL);
-        if (is_err) goto err;
+        if_ever (is_err) goto err;
         l = 0;
         for (khiter_t k = kh_begin(h); k != kh_end(h); ++k)
             if (kh_exist(h, k)) ks[l++] = k;
