@@ -103,7 +103,7 @@ err:	while (S-- != Sstart) free(S->s);
     int is_err;
 
 private:
-    KHASH_INIT2(UQCT, kh_inline, const char*, uint32_t, 1, kh_str_hash_func, kh_str_hash_equal)
+    KHASH_MAP_INIT_STR(UQCT, uint32_t)
     char *Bstart, *B, *Bend;
     kstring_t *Sstart, *S, *Send;
     khash_t(UQCT) *H;
