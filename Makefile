@@ -1,4 +1,4 @@
-CC=			gcc
+CC=			g++
 #CC=			clang --analyze
 CFLAGS=		-g -Wall -Wno-unused-function -O2
 WRAP_MALLOC=-DUSE_MALLOC_WRAPPERS
@@ -8,9 +8,9 @@ PROG=		redo
 INCLUDES=	
 SUBDIRS=	.
 
-.SUFFIXES:.c .o .cc
+.SUFFIXES:.cpp .o
 
-.c.o:
+.cpp.o:
 		$(CC) -c $(CFLAGS) $(DFLAGS) $(INCLUDES) $< -o $@
 
 all:$(PROG)
@@ -25,7 +25,7 @@ clean:
 		rm -f gmon.out *.o a.out $(PROG) *~ *.a
 
 depend:
-	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) -- *.c )
+	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) -- *.cpp )
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 
