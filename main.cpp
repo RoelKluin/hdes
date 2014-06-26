@@ -58,7 +58,7 @@ struct uniqct
         kroundup32(fq_ent_max);
     }
 
-    void put(const char* key, const char* val)
+    void put(const char* seq, const char* qual, const char* name)
     {
         if_ever (is_err) return;
         if (l + fq_ent_max >= m) {
@@ -66,8 +66,8 @@ struct uniqct
             s = (char*)realloc(s, m);
         }
         char *p, *b = s + l;
-cerr << key << endl << flush;
-        khiter_t k = str_kh_get(H, key);
+cerr << seq << endl << flush;
+        khiter_t k = str_kh_get(H, seq);
         size_t i;
         if (k == kh_end(H)) { /* new key */
             p = b;
@@ -75,7 +75,7 @@ cerr << key << endl << flush;
             for (i = 0; i != 3; ++i, ++b) *b = '\0'; /* seq length */
 
             // TODO: form of twobit with N spec
-            while ((*b++ = *key) != '\0') ++key;
+            while ((*b = *seq) != '\0') ++b, ++seq;
             i = p - s; /* key offset, (denotes last value) */
             k = kh_put(UQCT, H, i, &is_err);
             is_err = (is_err < 0);
@@ -106,7 +106,8 @@ cerr << i << ":" << (i & 0xff) << endl;
             i >>= 8;
         }
         // TODO: better qual/name storage
-        while ((*b = *val) != '\0') ++b, ++val;
+        while ((*b = *qual) != '\0') ++b, ++qual;
+        while ((*b = *name) != '\0') ++b, ++name;
         kh_val(H, k) = p - s;
 cerr << p + 8 << endl << "val at: " << p - s << endl << flush;
         l = ++b - s;
@@ -216,10 +217,8 @@ int main(int argc, const char* argv[])
     struct uniqct uqct(51);
 
     string nm, sq, tmp, ql;
-    while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql)) {
-        tmp = order_by_qual ? ql + "\t" + nm : nm + "\t" + ql;
-        uqct.put(sq.c_str(), tmp.c_str());
-    }
+    while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))
+        uqct.put(sq.c_str(), ql.c_str(), nm.c_str());
 
     uqct.dump();
 
