@@ -49,8 +49,8 @@ using namespace std;
 
 struct uniqct
 {
-    uniqct(size_t rl) : is_err(0), l(0),
-        m(1ul << 23), fq_ent_max((rl << 1) + MAX_NAME_ETC), keymax(1)
+    uniqct(size_t rl) : is_err(0), l(0), m(1ul << 23),
+        fq_ent_max((rl << 1) + MAX_NAME_ETC), phred_offset(33), keymax(1)
     {
         H = kh_init(UQCT);
         s = (char*)malloc(m);
@@ -128,41 +128,31 @@ cerr << p + 8 << endl << "val at: " << p - s << endl << flush;
 
             vs = (size_t*)malloc(keymax * sizeof(size_t));
 
-            sort(ks, kp, *this);
+            sort(ks, kp, *this); /* by keycount */
 
             //at = (uint64_t)((s[at+4] << 32)|(s[at+3] << 24)|(s[at+2] << 16)|(s[at+1] << 8)|s[at]);
             while (kp != ks) { /* loop over keys */
-                size_t end = kh_key(H, *--kp);
+                size_t sq = kh_key(H, *--kp);
                 size_t i = kh_val(H, *kp);
-                cout << s + end + 8 << ":key\n";
-                cout << s + i + 8 << ":val\n";
+                uint8_t* p = (uint8_t *)s + sq + 5;
+                unsigned len = (p[2]<<16) | (p[1]<<8) | *p;
 
                 vp = vs;
                 do { /* loop over values belonging to key */
-cerr << "offsetted key/val at: " << i + 8 << endl;
                     *vp = i;
                     ++vp;
                     char* b = s + i + 8;
                     i = decr4chtou32(b, i);
 
-cerr << "got key/val: " << i << "/" << end << endl;
+                } while (i != sq);
 
-if (i > (1 << 12)) { cerr << "ERROR\n"; break; }
-if (vp - vs != 0 && vp[-1] == i) { cerr << "ERROR2\n"; break; }
-if ((vp - vs > 1) && vp[-2] == i) { cerr << "ERROR3\n"; break; }
-if (vp - vs > keymax) { cerr << "ERROR4\n"; break; }
+                sort(vs, vp, *this); /* by qualsum */
 
-                } while (i != end);
-
-if (i > (1 << 12)) break;
-//if (vp - vs != 1 && vp[-2] == i) break;
-//if ((vp - vs > 2) && vp[-3] == i) { cerr << "ERROR5\n"; break; }
-//if (vp - vs >= keymax) { cerr << "ERROR4\n"; break; }
-
-cerr << "sorting " << vp - vs << " keys ...\n";
-                sort(vs, vp, *this);
-
-                while (vp != vs) cout << s + *--vp + 8 << "\n";
+                while (vp != vs) {
+                    cout << s + *--vp + 9 + len << "\n";
+                    cout << s + sq + 8 << "\n+\n";
+                    cout << s + *vp + 8 << "\n";
+                }
             }
             free(vs);
             free(ks);
@@ -204,16 +194,14 @@ private:
     }
 //KHASH_MAP_INIT_STR(UQCT, uint32_t)
     khash_t(UQCT) *H;
-    size_t l, m, fq_ent_max, keymax;
+    size_t l, m, fq_ent_max;
+    unsigned phred_offset, keymax;
     char *s;
 };
 
 
 int main(int argc, const char* argv[])
 {
-    bool order_by_qual = true;
-    // bool discard_comment = true;
-    // bool entrylength_varies_widely = false;
     struct uniqct uqct(51);
 
     string nm, sq, tmp, ql;
