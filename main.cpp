@@ -41,10 +41,10 @@ static unsigned phredtoe10[] = { 1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
 using namespace std;
 
 #define decr4chtou32(b, i) ({   \
-    i = (uint8_t)*--b; i <<= 8;          \
-    i |= (uint8_t)*--b; i <<= 8;         \
-    i |= (uint8_t)*--b; i <<= 8;         \
-    i | (uint8_t)*--b;                   \
+    i = *--b; i <<= 8;          \
+    i |= *--b; i <<= 8;         \
+    i |= *--b; i <<= 8;         \
+    i | *--b;                   \
 })
 
 struct uniqct
@@ -53,20 +53,20 @@ struct uniqct
         fq_ent_max((rl << 1) + MAX_NAME_ETC), phred_offset(33), keymax(1)
     {
         H = kh_init(UQCT);
-        s = (char*)malloc(m);
+        s = (uint8_t*)malloc(m);
         *s = '\0';
         kroundup32(fq_ent_max);
     }
 
-    void put(const char* seq, const char* qual, const char* name)
+    void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
         if_ever (is_err) return;
         if (l + fq_ent_max >= m) {
             m <<= 1;
-            s = (char*)realloc(s, m);
+            s = (uint8_t*)realloc(s, m);
         }
-        char *p, *b = s + l;
-        khiter_t k = str_kh_get(H, seq);
+        uint8_t *p, *b = s + l;
+        khiter_t k = str_kh_get(H, (const char*)seq);
         size_t i;
         if (k == kh_end(H)) { /* new key */
             for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount/length */
@@ -75,9 +75,9 @@ struct uniqct
             while ((*b = *seq) != '\0') ++b, ++seq;
             i = b - p;
             ++b;
-            *--p = (uint8_t)(i & 0xff); i >>= 8; /* length */
-            *--p = (uint8_t)(i & 0xff); i >>= 8;
-            *--p = (uint8_t)(i & 0xff);
+            *--p = (i & 0xff); i >>= 8; /* length */
+            *--p = (i & 0xff); i >>= 8;
+            *--p = (i & 0xff);
 //cerr << (unsigned)*p << "\t" << (unsigned)p[1] << "\t" << (unsigned)p[2] << "\t" << endl;
             i = p - s - 5; /* key offset, (denotes last value) */
             k = kh_put(UQCT, H, i, &is_err);
@@ -87,10 +87,10 @@ struct uniqct
             p = s + kh_key(H, k);
 
             /* increment keycount */
-            i = (uint8_t)++(*p);
-            i |= (uint8_t)(*++p += !i) << 8;
-            i |= (uint8_t)(*++p += !i) << 16;
-            i |= (uint8_t)(*++p += !i) << 24;
+            i = ++(*p);
+            i |= (*++p += !i) << 8;
+            i |= (*++p += !i) << 16;
+            i |= (*++p += !i) << 24;
 //cerr << "keycount:" << i << endl;
             if (i > keymax) keymax = i;
             i = kh_val(H, k); /* former value offset */
@@ -113,10 +113,10 @@ struct uniqct
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
         kh_val(H, k) = p - s - 3;
-        *p = (uint8_t)(i & 0xff); i >>= 8; // insert phred sum
-        *--p = (uint8_t)(i & 0xff); i >>= 8;
-        *--p = (uint8_t)(i & 0xff); i >>= 8;
-        *--p = (uint8_t)(i & 0xff);
+        *p = (i & 0xff); i >>= 8; // insert phred sum
+        *--p = (i & 0xff); i >>= 8;
+        *--p = (i & 0xff); i >>= 8;
+        *--p = (i & 0xff);
 
     }
 
@@ -141,7 +141,7 @@ struct uniqct
             while (kp != ks) { /* loop over keys */
                 size_t sq = kh_key(H, *--kp);
                 size_t i = kh_val(H, *kp);
-                uint8_t* p = (uint8_t *)s + sq + 5;
+                uint8_t* p = s + sq + 5;
                 unsigned len = *p; len <<= 8;
                 len |= *++p; len <<= 8;
                 len |= *++p;
@@ -153,7 +153,7 @@ struct uniqct
                 do { // loop over values belonging to key
                     *vp = i;
                     ++vp;
-                    char* b = s + i + 8;
+                    uint8_t* b = s + i + 8;
                     i = decr4chtou32(b, i);
 
 /* cerr << "i:" << i << endl; assert(i >= sq); */
@@ -161,9 +161,9 @@ struct uniqct
 
                 sort(vs, vp, *this); // by qualsum
                 while (vp-- != vs) {
-                    cout << s + *vp + 9 + len << "\n";
-                    cout << s + sq + 8 << "\n+\n";
-                    cout << s + *vp + 8 << "\n";
+                    cout << (char*)s + *vp + 9 + len << "\n";
+                    cout << (char*)s + sq + 8 << "\n+\n";
+                    cout << (char*)s + *vp + 8 << "\n";
                 }
             }
             free(vs);
@@ -174,8 +174,8 @@ struct uniqct
     }
     inline bool operator() (khiter_t a, khiter_t b) /* needed by sort. No need to check length, no 2 keys the same.*/
     {
-        char *sa = s + kh_key(H, a) + 8;
-        char *sb = s + kh_key(H, b) + 8;
+        uint8_t *sa = s + kh_key(H, a) + 8;
+        uint8_t *sb = s + kh_key(H, b) + 8;
         while (*sa == *sb) ++sa, ++sb;
         return *sa > *sb;
     }
@@ -183,7 +183,7 @@ struct uniqct
     inline bool operator() (size_t a, size_t b) /* needed by sort */
     {
 /*assert(a >= first); assert(b >= first); assert(a <= last); assert(b <= last);*/
-        uint8_t *sa = (uint8_t *)s + a, *sb = (uint8_t *)s + b;
+        uint8_t *sa = s + a, *sb = s + b;
         if (*sa != *sb) return *sa > *sb;
         if (*++sa != *++sb) return *sa > *sb;
         if (*++sa != *++sb) return *sa > *sb;
@@ -192,8 +192,8 @@ struct uniqct
     int is_err;
 
 private:
-#define my_str_hash_equal(a, b) (strcmp(s + a + 8, s + b + 8) == 0)
-#define my_str_hash_func(key) __ac_X31_hash_string(s + key + 8)
+#define my_str_hash_equal(a, b) (strcmp((char*)s + a + 8, (char*)s + b + 8) == 0)
+#define my_str_hash_func(key) __ac_X31_hash_string((char*)s + key + 8)
     KHASH_INIT2(UQCT, kh_inline, uint32_t, uint32_t, 1, my_str_hash_func, my_str_hash_equal)
     kh_inline khint_t str_kh_get(const kh_UQCT_t *h, const char* key)
     {
@@ -202,7 +202,7 @@ private:
             mask = h->n_buckets - 1;
             k = __ac_X31_hash_string(key); i = k & mask;
             inc = __ac_inc(k, mask); last = i; // inc==1 for linear probing
-            while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || strcmp(s + h->keys[i] + 8, key) != 0)) {
+            while (!__ac_isempty(h->flags, i) && (__ac_isdel(h->flags, i) || strcmp((char*)s + h->keys[i] + 8, key) != 0)) {
                 i = (i + inc) & mask;
                 if (i == last) return h->n_buckets;
             }
@@ -213,7 +213,7 @@ private:
     khash_t(UQCT) *H;
     size_t l, m, fq_ent_max;
     unsigned phred_offset, keymax;
-    char *s;
+    uint8_t *s;
 /*size_t first, last;*/
 };
 
@@ -224,7 +224,7 @@ int main(int argc, const char* argv[])
 
     string nm, sq, tmp, ql;
     while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))
-        uqct.put(sq.c_str(), ql.c_str(), nm.c_str());
+        uqct.put((const uint8_t*)sq.c_str(), (const uint8_t*)ql.c_str(), (const uint8_t*)nm.c_str());
 
     uqct.dump();
 
