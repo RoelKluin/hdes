@@ -69,7 +69,7 @@ struct uniqct
         khiter_t k = str_kh_get(H, (const char*)seq);
         size_t i;
         if (k == kh_end(H)) { /* new key */
-            for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount/length */
+            for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount(5)/length(3) */
 
             // TODO: form of twobit with N spec
             while ((*b = *seq) != '\0') ++b, ++seq;
@@ -84,13 +84,13 @@ struct uniqct
             if_ever ((is_err = (is_err < 0))) return;
 
         } else {
-            p = s + kh_key(H, k);
+            p = s + kh_key(H, k) + 3;
 
             /* increment keycount */
             i = ++(*p);
-            i |= (*++p += !i) << 8;
-            i |= (*++p += !i) << 16;
-            i |= (*++p += !i) << 24;
+            i |= (*--p += !i) << 8;
+            i |= (*--p += !i) << 16;
+            i |= (*--p += !i) << 24;
 //cerr << "keycount:" << i << endl;
             if (i > keymax) keymax = i;
             i = kh_val(H, k); /* former value offset */
@@ -113,11 +113,11 @@ struct uniqct
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
         kh_val(H, k) = p - s - 3;
+
         *p = (i & 0xff); i >>= 8; // insert phred sum
         *--p = (i & 0xff); i >>= 8;
         *--p = (i & 0xff); i >>= 8;
         *--p = (i & 0xff);
-
     }
 
     void dump() { /* must always be called to clean up */
@@ -172,22 +172,22 @@ struct uniqct
 	free(s);
         kh_destroy(UQCT, H);
     }
-    inline bool operator() (khiter_t a, khiter_t b) /* needed by sort. No need to check length, no 2 keys the same.*/
+    inline bool operator() (khiter_t a, khiter_t b) /* needed by sortkp/ks. No need to check length, no 2 keys the same.*/
     {
-        uint8_t *sa = s + kh_key(H, a) + 8;
-        uint8_t *sb = s + kh_key(H, b) + 8;
-        while (*sa == *sb) ++sa, ++sb;
-        return *sa > *sb;
+        uint8_t *sa = s + kh_key(H, a);
+        uint8_t *sb = s + kh_key(H, b);
+        while (*sa == *sb) ++sa, ++sb; /* No need to check length, no 2 keys the same.*/
+        return *++sa < *++sb;
     }
 
     inline bool operator() (size_t a, size_t b) /* needed by sort */
     {
 /*assert(a >= first); assert(b >= first); assert(a <= last); assert(b <= last);*/
         uint8_t *sa = s + a, *sb = s + b;
-        if (*sa != *sb) return *sa > *sb;
-        if (*++sa != *++sb) return *sa > *sb;
-        if (*++sa != *++sb) return *sa > *sb;
-        return *++sa > *++sb;
+        if (*sa != *sb) return *sa < *sb;
+        if (*++sa != *++sb) return *sa < *sb;
+        if (*++sa != *++sb) return *sa < *sb;
+        return *++sa < *++sb;
     }
     int is_err;
 
