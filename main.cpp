@@ -95,9 +95,9 @@ struct uniqct
             if (i > keymax) keymax = i;
             i = kh_val(H, k); /* former value offset */
         }
-        p = b;
         // 4 bytes reserved for phred sum
-        *b = '\0'; *++b = '\0'; *++b = '\0'; *++b = '\0';
+        b += 3;
+        p = b;
         /* put former value offset here */
         for (unsigned j = 0; j != 4; ++j) {
             *++b = i & 0xff;
@@ -112,11 +112,11 @@ struct uniqct
         }
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
-        kh_val(H, k) = p - s;
+        kh_val(H, k) = p - s - 3;
         *p = (uint8_t)(i & 0xff); i >>= 8; // insert phred sum
-        *++p = (uint8_t)(i & 0xff); i >>= 8;
-        *++p = (uint8_t)(i & 0xff); i >>= 8;
-        *++p = (uint8_t)(i & 0xff);
+        *--p = (uint8_t)(i & 0xff); i >>= 8;
+        *--p = (uint8_t)(i & 0xff); i >>= 8;
+        *--p = (uint8_t)(i & 0xff);
 
     }
 
@@ -183,11 +183,11 @@ struct uniqct
     inline bool operator() (size_t a, size_t b) /* needed by sort */
     {
 /*assert(a >= first); assert(b >= first); assert(a <= last); assert(b <= last);*/
-        uint8_t *sa = (uint8_t *)s + a + 3, *sb = (uint8_t *)s + b + 3;
+        uint8_t *sa = (uint8_t *)s + a, *sb = (uint8_t *)s + b;
         if (*sa != *sb) return *sa > *sb;
-        if (*--sa != *--sb) return *sa > *sb;
-        if (*--sa != *--sb) return *sa > *sb;
-        return *--sa > *--sb;
+        if (*++sa != *++sb) return *sa > *sb;
+        if (*++sa != *++sb) return *sa > *sb;
+        return *++sa > *++sb;
     }
     int is_err;
 
