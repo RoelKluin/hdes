@@ -50,7 +50,7 @@ using namespace std;
 struct uniqct
 {
     uniqct(size_t rl) : is_err(0), l(0), m(1ul << 23),
-        fq_ent_max((rl << 1) + MAX_NAME_ETC), phred_offset(33), keymax(1)
+        fq_ent_max((rl << 1) + MAX_NAME_ETC), phred_offset(33), keymax(0)
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
@@ -137,7 +137,6 @@ struct uniqct
 
             sort(ks, kp, *this); /* by keycount */
 
-            //at = (uint64_t)((s[at+4] << 32)|(s[at+3] << 24)|(s[at+2] << 16)|(s[at+1] << 8)|s[at]);
             while (kp != ks) { /* loop over keys */
                 size_t sq = kh_key(H, *--kp);
                 size_t i = kh_val(H, *kp);
@@ -194,8 +193,9 @@ struct uniqct
 private:
 #define my_str_hash_equal(a, b) (strcmp((char*)s + a + 8, (char*)s + b + 8) == 0)
 #define my_str_hash_func(key) __ac_X31_hash_string((char*)s + key + 8)
-    KHASH_INIT2(UQCT, kh_inline, uint32_t, uint32_t, 1, my_str_hash_func, my_str_hash_equal)
-    kh_inline khint_t str_kh_get(const kh_UQCT_t *h, const char* key)
+    KHASH_INIT2(UQCT, static kh_inline, uint32_t, uint32_t, 1, my_str_hash_func, my_str_hash_equal)
+    //KHASH_MAP_INIT_INT(UQCT, uint32_t)
+    static kh_inline khint_t str_kh_get(const kh_UQCT_t *h, const char* key)
     {
         if (h->n_buckets) {
             khint_t inc, k, i, last, mask;
@@ -209,14 +209,14 @@ private:
             return __ac_iseither(h->flags, i)? h->n_buckets : i;
         } else return 0;
     }
-//KHASH_MAP_INIT_STR(UQCT, uint32_t)
     khash_t(UQCT) *H;
     size_t l, m, fq_ent_max;
     unsigned phred_offset, keymax;
-    uint8_t *s;
+    static uint8_t *s;
 /*size_t first, last;*/
 };
 
+uint8_t *uniqct::s;
 
 int main(int argc, const char* argv[])
 {
