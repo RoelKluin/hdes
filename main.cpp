@@ -66,51 +66,58 @@ struct uniqct
             s = (char*)realloc(s, m);
         }
         char *p, *b = s + l;
-cerr << seq << endl << flush;
         khiter_t k = str_kh_get(H, seq);
         size_t i;
         if (k == kh_end(H)) { /* new key */
-            p = b;
-            for (i = 0; i != 5; ++i, ++b) *b = '\0'; /* keycount */
-            for (i = 0; i != 3; ++i, ++b) *b = '\0'; /* seq length */
+            for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount/length */
 
             // TODO: form of twobit with N spec
             while ((*b = *seq) != '\0') ++b, ++seq;
-            i = p - s; /* key offset, (denotes last value) */
+            i = b - p;
+            ++b;
+            *--p = (uint8_t)(i & 0xff); i >>= 8; /* length */
+            *--p = (uint8_t)(i & 0xff); i >>= 8;
+            *--p = (uint8_t)(i & 0xff);
+//cerr << (unsigned)*p << "\t" << (unsigned)p[1] << "\t" << (unsigned)p[2] << "\t" << endl;
+            i = p - s - 5; /* key offset, (denotes last value) */
             k = kh_put(UQCT, H, i, &is_err);
-            is_err = (is_err < 0);
-            if_ever (is_err) return;
-
-cerr << "key at: " << i << endl << "kh_size: " << kh_size(H) << endl << flush;
+            if_ever ((is_err = (is_err < 0))) return;
 
         } else {
             p = s + kh_key(H, k);
 
-cerr << "already observed key at " << kh_key(H, k) << ":\n" << p + 8 << "\n";
-
             /* increment keycount */
-            i = (size_t)++(*p);
-            i |= (size_t)(*++p += !i) << 8;
-            i |= (size_t)(*++p += !i) << 16;
-            keymax |= ((size_t)(*++p += !i) << 24) | i;
+            i = (uint8_t)++(*p);
+            i |= (uint8_t)(*++p += !i) << 8;
+            i |= (uint8_t)(*++p += !i) << 16;
+            i |= (uint8_t)(*++p += !i) << 24;
+//cerr << "keycount:" << i << endl;
+            if (i > keymax) keymax = i;
             i = kh_val(H, k); /* former value offset */
         }
-
         p = b;
         // 4 bytes reserved for phred sum
-        *b = '\0'; *++b = '\0'; *++b = '\0'; *++b = '\0'; ++b;
+        *b = '\0'; *++b = '\0'; *++b = '\0'; *++b = '\0';
         /* put former value offset here */
-        for (unsigned j = 0; j != 4; ++j, ++b) {
-            *b = i & 0xff;
-cerr << i << ":" << (i & 0xff) << endl;
+        for (unsigned j = 0; j != 4; ++j) {
+            *++b = i & 0xff;
             i >>= 8;
         }
         // TODO: better qual/name storage
-        while ((*b = *qual) != '\0') ++b, ++qual;
-        while ((*b = *name) != '\0') ++b, ++name;
-        kh_val(H, k) = p - s;
-cerr << p + 8 << endl << "val at: " << p - s << endl << flush;
+        i = 0;
+        while ((*++b = *qual) != '\0') {
+            assert(*qual - phred_offset < 40);
+            i += phredtoe10[*qual - phred_offset];
+            ++qual;
+        }
+        while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
+        kh_val(H, k) = p - s;
+        *p = (uint8_t)(i & 0xff); i >>= 8; // insert phred sum
+        *++p = (uint8_t)(i & 0xff); i >>= 8;
+        *++p = (uint8_t)(i & 0xff); i >>= 8;
+        *++p = (uint8_t)(i & 0xff);
+
     }
 
     void dump() { /* must always be called to clean up */
@@ -135,21 +142,26 @@ cerr << p + 8 << endl << "val at: " << p - s << endl << flush;
                 size_t sq = kh_key(H, *--kp);
                 size_t i = kh_val(H, *kp);
                 uint8_t* p = (uint8_t *)s + sq + 5;
-                unsigned len = (p[2]<<16) | (p[1]<<8) | *p;
+                unsigned len = *p; len <<= 8;
+                len |= *++p; len <<= 8;
+                len |= *++p;
+                assert(len < (1 << 10)); //
+
+/*first = sq, last = i; cerr << s + sq + 8 << "\ti:" << sq << "\t" <<i << endl; */
 
                 vp = vs;
-                do { /* loop over values belonging to key */
+                do { // loop over values belonging to key
                     *vp = i;
                     ++vp;
                     char* b = s + i + 8;
                     i = decr4chtou32(b, i);
 
+/* cerr << "i:" << i << endl; assert(i >= sq); */
                 } while (i != sq);
 
-                sort(vs, vp, *this); /* by qualsum */
-
-                while (vp != vs) {
-                    cout << s + *--vp + 9 + len << "\n";
+                sort(vs, vp, *this); // by qualsum
+                while (vp-- != vs) {
+                    cout << s + *vp + 9 + len << "\n";
                     cout << s + sq + 8 << "\n+\n";
                     cout << s + *vp + 8 << "\n";
                 }
@@ -160,17 +172,22 @@ cerr << p + 8 << endl << "val at: " << p - s << endl << flush;
 	free(s);
         kh_destroy(UQCT, H);
     }
-    inline bool operator() (khiter_t a, khiter_t b) /* needed by sort */
+    inline bool operator() (khiter_t a, khiter_t b) /* needed by sort. No need to check length, no 2 keys the same.*/
     {
         char *sa = s + kh_key(H, a) + 8;
         char *sb = s + kh_key(H, b) + 8;
-        while (*sa == *sb) { ++sa; ++sb; }
+        while (*sa == *sb) ++sa, ++sb;
         return *sa > *sb;
     }
 
     inline bool operator() (size_t a, size_t b) /* needed by sort */
     {
-        return strcmp(s + a, s + b);
+/*assert(a >= first); assert(b >= first); assert(a <= last); assert(b <= last);*/
+        uint8_t *sa = (uint8_t *)s + a + 3, *sb = (uint8_t *)s + b + 3;
+        if (*sa != *sb) return *sa > *sb;
+        if (*--sa != *--sb) return *sa > *sb;
+        if (*--sa != *--sb) return *sa > *sb;
+        return *--sa > *--sb;
     }
     int is_err;
 
@@ -197,6 +214,7 @@ private:
     size_t l, m, fq_ent_max;
     unsigned phred_offset, keymax;
     char *s;
+/*size_t first, last;*/
 };
 
 
