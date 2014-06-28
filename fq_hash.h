@@ -19,14 +19,6 @@
 #include <algorithm>
 
 #include "khash.h"
-#include "kstring.h"
-
-#define decr4chtou32(b, i) ({   \
-    i = *--b; i <<= 8;          \
-    i |= *--b; i <<= 8;         \
-    i |= *--b; i <<= 8;         \
-    i | *--b;                   \
-})
 
 #define MAX_NAME_ETC    1024
 
@@ -42,9 +34,9 @@ static unsigned phredtoe10[] = { 1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
 
 using namespace std;
 
-struct uniqct
+struct fq_hash
 {
-    uniqct(size_t rl) : is_err(0), l(0), m(1ul << 23),
+    fq_hash(size_t rl) : is_err(0), l(0), m(1ul << 23),
         fq_ent_max((rl << 1) + MAX_NAME_ETC), nr(0), phred_offset(33), keymax(0)
     {
         H = kh_init(UQCT);
@@ -86,7 +78,6 @@ struct uniqct
             i |= (*--p += !i) << 8;
             i |= (*--p += !i) << 16;
             i |= (*--p += !i) << 24;
-//cerr << "keycount:" << i << endl;
             if (i > keymax) keymax = i;
             i = kh_val(H, k); /* former value offset */
         }
@@ -128,7 +119,6 @@ struct uniqct
             ++keymax;
             cerr << "== " << i << " / " << nr << " sequences were unique," <<
                 " the most frequent occured in " << keymax << " reads. ==\n";
-            //kroundup32(keymax);
 
             vs = (size_t*)malloc(keymax * sizeof(size_t));
 
@@ -143,16 +133,17 @@ struct uniqct
                 len |= *++p;
                 assert(len < (1 << 10)); //
 
-/*first = sq, last = i; cerr << s + sq + 8 << "\ti:" << sq << "\t" <<i << endl; */
 
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp = i;
                     ++vp;
                     uint8_t* b = s + i + 8;
-                    i = decr4chtou32(b, i);
+                    i = *--b; i <<= 8;
+                    i |= *--b; i <<= 8;
+                    i |= *--b; i <<= 8;
+                    i |= *--b;
 
-/* cerr << "i:" << i << endl; assert(i >= sq); */
                 } while (i != sq);
 
                 sort(vs, vp, *this); // by qualsum
@@ -178,7 +169,6 @@ struct uniqct
 
     inline bool operator() (size_t a, size_t b) /* needed by sort vs/vp*/
     {
-/*assert(a >= first); assert(b >= first); assert(a <= last); assert(b <= last);*/
         uint8_t *sa = s + a, *sb = s + b;
         if (*sa != *sb) return *sa < *sb;
         if (*++sa != *++sb) return *sa < *sb;
@@ -191,7 +181,6 @@ private:
 #define my_str_hash_equal(a, b) (strcmp((char*)s + a + 8, (char*)s + b + 8) == 0)
 #define my_str_hash_func(key) __ac_X31_hash_string((char*)s + key + 8)
     KHASH_INIT2(UQCT, static kh_inline, uint32_t, uint32_t, 1, my_str_hash_func, my_str_hash_equal)
-    //KHASH_MAP_INIT_INT(UQCT, uint32_t)
     static kh_inline khint_t str_kh_get(const kh_UQCT_t *h, const char* key)
     {
         if (h->n_buckets) {
@@ -210,10 +199,9 @@ private:
     size_t l, m, fq_ent_max, nr;
     unsigned phred_offset, keymax;
     static uint8_t *s;
-/*size_t first, last;*/
 };
 
-uint8_t *uniqct::s;
+uint8_t *fq_hash::s;
 
 
 

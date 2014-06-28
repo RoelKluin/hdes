@@ -11,20 +11,14 @@
 // make && zgrep -E -o "^[ACTGN]{6}" /home/roel/dev/rproject/rmap/hg19.fa.gz | head -n 100000 | valgrind ./uqct
 
 #include <stdint.h>
-#include <assert.h>
-
 #include <iostream>
-#include <algorithm>
-
-#include "khash.h"
-#include "kstring.h"
 #include "fq_hash.h"
 
 using namespace std;
 
 int main(int argc, const char* argv[])
 {
-    struct uniqct uqct(51);
+    struct fq_hash uqct(51);
 
     string nm, sq, tmp, ql;
     while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))
