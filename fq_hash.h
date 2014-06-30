@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "khash.h"
+#include "b6.h"
 
 #define MAX_NAME_ETC    1024
 
@@ -41,6 +42,7 @@ struct fq_hash
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
+        dna = (uint8_t*)malloc(rl);
         *s = '\0';
         kroundup32(fq_ent_max);
     }
@@ -53,20 +55,30 @@ struct fq_hash
             m <<= 1;
             s = (uint8_t*)realloc(s, m);
         }
-        uint8_t *p, *b = s + l;
-        khiter_t k = str_kh_get(H, (const char*)seq);
-        size_t i;
+        uint8_t *p = dna, *b = s + l;
+        unsigned c, shft = 0;
+        size_t i = 0;
+        *p = '\0';
+        //cerr << seq << endl;
+        // encode in 2bit
+        while ((c = *seq++) != '\0') {
+            c = b6(c);
+            *p |= -isb6(c) & ((c >> 1) << (shft << 1)); // zero [min] for A or non-Nt.
+            shft = ++i & 0x3;
+            if (shft == 0) *++p = '\0';
+        }
+        if (shft) *++p = '\0';
+
+        khiter_t k = str_kh_get(H, (const char*)dna);
         if (k == kh_end(H)) { /* new key */
             for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount(5)/length(3) */
-
-            // TODO: form of twobit with N spec
-            while ((*b = *seq) != '\0') ++b, ++seq;
-            i = b - p;
-            ++b;
-            *--p = (i & 0xff); i >>= 8; /* length */
+            *--p = (i & 0xff); i >>= 8; /* seqlength */
             *--p = (i & 0xff); i >>= 8;
             *--p = (i & 0xff);
             i = p - s - 5; /* key offset, (denotes last value) */
+            p = dna;
+            while ((*b = *p) != '\0') ++b, ++p;
+            ++b;
             k = kh_put(UQCT, H, i, &is_err);
             if_ever ((is_err = (is_err < 0))) return;
 
@@ -148,14 +160,23 @@ struct fq_hash
 
                 sort(vs, vp, *this); // by qualsum
                 while (vp-- != vs) {
+                    uint8_t* b = s + sq + 8;
+                    unsigned c = 0; // decode 2bit;
+                    for(i = 0; i != len; ++i) {
+                        if ((i & 3) == 0) { c = (char)*b; ++b; }
+                        dna[i] = b6((c & 3) << 1);
+                        c >>= 2;
+                    }
+                    dna[i] = '\0';
                     cout << (char*)s + *vp + 9 + len << "\n";
-                    cout << (char*)s + sq + 8 << "\n+\n";
+                    cout << dna << "\n+\n";
                     cout << (char*)s + *vp + 8 << "\n";
                 }
             }
             free(vs);
             free(ks);
         }
+        free(dna);
 	free(s);
         kh_destroy(UQCT, H);
     }
@@ -199,6 +220,7 @@ private:
     size_t l, m, fq_ent_max, nr;
     unsigned phred_offset, keymax;
     static uint8_t *s;
+    uint8_t* dna;
 };
 
 uint8_t *fq_hash::s;
