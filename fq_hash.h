@@ -38,11 +38,11 @@ using namespace std;
 struct fq_hash
 {
     fq_hash(size_t rl) : is_err(0), l(0), m(1ul << 23),
-        fq_ent_max((rl << 1) + MAX_NAME_ETC), nr(0), phred_offset(33), keymax(0)
+        fq_ent_max((rl << 1) + MAX_NAME_ETC), nr(0), readlength(rl), phred_offset(33), keymax(0)
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
-        dna = (uint8_t*)malloc(rl);
+        dna = (uint8_t*)malloc(rl<<1);
         *s = '\0';
         kroundup32(fq_ent_max);
     }
@@ -59,25 +59,26 @@ struct fq_hash
         unsigned c, shft = 0;
         size_t i = 0;
         *p = '\0';
-        //cerr << seq << endl;
+        //cerr << seq << endl; //
         // encode in 2bit
         while ((c = *seq++) != '\0') {
             c = b6(c);
-            *p |= -isb6(c) & ((c >> 1) << (shft << 1)); // zero [min] for A or non-Nt.
-            shft = ++i & 0x3;
+            c = -isb6(c) & (c >> 1);
+            *p |= c << shft; // zero [min] for A or non-Nt.
+            shft = (++i & 0x3) << 1;
             if (shft == 0) *++p = '\0';
         }
-        if (shft) *++p = '\0';
 
         khiter_t k = str_kh_get(H, (const char*)dna);
         if (k == kh_end(H)) { /* new key */
             for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount(5)/length(3) */
+            c = i;
             *--p = (i & 0xff); i >>= 8; /* seqlength */
             *--p = (i & 0xff); i >>= 8;
             *--p = (i & 0xff);
             i = p - s - 5; /* key offset, (denotes last value) */
             p = dna;
-            while ((*b = *p) != '\0') ++b, ++p;
+            while (c--) *b++ = *p++;
             ++b;
             k = kh_put(UQCT, H, i, &is_err);
             if_ever ((is_err = (is_err < 0))) return;
@@ -217,7 +218,7 @@ private:
         } else return 0;
     }
     khash_t(UQCT) *H;
-    size_t l, m, fq_ent_max, nr;
+    size_t l, m, fq_ent_max, nr, readlength;
     unsigned phred_offset, keymax;
     static uint8_t *s;
     uint8_t* dna;
