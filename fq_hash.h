@@ -28,7 +28,8 @@
 #define if_ever(err)    if (unlikely(err))
 #define expect(T)       if (likely(T))
 
-static unsigned phredtoe10[] = { 1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
+static unsigned phredtoe10[] = {
+    1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
     12, 15, 19, 25, 31, 39, 50, 63, 79, 100,
     125, 158, 199, 251, 316, 398, 501, 630, 794, 1000,
     1258, 1584, 1995, 2511, 3162, 3981, 5011, 6309, 7943, 10000 };
@@ -42,11 +43,17 @@ struct fq_hash
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
-        dna = (uint8_t*)malloc(rl<<1);
+        dna = (uint8_t*)malloc((rl<<1)+2);
         *s = '\0';
         kroundup32(fq_ent_max);
     }
-
+    /*
+     * KC-SL-key_1 PS-KO-val_1 KC-SL-key_2] PS-KO-val_2 ... KC-SL-key_n-1 PS-KO-val_n-1 PS-*VO_1*-val_n]
+     *
+     * KC:keycount, SL: seqlength. PS:phred sum, KO key offset, VO_1: Value 1 offset.
+     *
+     * val: phred + name, key: dna in 2bit. valn has existing key1 (same for val1)
+     */
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
         if_ever (is_err) return;
@@ -55,24 +62,13 @@ struct fq_hash
             m <<= 1;
             s = (uint8_t*)realloc(s, m);
         }
-        uint8_t *p = dna, *b = s + l;
-        unsigned c, shft = 0;
-        size_t i = 0;
-        *p = '\0';
-        //cerr << seq << endl; //
-        // encode in 2bit
-        while ((c = *seq++) != '\0') {
-            c = b6(c);
-            c = -isb6(c) & (c >> 1);
-            *p |= c << shft; // zero [min] for A or non-Nt.
-            shft = (++i & 0x3) << 1;
-            if (shft == 0) *++p = '\0';
-        }
+        uint8_t *p, *b = s + l;
+        size_t i = encode_2bit(seq);
 
         khiter_t k = str_kh_get(H, (const char*)dna);
         if (k == kh_end(H)) { /* new key */
             for (p = b + 8; b != p; ++b) *b = '\0'; /* keycount(5)/length(3) */
-            c = i;
+            unsigned c = i;
             *--p = (i & 0xff); i >>= 8; /* seqlength */
             *--p = (i & 0xff); i >>= 8;
             *--p = (i & 0xff);
@@ -95,28 +91,17 @@ struct fq_hash
             i = kh_val(H, k); /* former value offset */
         }
         // 4 bytes reserved for phred sum
-        b += 3;
         p = b;
+        b += 3;
         /* put former value offset here */
         for (unsigned j = 0; j != 4; ++j) {
             *++b = i & 0xff;
             i >>= 8;
         }
-        // TODO: better qual/name storage
-        i = 0;
-        while ((*++b = *qual) != '\0') {
-            assert(*qual - phred_offset < 40);
-            i += phredtoe10[*qual - phred_offset];
-            ++qual;
-        }
+        b = encode_phredqual(qual, seq, b);
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
-        kh_val(H, k) = p - s - 3;
-
-        *p = (i & 0xff); i >>= 8; // insert phred sum
-        *--p = (i & 0xff); i >>= 8;
-        *--p = (i & 0xff); i >>= 8;
-        *--p = (i & 0xff);
+        kh_val(H, k) = p - s;
     }
 
     void dump() { /* must always be called to clean up */
@@ -128,7 +113,7 @@ struct fq_hash
 
             kp = ks = (khiter_t*)malloc(kh_size(H) * sizeof(khiter_t));
             for (khiter_t k = kh_begin(H); k != kh_end(H); ++k)
-                if (kh_exist(H, k)) { *kp = k; ++kp; }
+                if (kh_exist(H, k)) *kp++ = k;
             ++keymax;
             cerr << "== " << i << " / " << nr << " sequences were unique," <<
                 " the most frequent occured in " << keymax << " reads. ==\n";
@@ -149,8 +134,7 @@ struct fq_hash
 
                 vp = vs;
                 do { // loop over values belonging to key
-                    *vp = i;
-                    ++vp;
+                    *vp++ = i;
                     uint8_t* b = s + i + 8;
                     i = *--b; i <<= 8;
                     i |= *--b; i <<= 8;
@@ -161,17 +145,10 @@ struct fq_hash
 
                 sort(vs, vp, *this); // by qualsum
                 while (vp-- != vs) {
-                    uint8_t* b = s + sq + 8;
-                    unsigned c = 0; // decode 2bit;
-                    for(i = 0; i != len; ++i) {
-                        if ((i & 3) == 0) { c = (char)*b; ++b; }
-                        dna[i] = b6((c & 3) << 1);
-                        c >>= 2;
-                    }
-                    dna[i] = '\0';
+                    decode_phredqual(s + *vp + 8, len);
                     cout << (char*)s + *vp + 9 + len << "\n";
                     cout << dna << "\n+\n";
-                    cout << (char*)s + *vp + 8 << "\n";
+                    cout << dna + len + 1 << "\n";
                 }
             }
             free(vs);
@@ -216,6 +193,59 @@ private:
             }
             return __ac_iseither(h->flags, i)? h->n_buckets : i;
         } else return 0;
+    }
+    /* returns no characters processed. */
+    unsigned encode_2bit(const uint8_t* seq)
+    {
+        size_t i = 0;
+        uint8_t *p = dna, *rc = &dna[readlength-1];
+        unsigned c, shft = 0;
+        *rc = *p = '\0';
+        cerr << seq << endl; //
+        while ((c = *seq++) != '\0') {
+            c = b6(c);
+            c = -isb6(c) & (c >> 1);
+            *p |= c << shft; // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
+            *rc |= c << (shft - 6);
+            shft = (++i & 0x3) << 1;
+            if (shft == 0) *--rc = *++p = '\0';
+        }
+        return i;
+    }
+    uint8_t* encode_phredqual(const uint8_t* qual, const uint8_t* seq, uint8_t* b)
+    {
+        unsigned i = 0;
+        uint8_t* p = b - 4;
+        while ((*++b = *qual++) != '\0') {
+            *b -= phred_offset;
+            assert(*b < 40);
+            i += phredtoe10[*b];
+            unsigned c = b6(*seq++);
+
+            // In case of an 'N' 0x30 is set and phred bits originally there shifted upwards
+            *b |= isb6(c) ? (c << 5) : ((*b & 0x30) << 2) | 0x30;
+        }
+        *p = (i & 0xff); i >>= 8; // insert phred sum
+        *--p = (i & 0xff); i >>= 8;
+        *--p = (i & 0xff); i >>= 8;
+        *--p = (i & 0xff);
+        return b;
+    }
+    void decode_phredqual(uint8_t* b, unsigned len)
+    {
+        uint8_t *d = dna, *q = dna + len + 1;
+
+        for(unsigned i = 0; i != len; ++i, ++b, ++d, ++q) {
+            unsigned c = *b;
+            if ((c & 0x30) != 0x30) {
+                *d = b6((c >> 5) & 0x6);
+                *q = (c & 0x3f) + phred_offset;
+            } else {
+                *d = 'N';
+                *q = (((c >> 2) & 0x30) | (c & 0xf)) + phred_offset;
+            }
+        }
+        *d = *q = '\0';
     }
     khash_t(UQCT) *H;
     size_t l, m, fq_ent_max, nr, readlength;
