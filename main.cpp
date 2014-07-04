@@ -18,7 +18,14 @@ using namespace std;
 
 int main(int argc, const char* argv[])
 {
-    struct fq_hash uqct(51);
+    unsigned phred_offset = 33;
+    if (argc > 1) {
+        phred_offset = atoi(argv[1]);
+        cerr << "Phred offset set to " << phred_offset << endl;
+    }
+    assert((phred_offset >= 33) && (phred_offset <= 126));
+    
+    struct fq_hash uqct(100, phred_offset);
 
     string nm, sq, tmp, ql;
     while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))
