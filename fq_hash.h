@@ -77,6 +77,8 @@ struct fq_hash
         unsigned i = 0;
         // get twisted: value that is the same for seq and revcmp
         unsigned twisted = encode_twisted(seq, &i); // remove low bit, separate deviant
+        if_ever (i == 0) return; //sequence too short.
+
         uint8_t *b = s + l + 4; // four bytes for phred sum
         *b = (i & 0xff); i >>= 8; // insert offset / twisted state
         *++b = (i & 0xff); i >>= 8;
@@ -137,7 +139,7 @@ struct fq_hash
             do { /* loop over keys */
                 i = kh_val(H, *--kp) & 0xffffffff;
                 unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, s + i + 7, deviant);
+                decode_twisted(seqrc, (s[i + 7] & 0x80) == 0, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i;
@@ -168,8 +170,9 @@ struct fq_hash
         return kh_val(H, a) < kh_val(H, b);
     }
 
-    inline bool operator() (uint64_t a, uint64_t b) /* needed by sort vs/vp: sort on phred sum*/
+    inline bool operator() (uint64_t a, uint64_t b) /* needed by sort vs/vp: sort on orientation/phred sum*/
     {
+        // XXX: (how) does this sort correctly for both orientations?
         uint8_t *sa = s + a + 7, *sb = s + b + 7;
         for (unsigned i = 0; i < 8; ++i, --sa, --sb)
             if (*sa != *sb) return *sa < *sb;
@@ -196,48 +199,50 @@ private:
     /* returns no. characters processed. */
     unsigned encode_twisted(const uint8_t* sq, unsigned* maxi)
     {
-//cerr << sq << endl; //
-        size_t i = 0;
-        unsigned d = 0;
+//cerr << "== " << sq << endl; //
+        unsigned i = 0;
+        uint32_t d = 0;
         uint32_t c;
         do {
-            if ((c = *sq++) == '\0') return -1u;
+            if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             d = (d << 2) | (-isb6(c) & (c >> 1));
 
         } while (++i != 17);
 
-        unsigned cNt = d & 0xc000;        // excise out central Nt
-        c = (0x4000 - 1) & d;
-        uint32_t t = -!(cNt & 0x4000);  // first bit of central Nt determines strand for max.
+        unsigned cNt = d & 0xc000;     // excise out central Nt
+        c = (0x4000 - 1) & d;          // mark set bits below it
+        uint32_t t = -!(cNt & 0x8000); // first bit of central Nt will determine the orientation.
 
-        d ^= cNt ^ c ^ (c << 2);      // move lower Nts upward
+        d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
 
-        if ((c = *sq++) == '\0') return -1u;
+        if ((c = *sq++) == '\0') return 0;
         c = b6(c);
-        d |= -isb6(c) & (c >> 1); // append next Nt
-        *maxi = i | (t & 0x80000000);     // cNt in 31th bit
+        d |= -isb6(c) & (c >> 1);     // append next Nt
+        *maxi = i | (t & 0x80000000); // init: offset and cNt bit, orientation.
         t |= 0xffff;
 
-        t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant (part)
-        unsigned max = t ^ (d & 0xffff0000); // high bits seq or revcmp according to central Nt
-        // if cNt bit is set: top part is seq, else revcmp
-//cerr << "Init: maxi " << *maxi << "\tmax: " << max << endl;
+        t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
+        unsigned max = t ^ (d & 0xffff0000); // high bits become seq or revcmp accordingly
 
-        do { // search for maximum
+        // if cNt bit is set: top part is seq, else revcmp
+//cerr << "== Init: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
+
+        do { // search for maximum deviant XXX: should be same for seq and revcmp!
+//cerr << "==:" << i << endl;
             if ((c = *sq++) == '\0') break;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
 
             d ^= cNt; // get next central Nt and put old one back;
             cNt ^= d & 0xc000;
-            t = -!(cNt & 0x4000);
+            t = -!(cNt & 0x8000);
             d ^= cNt;
 
             d = ((d & 0x3fffffff) << 2) | c ; // shift-insert next Nt.
 
-            if (t && ((d | 0xffff) < max)) continue; 
+            //if ((t == 0) && ((d | 0xffff) < max)) continue;
             t |= 0xffff;
 
             c = t & (d ^ revseq(d) ^ 0xaaaaaaaa);
@@ -246,51 +251,45 @@ private:
             if (c > max) {
                 max = c;
                 *maxi = i | (t & 0x80000000);
-//cerr << "Mod: maxi " << *maxi << "\tmax: " << max << endl;
+//cerr << "== Mod: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
             }
         } while (++i != readlength);
-//cerr << "Res: maxi " << *maxi << "\tmax: " << max << endl;
+//cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
         return max;
     }
-    void decode_twisted(char* seq, uint8_t* b , unsigned d)
+    void decode_twisted(char* seq, unsigned t, unsigned d)
     {
         char* revcmp = seq + 35;
         *revcmp = '\0';
 
-        unsigned i, t;
-        t = !(*b & 0x80);
+        unsigned i;
 //cerr << t << endl;
-
-        //t = -t & 0xffff;
 
         unsigned r = revseq(d) ^ 0xaaaa;
         // if cNt bit was set: top part is seq, else revcmp
-        if (!t) r ^= d & 0xffff;
-        else r &= 0xffff;
+        if (t) r &= 0xffff;
+        else r ^= d & 0xffff;
         d ^= r;
         char c;
 
         for (i = 0; i != 8; ++i, ++seq, d >>= 2) {
             c = (d & 0x3) << 1;
-            *seq = b6(4 | c);
+            *seq = b6(4 ^ c);
             *--revcmp = b6(c);
         }
         if (t) {
-            //2nd:C~3, 2nd:G~2,
-            *seq = '.';//b6(2);
-            *--revcmp = '.';//b6(6);
+            *seq = '.';//b6(6);
+            *--revcmp = '.';//b6(2);
         } else {
-            // 2nd:A~4, 2nd:T~1, 
-
-            *seq = '.';//b6(0);
-            *--revcmp = '.';//b6(4);
+            *seq = '.';//b6(4);
+            *--revcmp = '.';//b6(0);
         }
         for (++seq; i != 16; ++i, ++seq, d >>= 2) {
             c = (d & 0x3) << 1;
-            *seq = b6(4 | c);
+            *seq = b6(4 ^ c);
             *--revcmp = b6(c);;
         }
-        *seq = ' ';
+        *seq = '|';
         assert(revcmp == seq + 1);
     }
 

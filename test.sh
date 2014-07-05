@@ -7,3 +7,20 @@
 make && zcat /home/roel/dev/git/bwa/my/bwa/test/ce_med.fq.gz | valgrind ./uqct 1>/dev/null 2> valg.err
 
 make && zcat /home/roel/dev/git/bwa/my/bwa/test/ce_med.fq.gz | ./uqct | less
+
+# test that entries in fastq remain the same
+f=SRR081241_1.filt.fastq.gz
+
+cmp <(zcat "$f" | sed -n '/[[:space:]]/s/[[:space:]].*$//;N;h;n;x;N;y/\n/\t/;p' | sort) \
+    <(zcat "$f" | ./uqct | sed -n '/[[:space:]]/s/[[:space:]].*$//;N;h;n;x;N;y/\n/\t/;p' | sort) &&
+        echo "$f raw and uqct output have the same fastq entries"
+
+#should result in same deviant:
+zcat SRR077487_1.filt.fastq.gz | head -n4 | perl -e '
+my @e = (<>, <>, <>, <>);
+print join("", @e);
+$e[$_] = (scalar reverse substr($e[$_], 0, -1))."\n" for (1, 3);
+$e[1] = join("", map { $_ =~ tr/ACGTacgt/TGCAtgca/; $_ } split(//, $e[1]));
+print join("", @e); ' | valgrind --leak-check=full ./uqct 2>&1 | ./fqless
+
+
