@@ -38,7 +38,7 @@ static inline unsigned b6(unsigned c)
 }
 
 /* if uc DNA is expected use with cs = B6_UC, no_u = 1 */
-static  unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u)
+static inline unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u)
 {
 	unsigned TUDE4_conv = (c & 0x8e) == 0x4; // if qr/[TUDE4??]/
 	return c ^ cs ^ (-TUDE4_conv & B6_RNA) ^ no_u;
@@ -56,6 +56,33 @@ static  unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u)
  * produce values interpreted as b6, including 'R', which occurs on hg19, chr3.
  */
 # define __qb6(c) (c ^ ((c & (B6_ALT_CASE|B6_RNA)) | (B6_A2B ^ B6_B2A)))
+
+static inline uint32_t revseq(uint32_t x)
+{
+    uint32_t m = 0x33333333;
+    x = ((x & m) << 2) | ((x & ~m) >> 2);
+    m = 0x0f0f0f0f;
+    x = ((x & m) << 4) | ((x & ~m) >> 4);
+    m = 0x00ff00ff;
+    x = ((x & m) << 8) | ((x & ~m) >> 8);
+    m = 0x0000ffff;
+    return ((x & m) << 16) | ((x & (m << 16)) >> 16);
+}
+
+unsigned get_twisted(unsigned rev, unsigned sq)
+{
+    rev = rev ^ 0xaaaaaaaau;
+    unsigned dev = sq ^ rev;
+
+    unsigned m = dev & -dev; // leftmost deviant bit. NB: palindromes have none
+    sq &= m;                 // test whether it's set for first sequence
+    rev ^= (sq ^ -sq) & dev; // flip revcmp deviant above devbit, if set
+
+    m -= !!m; // mask below devbit, if any - none for palindromes
+    m &= rev; // revnxt below devbit, if any
+    rev ^= m ^ (m << 1) ^ sq ^ !sq; // swap devbit to lowest and flip
+    return ((rev & 0xffff) << 16) | (dev & 0xffff);
+}
 
 #endif // RK_B6_H
 

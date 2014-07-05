@@ -21,13 +21,17 @@
 #include "khash.h"
 #include "b6.h"
 
-#define MAX_NAME_ETC    4096
+// maximum length of the read name
+#define RK_FQ_MAX_NAME_ETC    4096
+
+#define RK_FQ_KEYCOUNT_OFFSET 40
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define if_ever(err)    if (unlikely(err))
 #define expect(T)       if (likely(T))
 
+// exponentiate phred to allow summation
 static unsigned phredtoe10[] = {
     1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
     12, 15, 19, 25, 31, 39, 50, 63, 79, 100,
@@ -36,35 +40,36 @@ static unsigned phredtoe10[] = {
 
 using namespace std;
 
-static inline uint32_t revseq(uint32_t x)
-{
-    uint32_t m = 0x33333333;
-    x = ((x & m) << 2) | ((x & ~m) >> 2);
-    m = 0x0f0f0f0f;
-    x = ((x & m) << 4) | ((x & ~m) >> 4);
-    m = 0x00ff00ff;
-    x = ((x & m) << 8) | ((x & ~m) >> 8);
-    m = 0x0000ffff;
-    return ((x & m) << 16) | ((x & (m << 16)) >> 16);
-}
-
 struct fq_hash
 {
     fq_hash(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
-        fq_ent_max((rl << 1) + MAX_NAME_ETC), nr(0), readlength(rl), phred_offset(po), keymax(0)
+        fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0), readlength(rl),
+        phred_offset(po), keymax(0)
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
-        dna = (uint8_t*)malloc((rl<<1)+2);
+        dna = (uint8_t*)malloc((rl<<1)+2); // TODO: move this to dump function.
         *s = '\0';
         kroundup32(fq_ent_max);
     }
-    /*
-     * KC-SL-key_1 PS-KO-val_1 KC-SL-key_2] PS-KO-val_2 ... KC-SL-key_n-1 PS-KO-val_n-1 PS-*VO_1*-val_n]
+    /**
+     * Store or update the hash with the given sequence. The key is a complement-insensitive
+     * sequence-dependent subsection, deviant, of the read. The value is a 64 bit consisting
+     * of an offset in buffer `s' in the low bits and a count of keys after
+     * RK_FQ_KEYCOUNT_OFFSET bits.
      *
-     * KC:keycount, SL: seqlength. PS:phred sum, KO key offset, VO_1: Value 1 offset.
+     * At the offset, in the the hash value, buffer `s' holds 4 bytes for the sequences' phred sum, see
+     * encode_seqphred(), four bytes - 1 bit, for the offset of the deviant in the sequence,
+     * and a `twisted state' in the highest bit of the fourth byte. Another four bytes point
+     * to the offset in buffer `s' with stats for the former read that had this same deviant,
+     * or `1' if there were none.
      *
-     * val: phred + name, key: dna in 2bit. valn has existing key1 (same for val1)
+     * Finally the sequence and phred quality are encoded in the buffer, ended by 0xff, followed
+     * by its '\0' terminated read name.
+     *
+     * For each next read with the same deviant key, the hash values' offset in buffer `s' is
+     * updated to point to its last entry, until `1' which instead shows it was the last entry.
+     *
      */
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
@@ -74,10 +79,10 @@ struct fq_hash
             m <<= 1;
             s = (uint8_t*)realloc(s, m);
         }
-        unsigned i = 0;
+        unsigned twisted, i = 0;
         // get twisted: value that is the same for seq and revcmp
-        unsigned twisted = encode_twisted(seq, &i); // remove low bit, separate deviant
-        if_ever (i == 0) return; //sequence too short.
+        twisted = encode_twisted(seq, &i); // remove low bit, separate deviant
+        if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
 
         uint8_t *b = s + l + 4; // four bytes for phred sum
         *b = (i & 0xff); i >>= 8; // insert offset / twisted state
@@ -90,23 +95,20 @@ struct fq_hash
         if (k == kh_end(H)) { /* new deviant */
             k = kh_put(UQCT, H, twisted, &is_err);
             if_ever ((is_err = (is_err < 0))) return;
-            //TODO: could increase pot. buffersize at the expense of max keycounts
-            kh_val(H, k) = 1ul << 32; // keycount
+            kh_val(H, k) = 1ul << RK_FQ_KEYCOUNT_OFFSET; // keycount
             i = 1; /* marks last element */
 
         } else {
 //cerr << "Deviant 0x" << hex << deviant << dec << " already exists.\n";
-            kh_val(H, k) += 1ul << 32;
-            i = kh_val(H, k) >> 32;
+            kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
+            i = kh_val(H, k) >> RK_FQ_KEYCOUNT_OFFSET;
             if (i > keymax) keymax = i;
 
             i = kh_val(H, k) & 0xffffffff; /* former value offset */
             kh_val(H, k) ^= i;
         }
-        // TODO: offset in seq and devbit
         kh_val(H, k) |= l;
 
-        /* former value offset */
         for (unsigned j = 0; j != 4; ++j) {
             *++b = i & 0xff;
             i >>= 8;
@@ -116,6 +118,12 @@ struct fq_hash
         l = ++b - s;
     }
 
+    /**
+     * print the fastq entries in a sorted order. Fastq entries for deviant keys
+     * that occur the most first. Sorted on the phred sum for identical counts.
+     * for each deviant the reads are then sorted on the offset of the deviant
+     * key in the read. This occurs for both strands.
+     */
     void dump() { /* must always be called to clean up */
         if (not is_err) {
             khiter_t *ks, *kp;
@@ -182,21 +190,10 @@ struct fq_hash
 
 private:
     KHASH_INIT2(UQCT, kh_inline, uint32_t, uint64_t, 1, kh_int_hash_func, kh_int_hash_equal)
-    unsigned get_twisted(unsigned rev, unsigned sq)
-    {
-	rev = rev ^ 0xaaaaaaaau;
-	unsigned dev = sq ^ rev;
 
-	unsigned m = dev & -dev; // leftmost deviant bit. NB: palindromes have none
-	sq &= m;                 // test whether it's set for first sequence
-	rev ^= (sq ^ -sq) & dev; // flip revcmp deviant above devbit, if set
-
-	m -= !!m; // mask below devbit, if any - none for palindromes
-	m &= rev; // revnxt below devbit, if any
-	rev ^= m ^ (m << 1) ^ sq ^ !sq; // swap devbit to lowest and flip
-	return ((rev & 0xffff) << 16) | (dev & 0xffff);
-    }
-    /* returns no. characters processed. */
+    /**
+     * The conversion to a strand-insensitive sequence dependent part
+     */
     unsigned encode_twisted(const uint8_t* sq, unsigned* maxi)
     {
 //cerr << "== " << sq << endl; //
@@ -213,14 +210,14 @@ private:
 
         unsigned cNt = d & 0xc000;     // excise out central Nt
         c = (0x4000 - 1) & d;          // mark set bits below it
-        uint32_t t = !(cNt & 0x8000);  // first bit of central Nt will determine the orientation.
+        uint32_t t = !(cNt & 0x8000);  // first bit of central Nt will determine the twist.
 
         d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
 
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
         d |= -isb6(c) & (c >> 1);     // append next Nt
-        *maxi = (i << 1) | ((cNt & 0x4000) == 0); // init: offset and cNt bit, orientation.
+        *maxi = (i << 1) | ((cNt & 0x4000) == 0); // init: offset and cNt bit.
         t = -t | 0xffff;
 
         t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
@@ -267,25 +264,26 @@ private:
 
         d ^= (revseq(d) & 0xffff) ^ 0xaaaa;
         char c;
+        t <<= 1;
 
-        for (i = 0; i != 8; ++i, ++seq, d >>= 2) {
+        for (i = 0; i != 16; ++i, ++seq, d >>= 2) {
+            if (i == 8) { /* insert central Nt */
+                *seq = b6(2 ^ t);
+                *--revcmp = b6(6 ^ t);
+                ++seq;
+            }
             c = (d & 0x3) << 1;
             *seq = b6(4 ^ c);
             *--revcmp = b6(c);
-        }
-        t <<= 1;
-        *seq = b6(2 ^ t);
-        *--revcmp = b6(6 ^ t);
-
-        for (++seq; i != 16; ++i, ++seq, d >>= 2) {
-            c = (d & 0x3) << 1;
-            *seq = b6(4 ^ c);
-            *--revcmp = b6(c);;
         }
         *seq = '|';
         assert(revcmp == seq + 1);
     }
 
+    /**
+     * put sequence and phred qualities in one char foreach Nt. This includes the deviant
+     * sequence section currently, but this may change in the future - it is not needed.
+     */
     uint8_t* encode_seqphred(const uint8_t* qual, const uint8_t* seq, uint8_t* b)
     {
         unsigned i = 0;
@@ -307,6 +305,9 @@ private:
         *++p = (i & 0xff);
         return b;
     }
+    /**
+     * decode the sequence and phreds.
+     */
     unsigned decode_seqphred(uint8_t* b)
     {
         unsigned len;
