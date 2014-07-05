@@ -1,0 +1,15 @@
+#!/bin/bash
+# (c) Roel Kluin, 2012, NKI
+
+F="$1"
+
+if [ ! -e "$1" ]; then
+   ./fqcolor.pl | less -R "$@"
+else
+	shift;
+	if [[ "$F" =~ \.gz$ ]]; then
+		zcat "$F" | ./fqcolor.pl | less -R
+	else
+		cat "$F" | ./fqcolor.pl | less -R
+	fi
+fi
