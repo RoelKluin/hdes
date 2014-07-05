@@ -85,6 +85,7 @@ struct fq_hash
         *++b = (i & 0xff); i >>= 8;
         *++b = (i & 0xff);
 
+        // NOTE: the central Nt is not part of the key. A mismatch can occur at that Nt.
         khiter_t k = kh_get(UQCT, H, twisted);
         if (k == kh_end(H)) { /* new deviant */
             k = kh_put(UQCT, H, twisted, &is_err);
@@ -139,7 +140,7 @@ struct fq_hash
             do { /* loop over keys */
                 i = kh_val(H, *--kp) & 0xffffffff;
                 unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, (s[i + 7] & 0x80) == 0, deviant);
+                decode_twisted(seqrc, s[i + 4] & 1, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i;
@@ -172,7 +173,6 @@ struct fq_hash
 
     inline bool operator() (uint64_t a, uint64_t b) /* needed by sort vs/vp: sort on orientation/phred sum*/
     {
-        // XXX: (how) does this sort correctly for both orientations?
         uint8_t *sa = s + a + 7, *sb = s + b + 7;
         for (unsigned i = 0; i < 8; ++i, --sa, --sb)
             if (*sa != *sb) return *sa < *sb;
@@ -188,7 +188,7 @@ private:
 	unsigned dev = sq ^ rev;
 
 	unsigned m = dev & -dev; // leftmost deviant bit. NB: palindromes have none
-	sq &= m; // test whether it's set for first sequence
+	sq &= m;                 // test whether it's set for first sequence
 	rev ^= (sq ^ -sq) & dev; // flip revcmp deviant above devbit, if set
 
 	m -= !!m; // mask below devbit, if any - none for palindromes
@@ -209,19 +209,19 @@ private:
             c = b6(c);
             d = (d << 2) | (-isb6(c) & (c >> 1));
 
-        } while (++i != 17);
+        } while (++i != 16);
 
         unsigned cNt = d & 0xc000;     // excise out central Nt
         c = (0x4000 - 1) & d;          // mark set bits below it
-        uint32_t t = -!(cNt & 0x8000); // first bit of central Nt will determine the orientation.
+        uint32_t t = !(cNt & 0x8000);  // first bit of central Nt will determine the orientation.
 
         d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
 
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
         d |= -isb6(c) & (c >> 1);     // append next Nt
-        *maxi = i | (t & 0x80000000); // init: offset and cNt bit, orientation.
-        t |= 0xffff;
+        *maxi = (i << 1) | ((cNt & 0x4000) == 0); // init: offset and cNt bit, orientation.
+        t = -t | 0xffff;
 
         t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
         unsigned max = t ^ (d & 0xffff0000); // high bits become seq or revcmp accordingly
@@ -229,7 +229,7 @@ private:
         // if cNt bit is set: top part is seq, else revcmp
 //cerr << "== Init: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
 
-        do { // search for maximum deviant XXX: should be same for seq and revcmp!
+        do { // search for maximum deviant
 //cerr << "==:" << i << endl;
             if ((c = *sq++) == '\0') break;
             c = b6(c);
@@ -237,20 +237,20 @@ private:
 
             d ^= cNt; // get next central Nt and put old one back;
             cNt ^= d & 0xc000;
-            t = -!(cNt & 0x8000);
+            t = !(cNt & 0x8000);
             d ^= cNt;
 
             d = ((d & 0x3fffffff) << 2) | c ; // shift-insert next Nt.
 
-            //if ((t == 0) && ((d | 0xffff) < max)) continue;
-            t |= 0xffff;
+            if ((t == 0) && ((d | 0xffff) < max)) continue;
 
-            c = t & (d ^ revseq(d) ^ 0xaaaaaaaa);
+            c = (-t | 0xffff) & (d ^ revseq(d) ^ 0xaaaaaaaa);
             c ^= d & 0xffff0000;
 
+            // rather than the max, we should search for the most distinct substring.
             if (c > max) {
                 max = c;
-                *maxi = i | (t & 0x80000000);
+                *maxi = (i << 1) | ((cNt & 0x4000) == 0);
 //cerr << "== Mod: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
             }
         } while (++i != readlength);
@@ -263,13 +263,9 @@ private:
         *revcmp = '\0';
 
         unsigned i;
-//cerr << t << endl;
+//cerr << "==t:" << t << endl;
 
-        unsigned r = revseq(d) ^ 0xaaaa;
-        // if cNt bit was set: top part is seq, else revcmp
-        if (t) r &= 0xffff;
-        else r ^= d & 0xffff;
-        d ^= r;
+        d ^= (revseq(d) & 0xffff) ^ 0xaaaa;
         char c;
 
         for (i = 0; i != 8; ++i, ++seq, d >>= 2) {
@@ -277,13 +273,10 @@ private:
             *seq = b6(4 ^ c);
             *--revcmp = b6(c);
         }
-        if (t) {
-            *seq = '.';//b6(6);
-            *--revcmp = '.';//b6(2);
-        } else {
-            *seq = '.';//b6(4);
-            *--revcmp = '.';//b6(0);
-        }
+        t <<= 1;
+        *seq = b6(2 ^ t);
+        *--revcmp = b6(6 ^ t);
+
         for (++seq; i != 16; ++i, ++seq, d >>= 2) {
             c = (d & 0x3) << 1;
             *seq = b6(4 ^ c);
