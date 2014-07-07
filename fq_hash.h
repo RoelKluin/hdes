@@ -48,7 +48,6 @@ struct fq_hash
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
-        dna = (uint8_t*)malloc((rl<<1)+2); // TODO: move this to dump function.
         *s = '\0';
         kroundup32(fq_ent_max);
     }
@@ -92,7 +91,7 @@ struct fq_hash
         *++b = (i & 0xff); i >>= 8;
         *++b = (i & 0xff);
 
-        // NOTE: the central Nt is not part of the key. A mismatch can occur at that Nt.
+        // NOTE: the central Nt is not part of the key. A mismatch can occur at its first bit.
         khiter_t k = kh_get(UQCT, H, twisted);
         if (k == kh_end(H)) { /* new deviant */
             k = kh_put(UQCT, H, twisted, &is_err);
@@ -132,6 +131,7 @@ struct fq_hash
             uint64_t i = kh_size(H);
             char seqrc[36];
             cout << hex;
+            uint8_t* dna = (uint8_t*)malloc((readlength<<1)+2);
 
             kp = ks = (khiter_t*)malloc(i * sizeof(khiter_t));
 
@@ -162,7 +162,7 @@ struct fq_hash
 
                 sort(vs, vp, *this); // by offset/qualsum
                 do {
-                    unsigned len = decode_seqphred(s + *--vp + 12);
+                    unsigned len = decode_seqphred(s + *--vp + 12, dna);
                     cout << (char*)s + *vp + 13 + len << " 0x" << deviant << '\t' << seqrc << endl;
                     cout << dna << "\n+\n";
                     cout << dna + readlength + 1 << "\n";
@@ -170,8 +170,8 @@ struct fq_hash
             } while (kp != ks);
             free(vs);
             free(ks);
+            free(dna);
         }
-        free(dna);
 	free(s);
         kh_destroy(UQCT, H);
     }
@@ -258,7 +258,7 @@ private:
             c = (-t | 0xffff) & (d ^ revseq(d) ^ 0xaaaaaaaa);
             c ^= d & 0xffff0000;
 
-            // rather than the max, we should search for the most distinct substring.
+            // TODO: rather than the max, we should select the most distinct substring.
             if (c > max) {
                 max = c;
                 *maxi = (i << 1) | ((cNt & 0x4000) == 0);
@@ -266,6 +266,7 @@ private:
             }
         } while (++i != readlength);
 //cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
+        // TODO: extend the deviant
         return max;
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
@@ -322,10 +323,10 @@ private:
     /**
      * decode the sequence and phreds.
      */
-    unsigned decode_seqphred(uint8_t* b)
+    unsigned decode_seqphred(uint8_t* b, uint8_t* d)
     {
         unsigned len;
-        uint8_t *d = dna, *q = dna + readlength + 1;
+        uint8_t *q = d + readlength + 1;
 
         for(len = 0; *b != 0xff; ++len, ++b, ++d, ++q) {
             unsigned c = *b;
@@ -344,7 +345,6 @@ private:
     size_t l, m, fq_ent_max, nr, readlength;
     unsigned phred_offset, keymax;
     uint8_t *s;
-    uint8_t* dna;
 };
 
 
