@@ -52,11 +52,12 @@ struct fq_hash
         *s = '\0';
         kroundup32(fq_ent_max);
     }
+
     /**
-     * Store or update the hash with the given sequence. The key is a complement-insensitive
-     * sequence-dependent subsection, deviant, of the read. The value is a 64 bit consisting
-     * of an offset in buffer `s' in the low bits and a count of keys after
-     * RK_FQ_KEYCOUNT_OFFSET bits.
+     * Store or update the hash with the given sequence. The key is a highest-bit-modified
+     * maximized complement-insensitive sequence-dependent subsection, seqdeviant, of the read,
+     * see encode_twisted(). The value is a 64 bit consisting of an offset in buffer `s' in
+     * the low bits and a count of keys after RK_FQ_KEYCOUNT_OFFSET bits.
      *
      * At the offset, in the the hash value, buffer `s' holds 4 bytes for the sequences' phred sum, see
      * encode_seqphred(), four bytes - 1 bit, for the offset of the deviant in the sequence,
@@ -65,7 +66,7 @@ struct fq_hash
      * or `1' if there were none.
      *
      * Finally the sequence and phred quality are encoded in the buffer, ended by 0xff, followed
-     * by its '\0' terminated read name.
+     * by its read name - '\0' terminated.
      *
      * For each next read with the same deviant key, the hash values' offset in buffer `s' is
      * updated to point to its last entry, until `1' which instead shows it was the last entry.
@@ -74,6 +75,7 @@ struct fq_hash
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
         if_ever (is_err) return;
+        assert (l != 1);
         ++nr;
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
@@ -109,10 +111,9 @@ struct fq_hash
         }
         kh_val(H, k) |= l;
 
-        for (unsigned j = 0; j != 4; ++j) {
+        for (unsigned j = 0; j != 4; ++j, i >>= 8)
             *++b = i & 0xff;
-            i >>= 8;
-        }
+
         b = encode_seqphred(qual, seq, b);
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
@@ -192,7 +193,20 @@ private:
     KHASH_INIT2(UQCT, kh_inline, uint32_t, uint64_t, 1, kh_int_hash_func, kh_int_hash_equal)
 
     /**
-     * The conversion to a strand-insensitive sequence dependent part
+     * The strand-insensitive state, seqdeviant, consists of a sequence half and a part sequence
+     * xor reverse complement, the deviant part, in which the bits that differ between the two
+     * strands are set. The central Nt is special and not part of the seqdeviant.
+     *
+     * The deviant part is insensitive to the strand. The sequence part is converted to the other
+     * strand according to the 2nd bit of the central Nt. This ensures also the sequence part in
+     * the seqdeviant is the same, regardless of the original strand.
+     *
+     * For all promising 17 Nt windows fitting our sequences' readlength, the seqdev is calculated.
+     * The maximum thereof is kept as well as its offset and the first bit of the central Nt.
+     *
+     * After the maximization the highest bit of the kept seqdeviant is always 1. The state of the
+     * central Nts first bit is stored here. This modified kept seqdeviant is returned, and its
+     * offset in the sequence as well - in *maxi.
      */
     unsigned encode_twisted(const uint8_t* sq, unsigned* maxi)
     {
