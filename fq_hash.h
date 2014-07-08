@@ -52,11 +52,12 @@ struct fq_hash
         *s = '\0';
         kroundup32(fq_ent_max);
     }
+
     /**
-     * Store or update the hash with the given sequence. The key is a complement-insensitive
-     * sequence-dependent subsection, deviant, of the read. The value is a 64 bit consisting
-     * of an offset in buffer `s' in the low bits and a count of keys after
-     * RK_FQ_KEYCOUNT_OFFSET bits.
+     * Store or update the hash with the given sequence. The key is a highest-bit-modified
+     * maximized complement-insensitive sequence-dependent subsection, seqdeviant, of the read,
+     * see encode_twisted(). The value is a 64 bit consisting of an offset in buffer `s' in
+     * the low bits and a count of keys after RK_FQ_KEYCOUNT_OFFSET bits.
      *
      * At the offset, in the the hash value, buffer `s' holds 4 bytes for the sequences' phred sum, see
      * encode_seqphred(), four bytes - 1 bit, for the offset of the deviant in the sequence,
@@ -65,15 +66,15 @@ struct fq_hash
      * or `1' if there were none.
      *
      * Finally the sequence and phred quality are encoded in the buffer, ended by 0xff, followed
-     * by its '\0' terminated read name.
+     * by its read name - '\0' terminated.
      *
      * For each next read with the same deviant key, the hash values' offset in buffer `s' is
      * updated to point to its last entry, until `1' which instead shows it was the last entry.
-     *
      */
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
         if_ever (is_err) return;
+        assert (l != 1);
         ++nr;
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
@@ -85,7 +86,7 @@ struct fq_hash
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
 
         uint8_t *b = s + l + 4; // four bytes for phred sum
-        *b = (i & 0xff); i >>= 8; // insert offset / twisted state
+        *b = (i & 0xff); i >>= 8; // insert offset
         *++b = (i & 0xff); i >>= 8;
         *++b = (i & 0xff); i >>= 8;
         *++b = (i & 0xff);
@@ -109,10 +110,9 @@ struct fq_hash
         }
         kh_val(H, k) |= l;
 
-        for (unsigned j = 0; j != 4; ++j) {
+        for (unsigned j = 0; j != 4; ++j, i >>= 8)
             *++b = i & 0xff;
-            i >>= 8;
-        }
+
         b = encode_seqphred(qual, seq, b);
         while ((*++b = *name) != '\0') ++name;
         l = ++b - s;
@@ -148,7 +148,7 @@ struct fq_hash
             do { /* loop over keys */
                 i = kh_val(H, *--kp) & 0xffffffff;
                 unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, s[i + 4] & 1, deviant);
+                decode_twisted(seqrc, s[i + 7] & 0x80, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i;
@@ -192,7 +192,16 @@ private:
     KHASH_INIT2(UQCT, kh_inline, uint32_t, uint64_t, 1, kh_int_hash_func, kh_int_hash_equal)
 
     /**
-     * The conversion to a strand-insensitive sequence dependent part
+     * The sequence is converted to revcmp according to the central Nt, which is not part of the
+     * sequence.
+     *
+     * The deviant part is insensitive to the strand. The sequence part is converted to the other
+     * strand according to the 2nd bit of the central Nt. This ensures also the sequence part in
+     * the seqdeviant is the same, regardless of the original strand.
+     *
+     * For all promising 17 Nt windows fitting our sequences' readlength, the seqdev is calculated.
+     * The maximum thereof is kept as well as its offset and the first bit of the central Nt.
+     *
      */
     unsigned encode_twisted(const uint8_t* sq, unsigned* maxi)
     {
@@ -217,11 +226,11 @@ private:
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
         d |= -isb6(c) & (c >> 1);     // append next Nt
-        *maxi = (i << 1) | ((cNt & 0x4000) == 0); // init: offset and cNt bit.
-        t = -t | 0xffff;
+        *maxi = i; // init: offset and cNt bit.
+        unsigned mCnt = cNt & 0x4000;
 
         t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
-        unsigned max = t ^ (d & 0xffff0000); // high bits become seq or revcmp accordingly
+        unsigned max = d ^ t; // becomes seq or revcmp accordingly
 
         // if cNt bit is set: top part is seq, else revcmp
 //cerr << "== Init: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
@@ -239,37 +248,38 @@ private:
 
             d = ((d & 0x3fffffff) << 2) | c ; // shift-insert next Nt.
 
-            if ((t == 0) && ((d | 0xffff) < max)) continue;
+            if ((t == 0) && (d <= max)) continue;
 
-            c = (-t | 0xffff) & (d ^ revseq(d) ^ 0xaaaaaaaa);
-            c ^= d & 0xffff0000;
+            c = -t & (d ^ revseq(d) ^ 0xaaaaaaaa);
+            c ^= d;
 
             // rather than the max, we should search for the most distinct substring.
             if (c > max) {
                 max = c;
-                *maxi = (i << 1) | ((cNt & 0x4000) == 0);
+                *maxi = i;
+                mCnt = cNt & 0x4000;
 //cerr << "== Mod: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
             }
         } while (++i != readlength);
 //cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
+	*maxi |= -!mCnt & 0x80000000;
         return max;
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
     {
         char* revcmp = seq + 35;
         *revcmp = '\0';
+	t = -!t;
 
-        unsigned i;
 //cerr << "==t:" << t << endl;
-
-        d ^= (revseq(d) & 0xffff) ^ 0xaaaa;
+        d ^= t & (d ^ revseq(d) ^ 0xaaaaaaaa);
         char c;
-        t <<= 1;
+	t &= 2;
 
-        for (i = 0; i != 16; ++i, ++seq, d >>= 2) {
+        for (unsigned i = 0; i != 16; ++i, ++seq, d >>= 2) {
             if (i == 8) { /* insert central Nt */
-                *seq = b6(2 ^ t);
-                *--revcmp = b6(6 ^ t);
+                *seq = b6(4 | t);
+                *--revcmp = b6(0 | t);
                 ++seq;
             }
             c = (d & 0x3) << 1;
