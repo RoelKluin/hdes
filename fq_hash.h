@@ -54,9 +54,9 @@ struct fq_hash
     }
 
     /**
-     * Store or update the hash with the given sequence. The key is a highest-bit-modified
-     * maximized complement-insensitive sequence-dependent subsection, seqdeviant, of the read,
-     * see encode_twisted(). The value is a 64 bit consisting of an offset in buffer `s' in
+     * Store or update the hash with the given sequence. The key is the maximum of 16 Nts
+     * surrounding a central-Nt, the strand decided by the cNts' 2nd bit. see encode_twisted().
+     * The value is a 64 bit consisting of an offset in buffer `s' in
      * the low bits and a count of keys after RK_FQ_KEYCOUNT_OFFSET bits.
      *
      * At the offset, in the the hash value, buffer `s' holds 4 bytes for the sequences' phred sum, see
@@ -219,15 +219,15 @@ private:
 
         unsigned cNt = d & 0xc000;     // excise out central Nt
         c = (0x4000 - 1) & d;          // mark set bits below it
-        uint32_t t = !(cNt & 0x8000);  // first bit of central Nt will determine the twist.
-
         d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
+        uint32_t t = cNt & 0x8000;  // 2nd bit of central Nt will determine the twist.
+        uint64_t mCnt = cNt ^ t; //1st bit needs to be stored
+	t = !t;
 
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
         d |= -isb6(c) & (c >> 1);     // append next Nt
         *maxi = i; // init: offset and cNt bit.
-        unsigned mCnt = cNt & 0x4000;
 
         t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
         unsigned max = d ^ t; // becomes seq or revcmp accordingly
@@ -243,43 +243,41 @@ private:
 
             d ^= cNt; // get next central Nt and put old one back;
             cNt ^= d & 0xc000;
-            t = !(cNt & 0x8000);
+            t = cNt & 0x8000;
             d ^= cNt;
 
             d = ((d & 0x3fffffff) << 2) | c ; // shift-insert next Nt.
 
-            if ((t == 0) && (d <= max)) continue;
+            if ((t != 0) && (d <= max)) continue;
 
-            c = -t & (d ^ revseq(d) ^ 0xaaaaaaaa);
+            c = -!t & (d ^ revseq(d) ^ 0xaaaaaaaa);
             c ^= d;
 
             // rather than the max, we should search for the most distinct substring.
             if (c > max) {
                 max = c;
                 *maxi = i;
-                mCnt = cNt & 0x4000;
+                mCnt = cNt ^ t;
 //cerr << "== Mod: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
             }
         } while (++i != readlength);
 //cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
-	*maxi |= -!mCnt & 0x80000000;
+	*maxi |= 0x80000000 & -!mCnt;
         return max;
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
     {
         char* revcmp = seq + 35;
         *revcmp = '\0';
-	t = -!t;
+	t = -!t & 2;
 
 //cerr << "==t:" << t << endl;
-        d ^= t & (d ^ revseq(d) ^ 0xaaaaaaaa);
         char c;
-	t &= 2;
 
         for (unsigned i = 0; i != 16; ++i, ++seq, d >>= 2) {
             if (i == 8) { /* insert central Nt */
-                *seq = b6(4 | t);
-                *--revcmp = b6(0 | t);
+                *seq = b6(0 ^ t);
+                *--revcmp = b6(4 ^ t);
                 ++seq;
             }
             c = (d & 0x3) << 1;
