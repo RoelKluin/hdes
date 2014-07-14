@@ -56,7 +56,6 @@ struct fq_hash
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
-        dna = (uint8_t*)malloc((rl<<1)+2); // TODO: move this to dump function.
         *s = '\0';
         max_bitm = bytes_for_bits(rl - 16);
         kroundup32(fq_ent_max);
@@ -137,6 +136,7 @@ struct fq_hash
             khiter_t *ks, *kp;
             uint64_t *vp, *vs;
             uint64_t i = kh_size(H);
+            uint8_t* dna = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[36];
             cout << hex;
 
@@ -170,7 +170,7 @@ struct fq_hash
                 sort(vs, vp, *this); // by offset/qualsum
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
-                    unsigned len = decode_seqphred(b);
+                    unsigned len = decode_seqphred(b, dna);
                     cout << (char*)b + len + 1 << " 0x" << deviant << '\t' << seqrc << "\t";
                     b -= 8;
                     for (unsigned j = max_bitm; j != 0; --j) {
@@ -182,10 +182,10 @@ struct fq_hash
                     cout << dna + readlength + 1 << "\n";
                 } while (vp != vs);
             } while (kp != ks);
+            free(dna);
             free(vs);
             free(ks);
         }
-        free(dna);
 	free(s);
         kh_destroy(UQCT, H);
     }
@@ -201,6 +201,18 @@ struct fq_hash
             if (*sa != *sb) return *sa < *sb;
         return 0;
     }
+    /*inline bool operator() (uint64_t a, uint64_t b)
+    {
+        uint8_t *sa = s + max_bitm + a, *sb = s + max_bitm + b;
+        unsigned oa = 0u, ob = 0u;
+        for (unsigned i = 0; i < 32; i += 8) {
+            oa |= *sa++ << i;
+            ob |= *sb++ << i;
+        }
+        oa &= ~(1u << 31);
+        ob &= ~(1u << 31);
+        return 0;
+    }*/
     int is_err;
 
 private:
@@ -218,35 +230,30 @@ private:
      * The maximum thereof is kept as well as its offset and the first bit of the central Nt.
      *
      */
-    unsigned encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
+    uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
 //cerr << "== " << sq << endl; //
+        uint64_t lmax, rmax, c, d = 0;
         unsigned i = 0;
-        unsigned lmax, rmax;
-        uint32_t d = 0;
-        uint32_t c;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             d = (d << 2) | (-isb6(c) & (c >> 1));
 
-        } while (++i != 16);
+        } while (++i != 20);
 
-        unsigned cNt = d & 0xc000;     // excise out central Nt
-        c = (0x4000 - 1) & d;          // mark set bits below it
+        unsigned cNt = d & 0xc0000;     // excise out central Nt
+        c = (0x40000 - 1) & d;          // mark set bits below it
         d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
-        uint32_t t = cNt & 0x8000;  // 2nd bit of central Nt will determine the twist.
+        uint32_t t = cNt & 0x80000;  // 2nd bit of central Nt will determine the twist.
         uint64_t mCnt = cNt ^ t; //1st bit needs to be stored
-	t = !t;
 
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
-        d |= -isb6(c) & (c >> 1);     // append next Nt
+        d |= -(uint64_t)isb6(c) & (c >> 1);     // append next Nt
         *lmaxi = i;
-
-        t &= d ^ revseq(d) ^ 0xaaaaaaaa; // create deviant half or whole - dependent on sinbit
-        lmax = d ^ t; // becomes seq or revcmp accordingly
+        lmax = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa); // truncated seq or revcmp according to 2nd bit of central Nt
         *m = 0;
 
         // if cNt bit is set: top part is seq, else revcmp
@@ -255,17 +262,15 @@ private:
         while((c = *sq++) != '\0') { // search for maximum from left
 //cerr << "==:" << i << endl;
             c = b6(c);
-            c = -isb6(c) & (c >> 1);
+            c = -(uint64_t)isb6(c) & (c >> 1);
 
             d ^= cNt; // get next central Nt and put old one back;
-            cNt ^= d & 0xc000;
-            t = cNt & 0x8000;
+            cNt ^= d & 0xc0000;
+            t = cNt & 0x80000;
             d ^= cNt;
 
-            d = ((d & 0x3fffffff) << 2) | c ; // shift-insert next Nt.
-
-            c = -!t & (d ^ revseq(d) ^ 0xaaaaaaaa);
-            c ^= d;
+            d = ((d & 0x3fffffffffffffff) << 2) | c ; // shift-insert next Nt.
+            c = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa);
             // rather than the max, we should search for the most distinct substring.
             if (c > lmax) {
                 lmax = c;
@@ -275,21 +280,18 @@ private:
             }
             if ((++i & 7) == 0) *++m = 0u;
         }
-        unsigned len = i;
         rmax = 0;
-        // move bits above highest 
         while (--i != *lmaxi) { // search for maximum from right
             if ((i & 7) == 0) --m;
             c = *--sq;
             c = b6(c);
-            c = -isb6(c) & (c >> 1);
+            c = -(uint64_t)isb6(c) & (c >> 1);
             d ^= cNt;
-            cNt ^= d & 0xc000;
-            t = cNt & 0x8000;
+            cNt ^= d & 0xc0000;
+            t = cNt & 0x80000;
             d ^= cNt;
-            d = (c << 62) | (d >> 2);
-            c = -!t & (d ^ revseq(d) ^ 0xaaaaaaaa);
-            c ^= d;
+            d = (c << 62) | (d >> 2); // FIXME: shouldnt be 62th.
+            c = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa);
             if (c > rmax) {
                 rmax = c;
                 *m |= 1u << (i & 7);
@@ -297,7 +299,7 @@ private:
         }
 //cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
 	*lmaxi |= -!mCnt & 0x80000000;
-        return lmax;
+        return lmax; /* truncate on purpose */
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
     {
@@ -309,7 +311,7 @@ private:
         char c;
 
         for (unsigned i = 0; i != 16; ++i, ++seq, d >>= 2) {
-            if (i == 8) { /* insert central Nt */
+            if (i == 10) { /* insert central Nt */
                 *seq = b6(0 ^ t);
                 *--revcmp = b6(4 ^ t);
                 ++seq;
@@ -331,7 +333,7 @@ private:
         unsigned i = 0;
         while ((*++b = *qual++) != '\0') {
             *b -= phred_offset;
-            assert(*b <= 40);
+            assert(*b <= 41);
             i += phredtoe10[*b];
             unsigned c = b6(*seq++);
 
@@ -345,10 +347,10 @@ private:
     /**
      * decode the sequence and phreds.
      */
-    unsigned decode_seqphred(uint8_t* b)
+    unsigned decode_seqphred(uint8_t* b, uint8_t* d)
     {
         unsigned len;
-        uint8_t *d = dna, *q = dna + readlength + 1;
+        uint8_t *q = d + readlength + 1;
 
         for(len = 0; *b != 0xff; ++len, ++b, ++d, ++q) {
             unsigned c = *b;
@@ -360,6 +362,7 @@ private:
                 *q = (((c >> 2) & 0x30) | (c & 0xf)) + phred_offset;
             }
         }
+        assert (len <= readlength);
         *d = *q = '\0';
         return len;
     }
@@ -367,7 +370,6 @@ private:
     size_t l, m, fq_ent_max, nr, readlength;
     unsigned phred_offset, keymax, max_bitm;
     uint8_t *s;
-    uint8_t* dna;
 };
 
 
