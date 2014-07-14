@@ -23,4 +23,8 @@ $e[$_] = (scalar reverse substr($e[$_], 0, -1))."\n" for (1, 3);
 $e[1] = join("", map { $_ =~ tr/ACGTacgt/TGCAtgca/; $_ } split(//, $e[1]));
 print join("", @e); ' | valgrind --leak-check=full ./uqct 2>&1 | ./fqless
 
+#odd
+make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n10000 | valgrind --leak-check=full ./uqct 2>&1 | egrep -A3 \
+"CAACATGGAGAAACCCC|GGGGTTTCTCCATGTTG" --color=always
+
 
