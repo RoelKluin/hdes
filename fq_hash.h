@@ -251,30 +251,31 @@ private:
 
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
-        d |= -(uint64_t)isb6(c) & (c >> 1);     // append next Nt
+        d |= -isb6(c) & (c >> 1);     // append next Nt
         *lmaxi = i;
-        lmax = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa); // truncated seq or revcmp according to 2nd bit of central Nt
+        lmax = t ? d : (revseq(d) >> 24) ^ 0xaaaaaaaaaa; // truncated seq or revcmp according to 2nd bit of central Nt
         *m = 0;
 
         // if cNt bit is set: top part is seq, else revcmp
-//cerr << "== Init: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
+//cerr << "== Init: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
-//cerr << "==:" << i << endl;
             c = b6(c);
-            c = -(uint64_t)isb6(c) & (c >> 1);
+            c = -isb6(c) & (c >> 1);
 
             d ^= cNt; // get next central Nt and put old one back;
             cNt ^= d & 0xc0000;
             t = cNt & 0x80000;
             d ^= cNt;
 
-            d = ((d & 0x3fffffffffffffff) << 2) | c ; // shift-insert next Nt.
-            c = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa);
+            d = (d << 2) | c ; // shift-insert next Nt.
+            c = t ? (d & 0xffffffffff): (revseq(d) >> 24) ^ 0xaaaaaaaaaa;
+            // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if (c > lmax) {
+            if ((c > lmax) || ((c == lmax) && t)) { // yes, 9 x f : need to truncate before maximize check.
                 lmax = c;
                 *lmaxi = i;
+//cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
                 mCnt = cNt ^ t;
                 *m |= 1u << (i & 7);
             }
@@ -285,21 +286,21 @@ private:
             if ((i & 7) == 0) --m;
             c = *--sq;
             c = b6(c);
-            c = -(uint64_t)isb6(c) & (c >> 1);
+            c = -isb6(c) & (c >> 1);
             d ^= cNt;
             cNt ^= d & 0xc0000;
             t = cNt & 0x80000;
             d ^= cNt;
-            d = (c << 62) | (d >> 2); // FIXME: shouldnt be 62th.
-            c = t ? d : (revseq(d) ^ 0xaaaaaaaaaaaaaaaa);
-            if (c > rmax) {
+            d = (c << 38) | (d >> 2);
+            c = t ? d : (revseq(d) >> 16) ^ 0xaaaaaaaaaa;
+            if ((c > rmax) || ((c == rmax) && !t)) {
                 rmax = c;
                 *m |= 1u << (i & 7);
             }
         }
-//cerr << "== Res: maxi " << *maxi << "\tmax: 0x" << hex << max << dec << endl;
+//cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 	*lmaxi |= -!mCnt & 0x80000000;
-        return lmax; /* truncate on purpose */
+        return lmax & 0xffffffff; /* truncate on purpose */
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
     {

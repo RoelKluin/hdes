@@ -57,16 +57,18 @@ static inline unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u)
  */
 # define __qb6(c) (c ^ ((c & (B6_ALT_CASE|B6_RNA)) | (B6_A2B ^ B6_B2A)))
 
-static inline uint32_t revseq(uint32_t x)
+static inline uint64_t revseq(uint64_t x)
 {
-    uint32_t m = 0x33333333;
+    uint64_t m = 0x3333333333333333;
     x = ((x & m) << 2) | ((x & ~m) >> 2);
-    m = 0x0f0f0f0f;
+    m = 0x0f0f0f0f0f0f0f0f;
     x = ((x & m) << 4) | ((x & ~m) >> 4);
-    m = 0x00ff00ff;
+    m = 0x00ff00ff00ff00ff;
     x = ((x & m) << 8) | ((x & ~m) >> 8);
-    m = 0x0000ffff;
-    return ((x & m) << 16) | ((x & (m << 16)) >> 16);
+    m = 0x0000ffff0000ffff;
+    x = ((x & m) << 16) | ((x & (m << 16)) >> 16);
+    m = 0x00000000ffffffff;
+    return ((x & m) << 32) | ((x & (m << 32)) >> 32);
 }
 
 unsigned get_twisted(unsigned rev, unsigned sq)
