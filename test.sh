@@ -27,4 +27,5 @@ print join("", @e); ' | valgrind --leak-check=full ./uqct 2>&1 | ./fqless
 make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n10000 | valgrind --leak-check=full ./uqct 2>&1 | egrep -A3 \
 "CAACATGGAGAAACCCC|GGGGTTTCTCCATGTTG" --color=always
 
-
+make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n1000000 | ./uqct 100 2>&1 | ./fqless
+# search for CTCTGTGGTGTCTGATT
