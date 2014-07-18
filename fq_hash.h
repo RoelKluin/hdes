@@ -91,11 +91,10 @@ struct fq_hash
             s = (uint8_t*)realloc(s, m);
         }
         unsigned twisted, i = 0;
-        uint8_t *b = s + l; // bytes to store max locations
+        uint8_t *b = s + l + max_bitm - 1; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
         twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
-        b += max_bitm - 1;
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
             *++b = i & 0xff;
@@ -157,7 +156,7 @@ struct fq_hash
                 " the most frequent occured in " << keymax << " reads. ==\n";
             ++keymax;
 
-            // FIXME: why is keymax not sufficient?
+            // FIXME: why is keymax not sufficient (valgrind on very large fq)? 
             // maybe due to key collision?
             // CTCTGTTGTGTCTGATT|AATCAGACACAACAGAG
             // CTCTGTGGTGTCTGATT|AATCAGACACCACAGAG
@@ -172,7 +171,7 @@ struct fq_hash
                 decode_twisted(seqrc, s[i + max_bitm + 3] & 0x80, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
-                    *vp++ = i;
+                    *vp++ = i; // XXX: valgrind: invalid write here?
                     uint8_t* b = s + i + max_bitm + 7;
                     i = *b; i <<= 8;
                     i |= *--b; i <<= 8;
@@ -260,32 +259,28 @@ private:
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
         d = (d << 2) | (-isb6(c) & (c >> 1));     // append next Nt
-        *lmaxi = i;
-        unsigned mCnt = d & 0x100000;
 
-        c = ((d >> 2) & ~CNtM) | (d & CNtM); // excise out central Nt
         // seq or revcmp according to 2nd bit of central Nt
-        lmax = (d & 0x200000) ? c : (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
+        c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+        lmax = c;
+        *lmaxi = i;
         *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
 //cerr << "== Init: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
-            if ((++i & 7) == 0) *++m = 0u;
+            if ((++i & 7) == 0) *--m = 0u;
             c = b6(c);
-            c = -isb6(c) & (c >> 1);
 
-            d = ((d & 0x3fffffffffffffff) << 2) | c;   // shift-insert next Nt.
-            c = ((d >> 2) & ~CNtM) | (d & CNtM);     // excise out central Nt
-            c = (d & 0x200000) ? (c & 0xffffffffff): (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
+            d = ((d & 0x3fffffffffffffff) << 2) | (-isb6(c) & (c >> 1)); // shift-insert next Nt.
+            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
             if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
                 lmax = c;
                 *lmaxi = i;
 //cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
-                mCnt = d & 0x100000;
                 *m |= 1u << (i & 7);
             }
         }
@@ -293,20 +288,19 @@ private:
         *m |= 1u << (i & 7);
         sq -= 20;
         while (i != *lmaxi) { // search for maximum from right
-            if ((--i & 7) == 0) --m;
+            if ((--i & 7) == 0) ++m;
             c = *sq--;
             c = b6(c);
-            c = -isb6(c) & (c >> 1);
-            d = (c << 40) | (d >> 2);
-            c = ((d >> 2) & ~CNtM) | (d & CNtM);
-            c = (d & 0x200000) ? (c & 0xffffffffff) : (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
+            d = ((-isb6(c) & (c >> 1)) << 40) | (d >> 2);
+            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
             if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
                 rmax = c;
                 *m |= 1u << (i & 7);
             }
         }
 //cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
-	*lmaxi |= -!mCnt & 0x80000000;
+	*lmaxi |= -!(lmax & 0x100000) & 0x80000000;
+        lmax = ((lmax >> 2) & ~CNtM) | (lmax & CNtM);     // excise out central Nt
         return lmax & 0xffffffff; /* truncate on purpose */
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
