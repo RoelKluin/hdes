@@ -246,22 +246,21 @@ private:
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
 //cerr << "== " << sq << endl; //
-        uint64_t lmax, rmax, c, d = 0;
+        uint64_t lmax, rmax, c, d = 0, r = 0;
         unsigned i = 0;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
-            d = (d << 2) | (-isb6(c) & (c >> 1));
+            c = -isb6(c) & (c >> 1);
+            d = (d << 2) | c;
+            r = (c << 40) | (r >> 2);
 
-        } while (++i != 20);
+        } while (++i != 21);
 
-        if ((c = *sq++) == '\0') return 0;
-        c = b6(c);
-        d = (d << 2) | (-isb6(c) & (c >> 1));     // append next Nt
-
+        r ^= 0x2aaaaaaaaaa; // make reverse complement
         // seq or revcmp according to 2nd bit of central Nt
-        c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+        c = (d & 0x200000) ? d : r;
         lmax = c;
         *lmaxi = i;
         *m = 1;
@@ -272,9 +271,10 @@ private:
         while((c = *sq++) != '\0') { // search for maximum from left
             if ((++i & 7) == 0) *--m = 0u;
             c = b6(c);
-
-            d = ((d & 0x3fffffffffffffff) << 2) | (-isb6(c) & (c >> 1)); // shift-insert next Nt.
-            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+            c = -isb6(c) & (c >> 1);
+            d = ((d << 2) & 0x3ffffffffff) | c;
+            r = ((c ^ 2) << 40) | (r >> 2);
+            c = (d & 0x200000) ? d : r;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
             if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
@@ -291,8 +291,10 @@ private:
             if ((--i & 7) == 0) ++m;
             c = *sq--;
             c = b6(c);
-            d = ((-isb6(c) & (c >> 1)) << 40) | (d >> 2);
-            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+            c = -isb6(c) & (c >> 1);
+            d = (c << 40) | (d >> 2); // Note: walking back
+            r = ((r << 2) & 0x3ffffffffff) | (c ^ 2);
+            c = (d & 0x200000) ? d : r;
             if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
                 rmax = c;
                 *m |= 1u << (i & 7);
