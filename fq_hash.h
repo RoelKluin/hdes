@@ -59,7 +59,7 @@ struct fq_hash
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
         *s = '\0';
-        max_bitm = bytes_for_bits(rl - 16);
+        max_bitm = bytes_for_bits(rl - 21);
         kroundup32(fq_ent_max);
     }
 
@@ -183,13 +183,14 @@ struct fq_hash
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
                     unsigned len = decode_seqphred(b, dna);
-                    cout << (char*)b + len + 1 << " " << ((b[-5] & 0x80) != 0) <<
+                    unsigned flip = ((b[-5] & 0x80) != 0);
+                    cout << (char*)b + len + 1 << " " << flip <<
                         " 0x" << deviant << '\t' << seqrc << "\t";
-                    b -= 8;
+                    b -= 8 + max_bitm;
                     for (unsigned j = max_bitm; j != 0; --j) {
-                        cout.width(2);
-                        cout.fill('0');
-                        cout << (unsigned)*--b;
+                        cout << (unsigned)(*b & 0xf);
+                        cout << (unsigned)((*b & 0xf0) >> 4);
+                        ++b;
                     }
                     cout << endl << dna << "\n+\n";
                     cout << dna + readlength + 1 << "\n";
@@ -246,35 +247,36 @@ private:
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
 //cerr << "== " << sq << endl; //
-        uint64_t lmax, rmax, c, d = 0;
-        unsigned i = 0;
+        uint64_t lmax, rmax, c, d = 0, r = 0;
+        int i = -21;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
-            d = (d << 2) | (-isb6(c) & (c >> 1));
+            c = -isb6(c) & (c >> 1);
+            d = (d << 2) | c;
+            r = (c << 40) | (r >> 2);
 
-        } while (++i != 20);
+        } while (++i < 0);
 
-        if ((c = *sq++) == '\0') return 0;
-        c = b6(c);
-        d = (d << 2) | (-isb6(c) & (c >> 1));     // append next Nt
-
+        r ^= 0x2aaaaaaaaaa; // make reverse complement
         // seq or revcmp according to 2nd bit of central Nt
-        c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+        c = (d & 0x200000) ? d : r;
         lmax = c;
         *lmaxi = i;
-        *m = 1;
+        *m = 1u;
 
         // if cNt bit is set: top part is seq, else revcmp
-//cerr << "== Init: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
+//cerr << "== Ini: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
             if ((++i & 7) == 0) *--m = 0u;
             c = b6(c);
-
-            d = ((d & 0x3fffffffffffffff) << 2) | (-isb6(c) & (c >> 1)); // shift-insert next Nt.
-            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+            c = -isb6(c) & (c >> 1);
+            d = ((d << 2) & 0x3ffffffffff) | c;
+//cerr << "==d1: " <<hex<< d <<dec<< endl;
+            r = ((c ^ 2) << 40) | (r >> 2);
+            c = (d & 0x200000) ? d : r;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
             if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
@@ -284,21 +286,29 @@ private:
                 *m |= 1u << (i & 7);
             }
         }
-        rmax = c;
+//cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
         *m |= 1u << (i & 7);
-        sq -= 20;
-        while (i != *lmaxi) { // search for maximum from right
-            if ((--i & 7) == 0) ++m;
+        sq -= 23;
+        rmax = (d & 0x200000) ? d : r;
+//cerr << "== Iri: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
+//cerr << "==db: " <<hex<< d <<dec<< endl;
+
+        while ((unsigned)--i > *lmaxi) { // search for maximum from right
+            if ((i & 7) == 0) ++m;
             c = *sq--;
             c = b6(c);
-            d = ((-isb6(c) & (c >> 1)) << 40) | (d >> 2);
-            c = (d & 0x200000) ? (d & 0x3ffffffffff): (revseq(d) >> 22) ^ 0x2aaaaaaaaaa;
+            c = -isb6(c) & (c >> 1);
+            d = (c << 40) | (d >> 2); // Note: walking back
+//cerr << "==d2: " <<hex<< d <<dec<< endl;
+            r = ((r << 2) & 0x3ffffffffff) | (c ^ 2);
+            c = (d & 0x200000) ? d : r;
             if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
                 rmax = c;
+//cerr << "== Rod: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
         }
-//cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
+//cerr << endl;
 	*lmaxi |= -!(lmax & 0x100000) & 0x80000000;
         lmax = ((lmax >> 2) & ~CNtM) | (lmax & CNtM);     // excise out central Nt
         return lmax & 0xffffffff; /* truncate on purpose */
