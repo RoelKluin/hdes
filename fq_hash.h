@@ -24,6 +24,8 @@
 // maximum length of the read name
 #define RK_FQ_MAX_NAME_ETC    (1ul << 14)
 
+#define CNtM        (0x100000ul - 1ul)
+
 #define RK_FQ_KEYCOUNT_OFFSET 40
 
 #define likely(x)       __builtin_expect((x),1)
@@ -52,7 +54,7 @@ struct fq_hash
 {
     fq_hash(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
         fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0), readlength(rl),
-        phred_offset(po), keymax(0)
+        phred_offset(po)
     {
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
@@ -109,8 +111,6 @@ struct fq_hash
         } else {
 //cerr << "Deviant 0x" << hex << deviant << dec << " already exists.\n";
             kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
-            i = kh_val(H, k) >> RK_FQ_KEYCOUNT_OFFSET;
-            if (i > keymax) keymax = i;
 
             i = kh_val(H, k) & 0xffffffff; /* former value offset */
             kh_val(H, k) ^= i;
@@ -142,14 +142,27 @@ struct fq_hash
 
             kp = ks = (khiter_t*)malloc(i * sizeof(khiter_t));
 
-            for (khiter_t k = kh_begin(H); k != kh_end(H); ++k)
-                if (kh_exist(H, k)) *kp++ = k;
+            unsigned t, keymax = 1, uniq = 0;
+            for (khiter_t k = kh_begin(H); k != kh_end(H); ++k) {
+                if (kh_exist(H, k)) {
+                    *kp++ = k;
+                    t = kh_val(H, k) >> RK_FQ_KEYCOUNT_OFFSET;
+                    if (t == 1) ++uniq;
+                    else if (t > keymax) keymax = t;
+                }
+            }
             assert(kp != ks);
-            cerr << "== " << i << " / " << nr << " sequences were unique," <<
+            cerr << "== " << i << " / " << nr << " keys per sequences," <<
+                " of which " << uniq << " were unique." <<
                 " the most frequent occured in " << keymax << " reads. ==\n";
             ++keymax;
 
-            vs = (uint64_t*)malloc(keymax * sizeof(uint64_t));
+            // FIXME: why is keymax not sufficient?
+            // maybe due to key collision?
+            // CTCTGTTGTGTCTGATT|AATCAGACACAACAGAG
+            // CTCTGTGGTGTCTGATT|AATCAGACACCACAGAG
+            //       ^                     ^
+            vs = (uint64_t*)malloc((keymax << 1) * sizeof(uint64_t));
 
             sort(ks, kp, *this); /* by keycount */
 
@@ -171,7 +184,8 @@ struct fq_hash
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
                     unsigned len = decode_seqphred(b, dna);
-                    cout << (char*)b + len + 1 << " 0x" << deviant << '\t' << seqrc << "\t";
+                    cout << (char*)b + len + 1 << " " << ((b[-5] & 0x80) != 0) <<
+                        " 0x" << deviant << '\t' << seqrc << "\t";
                     b -= 8;
                     for (unsigned j = max_bitm; j != 0; --j) {
                         cout.width(2);
@@ -243,57 +257,50 @@ private:
 
         } while (++i != 20);
 
-        unsigned cNt = d & 0xc0000;     // excise out central Nt
-        c = (0x40000 - 1) & d;          // mark set bits below it
-        d ^= cNt ^ c ^ (c << 2);       // move lower Nts upward
-        uint32_t t = cNt & 0x80000;  // 2nd bit of central Nt will determine the twist.
-        uint64_t mCnt = cNt ^ t; //1st bit needs to be stored
-
         if ((c = *sq++) == '\0') return 0;
         c = b6(c);
-        d |= -isb6(c) & (c >> 1);     // append next Nt
+        d = (d << 2) | (-isb6(c) & (c >> 1));     // append next Nt
         *lmaxi = i;
-        lmax = t ? d : (revseq(d) >> 24) ^ 0xaaaaaaaaaa; // truncated seq or revcmp according to 2nd bit of central Nt
-        *m = 0;
+        unsigned mCnt = d & 0x100000;
+
+        c = ((d >> 2) & ~CNtM) | (d & CNtM); // excise out central Nt
+        // seq or revcmp according to 2nd bit of central Nt
+        lmax = (d & 0x200000) ? c : (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
+        *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
 //cerr << "== Init: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
+            if ((++i & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
 
-            d ^= cNt; // get next central Nt and put old one back;
-            cNt ^= d & 0xc0000;
-            t = cNt & 0x80000;
-            d ^= cNt;
-
-            d = (d << 2) | c ; // shift-insert next Nt.
-            c = t ? (d & 0xffffffffff): (revseq(d) >> 24) ^ 0xaaaaaaaaaa;
+            d = ((d & 0x3fffffffffffffff) << 2) | c;   // shift-insert next Nt.
+            c = ((d >> 2) & ~CNtM) | (d & CNtM);     // excise out central Nt
+            c = (d & 0x200000) ? (c & 0xffffffffff): (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((c > lmax) || ((c == lmax) && t)) { // yes, 9 x f : need to truncate before maximize check.
+            if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
                 lmax = c;
                 *lmaxi = i;
 //cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
-                mCnt = cNt ^ t;
+                mCnt = d & 0x100000;
                 *m |= 1u << (i & 7);
             }
-            if ((++i & 7) == 0) *++m = 0u;
         }
-        rmax = 0;
-        while (--i != *lmaxi) { // search for maximum from right
-            if ((i & 7) == 0) --m;
-            c = *--sq;
+        rmax = c;
+        *m |= 1u << (i & 7);
+        sq -= 20;
+        while (i != *lmaxi) { // search for maximum from right
+            if ((--i & 7) == 0) --m;
+            c = *sq--;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d ^= cNt;
-            cNt ^= d & 0xc0000;
-            t = cNt & 0x80000;
-            d ^= cNt;
-            d = (c << 38) | (d >> 2);
-            c = t ? d : (revseq(d) >> 16) ^ 0xaaaaaaaaaa;
-            if ((c > rmax) || ((c == rmax) && !t)) {
+            d = (c << 40) | (d >> 2);
+            c = ((d >> 2) & ~CNtM) | (d & CNtM);
+            c = (d & 0x200000) ? (c & 0xffffffffff) : (revseq(c) >> 24) ^ 0xaaaaaaaaaa;
+            if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
                 rmax = c;
                 *m |= 1u << (i & 7);
             }
@@ -369,7 +376,7 @@ private:
     }
     khash_t(UQCT) *H;
     size_t l, m, fq_ent_max, nr, readlength;
-    unsigned phred_offset, keymax, max_bitm;
+    unsigned phred_offset, max_bitm;
     uint8_t *s;
 };
 
