@@ -19,13 +19,14 @@ using namespace std;
 int main(int argc, const char* argv[])
 {
     unsigned phred_offset = 33;
-    if (argc > 1) {
+
+    if (argc > 2) {
         phred_offset = atoi(argv[1]);
         cerr << "Phred offset set to " << phred_offset << endl;
     }
     assert((phred_offset >= 33) && (phred_offset <= 126));
-    
-    struct fq_hash uqct(100, phred_offset);
+    unsigned readlength = atoi(argv[argc - 1]);
+    struct fq_hash uqct(readlength, phred_offset);
 
     string nm, sq, tmp, ql;
     while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))
