@@ -91,10 +91,11 @@ struct fq_hash
             s = (uint8_t*)realloc(s, m);
         }
         unsigned twisted, i = 0;
-        uint8_t *b = s + l + max_bitm - 1; // bytes to store max locations
+        uint8_t *b = s + l; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
         twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
+        b += max_bitm - 1;
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
             *++b = i & 0xff;
@@ -188,9 +189,9 @@ struct fq_hash
                         " 0x" << deviant << '\t' << seqrc << "\t";
                     b -= 8 + max_bitm;
                     for (unsigned j = max_bitm; j != 0; --j) {
-                        cout << (unsigned)(*b & 0xf);
-                        cout << (unsigned)((*b & 0xf0) >> 4);
-                        ++b;
+                        uint8_t c = BitReverseTable256[*b++];
+                        cout << (unsigned)((c & 0xf0) >> 4);
+                        cout << (unsigned)(c & 0xf);
                     }
                     cout << endl << dna << "\n+\n";
                     cout << dna + readlength + 1 << "\n";
@@ -264,13 +265,14 @@ private:
         c = (d & 0x200000) ? d : r;
         lmax = c;
         *lmaxi = i;
-        *m = 1u;
+        *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
+//NOTE: order displayed is not same as output!
 //cerr << "== Ini: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
-            if ((++i & 7) == 0) *--m = 0u;
+            if ((++i & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             d = ((d << 2) & 0x3ffffffffff) | c;
@@ -294,7 +296,7 @@ private:
 //cerr << "==db: " <<hex<< d <<dec<< endl;
 
         while ((unsigned)--i > *lmaxi) { // search for maximum from right
-            if ((i & 7) == 0) ++m;
+            if ((i & 7) == 0) --m;
             c = *sq--;
             c = b6(c);
             c = -isb6(c) & (c >> 1);

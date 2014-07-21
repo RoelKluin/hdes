@@ -16,12 +16,15 @@ cmp <(zcat "$f" | head -n 400000 | sed -n '/[[:space:]]/s/[[:space:]].*$//;N;h;n
         echo "$f raw and uqct output have the same fastq entries"
 
 #should result in same deviant:
-zcat SRR077487_1.filt.fastq.gz | head -n4 | perl -e '
+make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n4 | perl -e '
 my @e = (<>, <>, <>, <>);
 print join("", @e);
+print join("", $e[0], substr($e[1],1,-1)."A\n", $e[2], substr($e[3],1,-1)."H\n");
 $e[$_] = (scalar reverse substr($e[$_], 0, -1))."\n" for (1, 3);
 $e[1] = join("", map { $_ =~ tr/ACGTacgt/TGCAtgca/; $_ } split(//, $e[1]));
-print join("", @e); ' | valgrind --leak-check=full ./uqct 2>&1 | ./fqless
+print join("", @e);
+print join("", $e[0], substr($e[1],1,-1)."A\n", $e[2], substr($e[3],1,-1)."H\n");
+' | valgrind --leak-check=full ./uqct 100 2>&1 | ./fqless
 
 #odd
 make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n10000 | valgrind --leak-check=full ./uqct 2>&1 | egrep -A3 \
