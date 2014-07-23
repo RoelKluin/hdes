@@ -34,11 +34,14 @@
 #define expect(T)       if (likely(T))
 
 // exponentiate phred to allow summation
+// as.integer(round(10^((0:63)/10)))
 static unsigned phredtoe10[] = {
-    1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
-    12, 15, 19, 25, 31, 39, 50, 63, 79, 100,
-    125, 158, 199, 251, 316, 398, 501, 630, 794, 1000,
-    1258, 1584, 1995, 2511, 3162, 3981, 5011, 6309, 7943, 10000 };
+    1, 1, 2, 2, 3, 3, 4, 5, 6, 8, 10, 13, 16, 20,
+    25, 32, 40, 50, 63, 79, 100, 126, 158, 200, 251, 316, 398, 501,
+    631, 794, 1000, 1259, 1585, 1995, 2512, 3162, 3981, 5012, 6310, 7943, 10000, 12589,
+    15849, 19953, 25119, 31623, 39811, 50119, 63096, 79433, 100000, 125893, 158489, 199526,
+    251189, 316228, 398107, 501187, 630957, 794328, 1000000, 1258925, 1584893, 1995262
+};
 
 using namespace std;
 
@@ -59,7 +62,8 @@ struct fq_hash
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
         *s = '\0';
-        max_bitm = bytes_for_bits(rl - 21);
+        rl -= 21;
+        max_bitm = bytes_for_bits(rl);
         kroundup32(fq_ent_max);
     }
 
@@ -281,7 +285,7 @@ private:
             c = (d & 0x200000) ? d : r;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
+            if ((c > lmax) || unlikely((c == lmax) && (d & 0x200000))) {
                 lmax = c;
                 *lmaxi = i;
 //cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
@@ -304,7 +308,7 @@ private:
 //cerr << "==d2: " <<hex<< d <<dec<< endl;
             r = ((r << 2) & 0x3ffffffffff) | (c ^ 2);
             c = (d & 0x200000) ? d : r;
-            if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
+            if ((c > rmax) || unlikely((c == rmax) && !(d & 0x200000))) {
                 rmax = c;
 //cerr << "== Rod: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
                 *m |= 1u << (i & 7);
@@ -347,13 +351,13 @@ private:
         unsigned i = 0;
         while ((*++b = *qual++) != '\0') {
             *b -= phred_offset;
-            assert(*b <= 41);
+            assert(*b <= 50);
             i += phredtoe10[*b];
             unsigned c = b6(*seq++);
 
-            // In case of an 'N' 0x30 is set and phred bits originally there shifted upwards
-            // This preserves phred even for N, although this is probably unneccesary.
-            *b |= isb6(c) ? (c << 5) : ((*b & 0x30) << 2) | 0x30;
+            // In case of an 'N' phred should always be less than 3
+            // max phred for base (G) is 60 using this scheme
+            if (isb6(c)) *b = (*b | c << 5) + 3;
         }
         *b = 0xff;
         return b;
@@ -368,12 +372,13 @@ private:
 
         for(len = 0; *b != 0xff; ++len, ++b, ++d, ++q) {
             unsigned c = *b;
-            if ((c & 0x30) != 0x30) {
+            if (c >= 3) {
+                c -= 3;
                 *d = b6((c >> 5) & 0x6);
                 *q = (c & 0x3f) + phred_offset;
             } else {
                 *d = 'N';
-                *q = (((c >> 2) & 0x30) | (c & 0xf)) + phred_offset;
+                *q = c + phred_offset;
             }
         }
         assert (len <= readlength);
