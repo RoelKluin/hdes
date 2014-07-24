@@ -24,7 +24,9 @@
 // maximum length of the read name
 #define RK_FQ_MAX_NAME_ETC    (1ul << 14)
 
-#define KEY_LENGTH 17
+// KEY_LENGTH must be odd - or 2nd bit of central Nt is not always flipped in its
+// complement - the alternative is the twisted halfdev conversion, but this is cheaper
+#define KEY_LENGTH 15
 #define KEY_MAX_CUTOFF 4
 #define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
@@ -188,7 +190,7 @@ struct fq_hash
             do { /* loop over keys */
                 i = kh_val(H, *--kp) & 0xffffffff;
                 unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, s[i + max_bitm + 3] & 0x80, deviant);
+                decode_twisted(seqrc, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i; // XXX: valgrind: invalid write here?
@@ -203,8 +205,7 @@ struct fq_hash
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
                     unsigned len = decode_seqphred(b, dna);
-                    unsigned flip = ((b[-5] & 0x80) != 0);
-                    cout << (char*)b + len + 1 << " " << flip <<
+                    cout << (char*)b + len + 1 << " " <<
                         " 0x" << deviant << '\t' << seqrc << "\t";
                     b -= 8 + max_bitm;
                     for (unsigned j = max_bitm; j != 0; --j) {
@@ -330,27 +331,27 @@ private:
             }
         }
 //cerr << endl;
-	*lmaxi |= -!(lmax & KEYNT_AC) & 0x80000000;
-        lmax = ((lmax >> 2) & ~CNtM) | (lmax & CNtM);     // excise out central Nt
-        return lmax & 0xffffffff; /* truncate on purpose */
+        lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
+        return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
     }
-    void decode_twisted(char* seq, unsigned t, unsigned d)
+    void decode_twisted(char* seq, unsigned d)
     {
         char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
-	t = -!t & 2;
 
 //cerr << "==t:" << t << endl;
         char c;
 
         for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, d >>= 2) {
             if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert central Nt */
-                *seq = b6(0 ^ t);
-                *--revcmp = b6(4 ^ t);
+                c = (d & 1) << 1;
+                *seq = b6(c);
+                *--revcmp = b6(c ^ 4);
                 ++seq;
+                d >>= 1;
             }
             c = (d & 0x3) << 1;
-            *seq = b6(4 ^ c);
+            *seq = b6(c ^ 4);
             *--revcmp = b6(c);
         }
         *seq = '|';
