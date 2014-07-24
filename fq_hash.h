@@ -130,7 +130,6 @@ struct fq_hash
             i = 1; /* marks last element */
 
         } else {
-//cerr << "Deviant 0x" << hex << deviant << dec << " already exists.\n";
             kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
 
             i = kh_val(H, k) & 0xffffffff; /* former value offset */
@@ -237,18 +236,6 @@ struct fq_hash
             if (*sa != *sb) return *sa < *sb;
         return 0;
     }
-    /*inline bool operator() (uint64_t a, uint64_t b)
-    {
-        uint8_t *sa = s + max_bitm + a, *sb = s + max_bitm + b;
-        unsigned oa = 0u, ob = 0u;
-        for (unsigned i = 0; i < 32; i += 8) {
-            oa |= *sa++ << i;
-            ob |= *sb++ << i;
-        }
-        oa &= ~(1u << 31);
-        ob &= ~(1u << 31);
-        return 0;
-    }*/
     int is_err;
 
 private:
@@ -268,7 +255,6 @@ private:
      */
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
-//cerr << "== " << sq << endl; //
         uint64_t lmax, maxv, c, d = 0, r = 0;
         int i = -KEY_WIDTH;
         do {
@@ -290,35 +276,29 @@ private:
         *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
-//NOTE: order displayed is not same as output!
-//cerr << "== Ini: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
             if ((++i & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             d = ((d << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
-//cerr << "==d1: " <<hex<< d <<dec<< endl;
             r = ((c ^ 2) << KEY_TOP_NT) | (r >> 2);
             c = (d & KEYNT_STRAND) ? d : r;
             uint64_t Ntgc = c ^ (c >> 2);
+
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
             if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (d & KEYNT_STRAND))) {
                 lmax = c;
                 maxv = Ntgc;
                 *lmaxi = i;
-//cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
         }
-//cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
         *m |= 1u << (i & 7);
         sq -= KEY_WIDTH + 2;
         c = (d & KEYNT_STRAND) ? d : r;
         maxv = c ^ (c >> 2);
-//cerr << "== Iri: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
-//cerr << "==db: " <<hex<< d <<dec<< endl;
 
         while ((unsigned)--i > *lmaxi) { // search for maximum from right
             if ((i & 7) == 0) --m;
@@ -326,17 +306,15 @@ private:
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             d = (c << KEY_TOP_NT) | (d >> 2); // Note: walking back
-//cerr << "==d2: " <<hex<< d <<dec<< endl;
             r = ((r << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
             c = (d & KEYNT_STRAND) ? d : r;
             uint64_t Ntgc = c ^ (c >> 2);
+
             if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(d & KEYNT_STRAND))) {
                 maxv = Ntgc;
-//cerr << "== Rod: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
         }
-//cerr << endl;
         lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
         return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
     }
@@ -345,7 +323,6 @@ private:
         char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
 
-//cerr << "==t:" << t << endl;
         char c;
 
         for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, d >>= 2) {
