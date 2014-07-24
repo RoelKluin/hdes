@@ -24,9 +24,24 @@
 // maximum length of the read name
 #define RK_FQ_MAX_NAME_ETC    (1ul << 14)
 
-#define CNtM        (0x100000ul - 1ul)
+#define KEY_LENGTH 17
+#define KEY_MAX_CUTOFF 4
+#define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
-#define RK_FQ_KEYCOUNT_OFFSET 40
+
+#define CNtM        (KEYNT_AC - 1)
+#define KEY_BUFSZ (1u << (KEY_LENGTH * 2 - 1))
+
+//this must not exceed 32:
+#define KEY_WIDTH (KEY_LENGTH + KEY_MAX_CUTOFF)
+
+#define KEYNT_STRAND (1u << KEY_WIDTH)
+#define KEY_TOP_NT ((KEY_WIDTH - 1) << 1)
+
+#define KEY_WIDTH_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
+#define HALF_KEY_WIDTH_MASK (KEYNT_STRAND - 1u)
+
+#define RK_FQ_KEYCOUNT_OFFSET 40 // FIXME put on site
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -62,7 +77,7 @@ struct fq_hash
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
         *s = '\0';
-        rl -= 21;
+        rl -= KEY_WIDTH;
         max_bitm = bytes_for_bits(rl);
         kroundup32(fq_ent_max);
     }
@@ -141,7 +156,7 @@ struct fq_hash
             uint64_t *vp, *vs;
             uint64_t i = kh_size(H);
             uint8_t* dna = (uint8_t*)malloc((readlength<<1)+3);
-            char seqrc[36];
+            char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
             kp = ks = (khiter_t*)malloc(i * sizeof(khiter_t));
@@ -253,20 +268,20 @@ private:
     {
 //cerr << "== " << sq << endl; //
         uint64_t lmax, rmax, c, d = 0, r = 0;
-        int i = -21;
+        int i = -KEY_WIDTH;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             d = (d << 2) | c;
-            r = (c << 40) | (r >> 2);
+            r = (c << KEY_TOP_NT) | (r >> 2);
 
         } while (++i < 0);
 
-        r ^= 0x2aaaaaaaaaa; // make reverse complement
+        r ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
         // seq or revcmp according to 2nd bit of central Nt
-        c = (d & 0x200000) ? d : r;
+        c = (d & KEYNT_STRAND) ? d : r;
         lmax = c;
         *lmaxi = i;
         *m = 1;
@@ -279,13 +294,13 @@ private:
             if ((++i & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = ((d << 2) & 0x3ffffffffff) | c;
+            d = ((d << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
 //cerr << "==d1: " <<hex<< d <<dec<< endl;
-            r = ((c ^ 2) << 40) | (r >> 2);
-            c = (d & 0x200000) ? d : r;
+            r = ((c ^ 2) << KEY_TOP_NT) | (r >> 2);
+            c = (d & KEYNT_STRAND) ? d : r;
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((c > lmax) || unlikely((c == lmax) && (d & 0x200000))) {
+            if ((c > lmax) || unlikely((c == lmax) && (d & KEYNT_STRAND))) {
                 lmax = c;
                 *lmaxi = i;
 //cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
@@ -294,8 +309,8 @@ private:
         }
 //cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
         *m |= 1u << (i & 7);
-        sq -= 23;
-        rmax = (d & 0x200000) ? d : r;
+        sq -= KEY_WIDTH + 2;
+        rmax = (d & KEYNT_STRAND) ? d : r;
 //cerr << "== Iri: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
 //cerr << "==db: " <<hex<< d <<dec<< endl;
 
@@ -304,32 +319,32 @@ private:
             c = *sq--;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = (c << 40) | (d >> 2); // Note: walking back
+            d = (c << KEY_TOP_NT) | (d >> 2); // Note: walking back
 //cerr << "==d2: " <<hex<< d <<dec<< endl;
-            r = ((r << 2) & 0x3ffffffffff) | (c ^ 2);
-            c = (d & 0x200000) ? d : r;
-            if ((c > rmax) || unlikely((c == rmax) && !(d & 0x200000))) {
+            r = ((r << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
+            c = (d & KEYNT_STRAND) ? d : r;
+            if ((c > rmax) || unlikely((c == rmax) && !(d & KEYNT_STRAND))) {
                 rmax = c;
 //cerr << "== Rod: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
         }
 //cerr << endl;
-	*lmaxi |= -!(lmax & 0x100000) & 0x80000000;
+	*lmaxi |= -!(lmax & KEYNT_AC) & 0x80000000;
         lmax = ((lmax >> 2) & ~CNtM) | (lmax & CNtM);     // excise out central Nt
         return lmax & 0xffffffff; /* truncate on purpose */
     }
     void decode_twisted(char* seq, unsigned t, unsigned d)
     {
-        char* revcmp = seq + 35;
+        char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
 	t = -!t & 2;
 
 //cerr << "==t:" << t << endl;
         char c;
 
-        for (unsigned i = 0; i != 16; ++i, ++seq, d >>= 2) {
-            if (i == 10) { /* insert central Nt */
+        for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, d >>= 2) {
+            if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert central Nt */
                 *seq = b6(0 ^ t);
                 *--revcmp = b6(4 ^ t);
                 ++seq;
@@ -357,7 +372,7 @@ private:
 
             // In case of an 'N' phred should always be less than 3
             // max phred for base (G) is 60 using this scheme
-            if (isb6(c)) *b = (*b | c << 5) + 3;
+            if (isb6(c)) *b = (*b | (c << 5)) + 3;
         }
         *b = 0xff;
         return b;
