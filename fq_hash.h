@@ -226,6 +226,7 @@ struct fq_hash
     }
     inline bool operator() (khiter_t a, khiter_t b) /* needed by sort kp/ks: sort on keycounts*/
     {
+        //return kh_key(H, a) < kh_key(H, b);
         return kh_val(H, a) < kh_val(H, b);
     }
 
@@ -268,7 +269,7 @@ private:
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
 //cerr << "== " << sq << endl; //
-        uint64_t lmax, rmax, c, d = 0, r = 0;
+        uint64_t lmax, maxv, c, d = 0, r = 0;
         int i = -KEY_WIDTH;
         do {
             if ((c = *sq++) == '\0') return 0;
@@ -284,6 +285,7 @@ private:
         // seq or revcmp according to 2nd bit of central Nt
         c = (d & KEYNT_STRAND) ? d : r;
         lmax = c;
+        maxv = c ^ (c >> 2); // maximize on gray Nt sequence
         *lmaxi = i;
         *m = 1;
 
@@ -299,10 +301,12 @@ private:
 //cerr << "==d1: " <<hex<< d <<dec<< endl;
             r = ((c ^ 2) << KEY_TOP_NT) | (r >> 2);
             c = (d & KEYNT_STRAND) ? d : r;
+            uint64_t Ntgc = c ^ (c >> 2);
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((c > lmax) || unlikely((c == lmax) && (d & KEYNT_STRAND))) {
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (d & KEYNT_STRAND))) {
                 lmax = c;
+                maxv = Ntgc;
                 *lmaxi = i;
 //cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
                 *m |= 1u << (i & 7);
@@ -311,7 +315,8 @@ private:
 //cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
         *m |= 1u << (i & 7);
         sq -= KEY_WIDTH + 2;
-        rmax = (d & KEYNT_STRAND) ? d : r;
+        c = (d & KEYNT_STRAND) ? d : r;
+        maxv = c ^ (c >> 2);
 //cerr << "== Iri: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
 //cerr << "==db: " <<hex<< d <<dec<< endl;
 
@@ -324,8 +329,9 @@ private:
 //cerr << "==d2: " <<hex<< d <<dec<< endl;
             r = ((r << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
             c = (d & KEYNT_STRAND) ? d : r;
-            if ((c > rmax) || unlikely((c == rmax) && !(d & KEYNT_STRAND))) {
-                rmax = c;
+            uint64_t Ntgc = c ^ (c >> 2);
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(d & KEYNT_STRAND))) {
+                maxv = Ntgc;
 //cerr << "== Rod: maxi " << i << "\tmax: 0x" << hex << rmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
