@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/opt/perl/latest/bin/perl
 # Usage `samtools view $bam | csam | less -R'
 
 use warnings;
@@ -15,12 +15,12 @@ while (<>) {
         #if (/^([^ ]+) (.*[ACTGN]{4,})/) {
         #	print $1.join('', map { $_ ? $h{$_} // $_ : () } split(//, substr ($2, 0)))."\x1b[0m\n";
         #} else {
-                my $re = /([ACTG]{7,}(\|[ACTG]{7,})*)/ ? qr/($1)?/ : qr//;
-		print;
+                my $re = /\s([ACTG]{7,}(\|[ACTG]{7,})*)\s/ ? qr/($1)?/ : qr//;
+		print $_;
         #}
         print and next while (($_ = <>) =~ /^(==|$)/);
 	chomp;
-	print join('', map { $_ ? (exists $h{$_} ? $h{$_} : "\e[7m".join('', map { exists $h{$_}? $h{$_} : warn "\n$_\n" } split(//, $_))."\e[0m") : () } split($re))."\e[0m\n";
+	print join('', map { $_ ? (exists $h{$_} ? $h{$_} : "\e[7m".join('', map { exists $h{$_} ? $h{$_} : warn "\n$_\n" } split(//, $_))."\e[0m") : () } split($re))."\e[0m\n";
         print and next while (($_ = <>) =~ /^(==|$)/);
 	print;
         print and next while (($_ = <>) =~ /^(==|$)/);
