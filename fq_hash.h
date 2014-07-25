@@ -24,9 +24,26 @@
 // maximum length of the read name
 #define RK_FQ_MAX_NAME_ETC    (1ul << 14)
 
-#define CNtM        (0x100000ul - 1ul)
+// KEY_LENGTH must be odd - or 2nd bit of central Nt is not always flipped in its
+// complement - the alternative is the twisted halfdev conversion, but this is cheaper
+#define KEY_LENGTH 15
+#define KEY_MAX_CUTOFF 4
+#define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
-#define RK_FQ_KEYCOUNT_OFFSET 40
+
+#define CNtM        (KEYNT_AC - 1)
+#define KEY_BUFSZ (1u << (KEY_LENGTH * 2 - 1))
+
+//this must not exceed 32:
+#define KEY_WIDTH (KEY_LENGTH + KEY_MAX_CUTOFF)
+
+#define KEYNT_STRAND (1u << KEY_WIDTH)
+#define KEY_TOP_NT ((KEY_WIDTH - 1) << 1)
+
+#define KEY_WIDTH_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
+#define HALF_KEY_WIDTH_MASK (KEYNT_STRAND - 1u)
+
+#define RK_FQ_KEYCOUNT_OFFSET 40 // FIXME put on site
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -34,11 +51,14 @@
 #define expect(T)       if (likely(T))
 
 // exponentiate phred to allow summation
+// as.integer(round(10^((0:63)/10)))
 static unsigned phredtoe10[] = {
-    1, 1, 1, 1, 2, 3, 3, 5, 6, 7, 10,
-    12, 15, 19, 25, 31, 39, 50, 63, 79, 100,
-    125, 158, 199, 251, 316, 398, 501, 630, 794, 1000,
-    1258, 1584, 1995, 2511, 3162, 3981, 5011, 6309, 7943, 10000 };
+    1, 1, 2, 2, 3, 3, 4, 5, 6, 8, 10, 13, 16, 20,
+    25, 32, 40, 50, 63, 79, 100, 126, 158, 200, 251, 316, 398, 501,
+    631, 794, 1000, 1259, 1585, 1995, 2512, 3162, 3981, 5012, 6310, 7943, 10000, 12589,
+    15849, 19953, 25119, 31623, 39811, 50119, 63096, 79433, 100000, 125893, 158489, 199526,
+    251189, 316228, 398107, 501187, 630957, 794328, 1000000, 1258925, 1584893, 1995262
+};
 
 using namespace std;
 
@@ -59,7 +79,8 @@ struct fq_hash
         H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
         *s = '\0';
-        max_bitm = bytes_for_bits(rl - 16);
+        rl -= KEY_WIDTH;
+        max_bitm = bytes_for_bits(rl);
         kroundup32(fq_ent_max);
     }
 
@@ -91,10 +112,11 @@ struct fq_hash
             s = (uint8_t*)realloc(s, m);
         }
         unsigned twisted, i = 0;
-        uint8_t *b = s + l + max_bitm - 1; // bytes to store max locations
+        uint8_t *b = s + l; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
         twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
+        b += max_bitm - 1;
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
             *++b = i & 0xff;
@@ -108,7 +130,6 @@ struct fq_hash
             i = 1; /* marks last element */
 
         } else {
-//cerr << "Deviant 0x" << hex << deviant << dec << " already exists.\n";
             kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
 
             i = kh_val(H, k) & 0xffffffff; /* former value offset */
@@ -136,7 +157,7 @@ struct fq_hash
             uint64_t *vp, *vs;
             uint64_t i = kh_size(H);
             uint8_t* dna = (uint8_t*)malloc((readlength<<1)+3);
-            char seqrc[36];
+            char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
             kp = ks = (khiter_t*)malloc(i * sizeof(khiter_t));
@@ -168,7 +189,7 @@ struct fq_hash
             do { /* loop over keys */
                 i = kh_val(H, *--kp) & 0xffffffff;
                 unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, s[i + max_bitm + 3] & 0x80, deviant);
+                decode_twisted(seqrc, deviant);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i; // XXX: valgrind: invalid write here?
@@ -183,13 +204,13 @@ struct fq_hash
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
                     unsigned len = decode_seqphred(b, dna);
-                    cout << (char*)b + len + 1 << " " << ((b[-5] & 0x80) != 0) <<
+                    cout << (char*)b + len + 1 << " " <<
                         " 0x" << deviant << '\t' << seqrc << "\t";
-                    b -= 8;
+                    b -= 8 + max_bitm;
                     for (unsigned j = max_bitm; j != 0; --j) {
-                        cout.width(2);
-                        cout.fill('0');
-                        cout << (unsigned)*--b;
+                        uint8_t c = BitReverseTable256[*b++];
+                        cout << (unsigned)((c & 0xf0) >> 4);
+                        cout << (unsigned)(c & 0xf);
                     }
                     cout << endl << dna << "\n+\n";
                     cout << dna + readlength + 1 << "\n";
@@ -204,6 +225,7 @@ struct fq_hash
     }
     inline bool operator() (khiter_t a, khiter_t b) /* needed by sort kp/ks: sort on keycounts*/
     {
+        //return kh_key(H, a) < kh_key(H, b);
         return kh_val(H, a) < kh_val(H, b);
     }
 
@@ -214,18 +236,6 @@ struct fq_hash
             if (*sa != *sb) return *sa < *sb;
         return 0;
     }
-    /*inline bool operator() (uint64_t a, uint64_t b)
-    {
-        uint8_t *sa = s + max_bitm + a, *sb = s + max_bitm + b;
-        unsigned oa = 0u, ob = 0u;
-        for (unsigned i = 0; i < 32; i += 8) {
-            oa |= *sa++ << i;
-            ob |= *sb++ << i;
-        }
-        oa &= ~(1u << 31);
-        ob &= ~(1u << 31);
-        return 0;
-    }*/
     int is_err;
 
 private:
@@ -245,83 +255,86 @@ private:
      */
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
-//cerr << "== " << sq << endl; //
-        uint64_t lmax, rmax, c, d = 0, r = 0;
-        unsigned i = 0;
+        uint64_t lmax, maxv, c, d = 0, r = 0;
+        int i = -KEY_WIDTH;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             d = (d << 2) | c;
-            r = (c << 40) | (r >> 2);
+            r = (c << KEY_TOP_NT) | (r >> 2);
 
-        } while (++i != 21);
+        } while (++i < 0);
 
-        r ^= 0x2aaaaaaaaaa; // make reverse complement
+        r ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
         // seq or revcmp according to 2nd bit of central Nt
-        c = (d & 0x200000) ? d : r;
+        c = (d & KEYNT_STRAND) ? d : r;
         lmax = c;
+        maxv = c ^ (c >> 2); // maximize on gray Nt sequence
         *lmaxi = i;
         *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
-//cerr << "== Init: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
 
         while((c = *sq++) != '\0') { // search for maximum from left
-            if ((++i & 7) == 0) *--m = 0u;
+            if ((++i & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = ((d << 2) & 0x3ffffffffff) | c;
-            r = ((c ^ 2) << 40) | (r >> 2);
-            c = (d & 0x200000) ? d : r;
+            d = ((d << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
+            r = ((c ^ 2) << KEY_TOP_NT) | (r >> 2);
+            c = (d & KEYNT_STRAND) ? d : r;
+            uint64_t Ntgc = c ^ (c >> 2);
+
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((c > lmax) || ((c == lmax) && (d & 0x200000))) {
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (d & KEYNT_STRAND))) {
                 lmax = c;
+                maxv = Ntgc;
                 *lmaxi = i;
-//cerr << "== Mod: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
                 *m |= 1u << (i & 7);
             }
         }
-        rmax = c;
         *m |= 1u << (i & 7);
-        sq -= 20;
-        while (i != *lmaxi) { // search for maximum from right
-            if ((--i & 7) == 0) ++m;
+        sq -= KEY_WIDTH + 2;
+        c = (d & KEYNT_STRAND) ? d : r;
+        maxv = c ^ (c >> 2);
+
+        while ((unsigned)--i > *lmaxi) { // search for maximum from right
+            if ((i & 7) == 0) --m;
             c = *sq--;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = (c << 40) | (d >> 2); // Note: walking back
-            r = ((r << 2) & 0x3ffffffffff) | (c ^ 2);
-            c = (d & 0x200000) ? d : r;
-            if ((c > rmax) || ((c == rmax) && !(d & 0x200000))) {
-                rmax = c;
+            d = (c << KEY_TOP_NT) | (d >> 2); // Note: walking back
+            r = ((r << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
+            c = (d & KEYNT_STRAND) ? d : r;
+            uint64_t Ntgc = c ^ (c >> 2);
+
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(d & KEYNT_STRAND))) {
+                maxv = Ntgc;
                 *m |= 1u << (i & 7);
             }
         }
-//cerr << "== Res: maxi " << *lmaxi << "\tmax: 0x" << hex << lmax << dec << endl;
-	*lmaxi |= -!(lmax & 0x100000) & 0x80000000;
-        lmax = ((lmax >> 2) & ~CNtM) | (lmax & CNtM);     // excise out central Nt
-        return lmax & 0xffffffff; /* truncate on purpose */
+        lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
+        return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
     }
-    void decode_twisted(char* seq, unsigned t, unsigned d)
+    void decode_twisted(char* seq, unsigned d)
     {
-        char* revcmp = seq + 35;
+        char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
-	t = -!t & 2;
 
-//cerr << "==t:" << t << endl;
         char c;
 
-        for (unsigned i = 0; i != 16; ++i, ++seq, d >>= 2) {
-            if (i == 10) { /* insert central Nt */
-                *seq = b6(0 ^ t);
-                *--revcmp = b6(4 ^ t);
+        for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, d >>= 2) {
+            if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert central Nt */
+                c = (d & 1) << 1;
+                *seq = b6(c);
+                *--revcmp = b6(c ^ 4);
                 ++seq;
+                d >>= 1;
             }
             c = (d & 0x3) << 1;
-            *seq = b6(4 ^ c);
+            *seq = b6(c ^ 4);
             *--revcmp = b6(c);
         }
         *seq = '|';
@@ -337,13 +350,13 @@ private:
         unsigned i = 0;
         while ((*++b = *qual++) != '\0') {
             *b -= phred_offset;
-            assert(*b <= 41);
+            assert(*b <= 50);
             i += phredtoe10[*b];
             unsigned c = b6(*seq++);
 
-            // In case of an 'N' 0x30 is set and phred bits originally there shifted upwards
-            // This preserves phred even for N, although this is probably unneccesary.
-            *b |= isb6(c) ? (c << 5) : ((*b & 0x30) << 2) | 0x30;
+            // In case of an 'N' phred should always be less than 3
+            // max phred for base (G) is 60 using this scheme
+            if (isb6(c)) *b = (*b | (c << 5)) + 3;
         }
         *b = 0xff;
         return b;
@@ -358,12 +371,13 @@ private:
 
         for(len = 0; *b != 0xff; ++len, ++b, ++d, ++q) {
             unsigned c = *b;
-            if ((c & 0x30) != 0x30) {
+            if (c >= 3) {
+                c -= 3;
                 *d = b6((c >> 5) & 0x6);
                 *q = (c & 0x3f) + phred_offset;
             } else {
                 *d = 'N';
-                *q = (((c >> 2) & 0x30) | (c & 0xf)) + phred_offset;
+                *q = c + phred_offset;
             }
         }
         assert (len <= readlength);
