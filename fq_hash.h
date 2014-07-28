@@ -137,6 +137,9 @@ struct fq_arr
         unsigned twisted, i = 0;
         uint8_t *b = s + l; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
+        dna = 0;
+        rev = 0;
+        rot = -KEY_WIDTH;
         twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
         b += max_bitm - 1;
@@ -272,85 +275,84 @@ private:
      */
     uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
-        uint64_t lmax, maxv, c, d = 0, r = 0;
-        int i = -KEY_WIDTH;
+        uint64_t lmax, maxv, c;
         do {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = (d << 2) | c;
-            r = (c << KEY_TOP_NT) | (r >> 2);
+            dna = (dna << 2) | c;
+            rev = (c << KEY_TOP_NT) | (rev >> 2);
 
-        } while (++i < 0);
+        } while (++rot < 0);
 
-        r ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
+        rev ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
         // seq or revcmp according to 2nd bit of central Nt
-        c = (d & KEYNT_STRAND) ? d : r;
+        c = (dna & KEYNT_STRAND) ? dna : rev;
         lmax = c;
         maxv = c ^ (c >> 2); // maximize on gray Nt sequence
-        *lmaxi = i;
+        *lmaxi = rot;
         *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
 
         while((c = *sq++) != '\0') { // search for maximum from left
-            if ((++i & 7) == 0) *++m = 0u;
+            if ((++rot & 7) == 0) *++m = 0u;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = ((d << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
-            r = ((c ^ 2) << KEY_TOP_NT) | (r >> 2);
-            c = (d & KEYNT_STRAND) ? d : r;
+            dna = ((dna << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
+            rev = ((c ^ 2) << KEY_TOP_NT) | (rev >> 2);
+            c = (dna & KEYNT_STRAND) ? dna : rev;
             uint64_t Ntgc = c ^ (c >> 2);
 
             // need to truncate before maximize check.
             // rather than the max, we should search for the most distinct substring.
-            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (d & KEYNT_STRAND))) {
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (dna & KEYNT_STRAND))) {
                 lmax = c;
                 maxv = Ntgc;
-                *lmaxi = i;
-                *m |= 1u << (i & 7);
+                *lmaxi = rot;
+                *m |= 1u << (rot & 7);
             }
         }
-        *m |= 1u << (i & 7);
+        *m |= 1u << (rot & 7);
         sq -= KEY_WIDTH + 2;
-        c = (d & KEYNT_STRAND) ? d : r;
+        c = (dna & KEYNT_STRAND) ? dna : rev;
         maxv = c ^ (c >> 2);
 
-        while ((unsigned)--i > *lmaxi) { // search for maximum from right
-            if ((i & 7) == 0) --m;
+        while ((unsigned)--rot > *lmaxi) { // search for maximum from right
+            if ((rot & 7) == 0) --m;
             c = *sq--;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
-            d = (c << KEY_TOP_NT) | (d >> 2); // Note: walking back
-            r = ((r << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
-            c = (d & KEYNT_STRAND) ? d : r;
+            dna = (c << KEY_TOP_NT) | (dna >> 2); // Note: walking back
+            rev = ((rev << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
+            c = (dna & KEYNT_STRAND) ? dna : rev;
             uint64_t Ntgc = c ^ (c >> 2);
 
-            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(d & KEYNT_STRAND))) {
+            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(dna & KEYNT_STRAND))) {
                 maxv = Ntgc;
-                *m |= 1u << (i & 7);
+                *m |= 1u << (rot & 7);
             }
         }
         lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
         return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
     }
-    void decode_twisted(char* seq, unsigned d)
+    void decode_twisted(char* seq, unsigned dna)
     {
         char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
 
         char c;
 
-        for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, d >>= 2) {
+        for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, dna >>= 2) {
             if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert central Nt */
-                c = (d & 1) << 1;
+                c = (dna & 1) << 1;
                 *seq = b6(c);
                 *--revcmp = b6(c ^ 4);
                 ++seq;
-                d >>= 1;
+                dna >>= 1;
             }
-            c = (d & 0x3) << 1;
+            c = (dna & 0x3) << 1;
             *seq = b6(c ^ 4);
             *--revcmp = b6(c);
         }
@@ -402,9 +404,9 @@ private:
         return len;
     }
     size_t l, m, fq_ent_max, nr, readlength;
-    unsigned phred_offset, max_bitm, key_ct;
+    unsigned phred_offset, max_bitm, key_ct, rot;
     uint8_t *s;
-    uint64_t* look;
+    uint64_t* look, dna, rev;
 };
 
 
