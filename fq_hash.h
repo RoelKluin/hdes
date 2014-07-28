@@ -9,17 +9,20 @@
  *         Author:  Roel KLuin, 
  */
 
-#ifndef RK_FQ_HASH_H
-#define RK_FQ_HASH_H
+#ifndef FQ_ARR_H
+#define FQ_ARR_H
 
 #include <stdint.h>
 #include <assert.h>
 
 #include <iostream>
 #include <algorithm>
-
-#include "khash.h"
+#include <string.h>
 #include "b6.h"
+#ifndef kroundup32
+#define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
+#endif
+
 
 // maximum length of the read name
 #define RK_FQ_MAX_NAME_ETC    (1ul << 14)
@@ -32,18 +35,18 @@
 
 
 #define CNtM        (KEYNT_AC - 1)
-#define KEY_BUFSZ (1u << (KEY_LENGTH * 2 - 1))
+#define KEYCOUNT_OFFSET 31
+#define KEY_BUFSZ (1u << (KEYCOUNT_OFFSET - 1))
+#define BUFOFFSET_MASK ((1ul << KEYCOUNT_OFFSET) - 1)
 
 //this must not exceed 32:
 #define KEY_WIDTH (KEY_LENGTH + KEY_MAX_CUTOFF)
 
 #define KEYNT_STRAND (1u << KEY_WIDTH)
-#define KEY_TOP_NT ((KEY_WIDTH - 1) << 1)
+#define KEY_TOP_NT ((KEY_WIDTH - 1) * 2)
 
 #define KEY_WIDTH_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
 #define HALF_KEY_WIDTH_MASK (KEYNT_STRAND - 1u)
-
-#define RK_FQ_KEYCOUNT_OFFSET 40 // FIXME put on site
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -60,6 +63,17 @@ static unsigned phredtoe10[] = {
     251189, 316228, 398107, 501187, 630957, 794328, 1000000, 1258925, 1584893, 1995262
 };
 
+static inline void memset32(void* dest, uint32_t value, unsigned size)
+{
+  for(unsigned i = 0; i != size; i += 4)
+    memcpy(((char*)dest) + i, &value, 4);
+}
+static inline void memset64(void* dest, uint64_t value, uint64_t size)
+{
+  for(uint64_t i = 0; i != size; i += 8)
+    memcpy(((char*)dest) + i, &value, 8);
+}
+
 using namespace std;
 
 static inline unsigned bytes_for_bits(unsigned v)
@@ -69,28 +83,37 @@ static inline unsigned bytes_for_bits(unsigned v)
     v |= v >> 16;
     return ++v;
 }
-
-struct fq_hash
+static inline bool key_cmp(uint64_t a, uint64_t b) /* needed by sort kp/ks: sort on keycounts*/
 {
-    fq_hash(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
+    return (a & ~BUFOFFSET_MASK) < (b & ~BUFOFFSET_MASK);
+    //return (a & BUFOFFSET_MASK) < (b & BUFOFFSET_MASK);
+}
+
+struct fq_arr
+{
+    fq_arr(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
         fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0), readlength(rl),
         phred_offset(po)
     {
-        H = kh_init(UQCT);
         s = (uint8_t*)malloc(m);
         *s = '\0';
         rl -= KEY_WIDTH;
+        key_ct = 0u;
         max_bitm = bytes_for_bits(rl);
+        unsigned looklen = KEY_BUFSZ;
+        look = (uint64_t*)malloc(sizeof(uint64_t)*looklen);
+        assert(look != NULL);
+        memset64(look, 1ul, sizeof(uint64_t)*looklen);
         kroundup32(fq_ent_max);
     }
 
     /**
-     * Store or update the hash with the given sequence. The key is the maximum of 16 Nts
+     * Store or update the entry with the given sequence. The key is the maximum of 16 Nts
      * surrounding a central-Nt, the strand decided by the cNts' 2nd bit. see encode_twisted().
      * The value is a 64 bit consisting of an offset in buffer `s' in
-     * the low bits and a count of keys after RK_FQ_KEYCOUNT_OFFSET bits.
+     * the low bits and a count of keys after KEYCOUNT_OFFSET bits.
      *
-     * At the offset, in the the hash value, buffer `s' holds four bytes - 1 bit, for the
+     * At the offset, buffer `s' holds four bytes - 1 bit, for the
      * offset of the max in the sequence,
      * and a `complement state' in the highest bit of the fourth byte. Another four bytes point
      * to the offset in buffer `s' with stats for the former read that had this same deviant,
@@ -99,7 +122,7 @@ struct fq_hash
      * Finally the sequence and phred quality are encoded in the buffer, ended by 0xff, followed
      * by its read name - '\0' terminated.
      *
-     * For each next read with the same deviant key, the hash values' offset in buffer `s' is
+     * For each next read with the same deviant key, the values' offset in buffer `s' is
      * updated to point to its last entry, until `1' which instead shows it was the last entry.
      */
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
@@ -121,24 +144,17 @@ struct fq_hash
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
             *++b = i & 0xff;
 
-        // NOTE: the central Nt is not part of the key. A mismatch can occur at that Nt.
-        khiter_t k = kh_get(UQCT, H, twisted);
-        if (k == kh_end(H)) { /* new deviant */
-            k = kh_put(UQCT, H, twisted, &is_err);
-            if_ever ((is_err = (is_err < 0))) return;
-            kh_val(H, k) = 1ul << RK_FQ_KEYCOUNT_OFFSET; // keycount
-            i = 1; /* marks last element */
+        // TODO: do without KEYCOUNT (count per key - keep key_ct, i.e. tot key cpunt)
+        size_t* r = &look[twisted];
+        size_t t = *r & BUFOFFSET_MASK;
 
-        } else {
-            kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
+        if (t == 1ul) key_ct++; // first element
+        assert (l < KEY_BUFSZ);
+        *r ^= t ^ l; // exchange by this offset
+        *r += 1ul << KEYCOUNT_OFFSET;
 
-            i = kh_val(H, k) & 0xffffffff; /* former value offset */
-            kh_val(H, k) ^= i;
-        }
-        kh_val(H, k) |= l;
-
-        for (unsigned j = 0; j != 4; ++j, i >>= 8)
-            *++b = i & 0xff;
+        for (unsigned j = 0; j != 4; ++j, t >>= 8)
+            *++b = t & 0xff; // move former offset, or last element mark (1u) here
 
         b = encode_seqphred(qual, seq, b);
         while ((*++b = *name) != '\0') ++name;
@@ -153,26 +169,30 @@ struct fq_hash
      */
     void dump() { /* must always be called to clean up */
         if (not is_err) {
-            khiter_t *ks, *kp;
+            unsigned *ks, *kp;
             uint64_t *vp, *vs;
-            uint64_t i = kh_size(H);
+            uint64_t i = 0u, keymax = 1ul << KEYCOUNT_OFFSET;
             uint8_t* dna = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
-            kp = ks = (khiter_t*)malloc(i * sizeof(khiter_t));
+            kp = ks = (unsigned*)malloc(key_ct * sizeof(unsigned));
 
-            unsigned t, keymax = 1, uniq = 0;
-            for (khiter_t k = kh_begin(H); k != kh_end(H); ++k) {
-                if (kh_exist(H, k)) {
-                    *kp++ = k;
-                    t = kh_val(H, k) >> RK_FQ_KEYCOUNT_OFFSET;
-                    if (t == 1) ++uniq;
-                    else if (t > keymax) keymax = t;
+            unsigned uniq = 0;
+            uint64_t j = KEY_BUFSZ - 1;
+            do {
+                if (look[j] != 1ul) { // has keys
+                    *kp++ = j;
+                    i = look[j];
+                    i &= ~BUFOFFSET_MASK;
+                    if (i == (1ul << KEYCOUNT_OFFSET)) ++uniq;
+                    else if (i > keymax) keymax = i;
                 }
-            }
+            } while (--j != 0);
+            keymax >>= KEYCOUNT_OFFSET;
+
             assert(kp != ks);
-            cerr << "== " << i << " / " << nr << " keys per sequences," <<
+            cerr << "== " << key_ct << " / " << nr << " keys per sequences," <<
                 " of which " << uniq << " were unique." <<
                 " the most frequent occured in " << keymax << " reads. ==\n";
             ++keymax;
@@ -184,12 +204,14 @@ struct fq_hash
             //       ^                     ^
             vs = (uint64_t*)malloc((keymax << 1) * sizeof(uint64_t));
 
-            sort(ks, kp, *this); /* by keycount */
+            sort(ks, kp, key_cmp); /* by keycount */
+            // TODO merge two loops, already [sorted on key]
 
             do { /* loop over keys */
-                i = kh_val(H, *--kp) & 0xffffffff;
-                unsigned deviant = kh_key(H, *kp);
-                decode_twisted(seqrc, deviant);
+                j = *--kp;
+                decode_twisted(seqrc, j);
+                i = look[j] & BUFOFFSET_MASK;
+                assert(i != 1ul);
                 vp = vs;
                 do { // loop over values belonging to key
                     *vp++ = i; // XXX: valgrind: invalid write here?
@@ -198,14 +220,15 @@ struct fq_hash
                     i |= *--b; i <<= 8;
                     i |= *--b; i <<= 8;
                     i |= *--b;
-                } while (i != 1);
+                    assert (i < KEY_BUFSZ);
+                } while (i != 1ul);
 
                 sort(vs, vp, *this); // by offset/qualsum
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
                     unsigned len = decode_seqphred(b, dna);
                     cout << (char*)b + len + 1 << " " <<
-                        " 0x" << deviant << '\t' << seqrc << "\t";
+                        " 0x" << j << '\t' << seqrc << "\t";
                     b -= 8 + max_bitm;
                     for (unsigned j = max_bitm; j != 0; --j) {
                         uint8_t c = BitReverseTable256[*b++];
@@ -221,12 +244,7 @@ struct fq_hash
             free(ks);
         }
 	free(s);
-        kh_destroy(UQCT, H);
-    }
-    inline bool operator() (khiter_t a, khiter_t b) /* needed by sort kp/ks: sort on keycounts*/
-    {
-        //return kh_key(H, a) < kh_key(H, b);
-        return kh_val(H, a) < kh_val(H, b);
+        free(look);
     }
 
     inline bool operator() (uint64_t a, uint64_t b) /* needed by sort vs/vp: sort on orientation*/
@@ -239,7 +257,6 @@ struct fq_hash
     int is_err;
 
 private:
-    KHASH_INIT2(UQCT, kh_inline, uint32_t, uint64_t, 1, kh_int_hash_func, kh_int_hash_equal)
 
     /**
      * The sequence is converted to revcmp according to the central Nt, which is not part of the
@@ -384,12 +401,12 @@ private:
         *d = *q = '\0';
         return len;
     }
-    khash_t(UQCT) *H;
     size_t l, m, fq_ent_max, nr, readlength;
-    unsigned phred_offset, max_bitm;
+    unsigned phred_offset, max_bitm, key_ct;
     uint8_t *s;
+    uint64_t* look;
 };
 
 
-#endif //RK_FQ_HASH_H
+#endif //FQ_ARR_H
 

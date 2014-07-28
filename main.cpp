@@ -26,7 +26,7 @@ int main(int argc, const char* argv[])
     }
     assert((phred_offset >= 33) && (phred_offset <= 126));
     unsigned readlength = atoi(argv[argc - 1]);
-    struct fq_hash uqct(readlength, phred_offset);
+    struct fq_arr uqct(readlength, phred_offset);
 
     string nm, sq, tmp, ql;
     while ((not uqct.is_err) && getline(cin, nm) && getline(cin, sq) && getline(cin, tmp) && getline(cin, ql))

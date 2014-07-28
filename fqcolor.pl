@@ -15,7 +15,7 @@ while (<>) {
         #if (/^([^ ]+) (.*[ACTGN]{4,})/) {
         #	print $1.join('', map { $_ ? $h{$_} // $_ : () } split(//, substr ($2, 0)))."\x1b[0m\n";
         #} else {
-                my $re = /([ACTG]{7,}(\|[ACTG]{7,})*)/ ? qr/($1)?/ : qr//;
+                my $re = /\s([ACTG]+(\|[ACTG]+)*)\s/ ? qr/($1)?/ : qr//;
 		print;
         #}
         print and next while (($_ = <>) =~ /^(==|$)/);
