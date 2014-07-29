@@ -30,7 +30,7 @@
 // KEY_LENGTH must be odd - or 2nd bit of central Nt is not always flipped in its
 // complement - the alternative is the twisted halfdev conversion, but this is cheaper
 #define KEY_LENGTH 15
-#define KEY_MAX_CUTOFF 4
+#define KEY_CUTOFF 4
 #define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
 
@@ -40,7 +40,7 @@
 #define BUFOFFSET_MASK ((1ul << KEYCOUNT_OFFSET) - 1)
 
 //this must not exceed 32:
-#define KEY_WIDTH (KEY_LENGTH + KEY_MAX_CUTOFF)
+#define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF)
 
 #define KEYNT_STRAND (1u << KEY_WIDTH)
 #define KEY_TOP_NT ((KEY_WIDTH - 1) * 2)
@@ -137,11 +137,10 @@ struct fq_arr
         unsigned twisted, i = 0;
         uint8_t *b = s + l; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
-        dna = 0;
-        rev = 0;
-        rot = -KEY_WIDTH;
-        twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
+        i = init_twisted(seq);
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
+        seq += KEY_WIDTH;
+        twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
         b += max_bitm - 1;
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
@@ -175,7 +174,7 @@ struct fq_arr
             unsigned *ks, *kp;
             uint64_t *vp, *vs;
             uint64_t i = 0u, keymax = 1ul << KEYCOUNT_OFFSET;
-            uint8_t* dna = (uint8_t*)malloc((readlength<<1)+3);
+            uint8_t* d = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
@@ -229,7 +228,7 @@ struct fq_arr
                 sort(vs, vp, *this); // by offset/qualsum
                 do {
                     uint8_t* b = s + *--vp + 8 + max_bitm;
-                    unsigned len = decode_seqphred(b, dna);
+                    unsigned len = decode_seqphred(b, d);
                     cout << (char*)b + len + 1 << " " <<
                         " 0x" << j << '\t' << seqrc << "\t";
                     b -= 8 + max_bitm;
@@ -238,11 +237,11 @@ struct fq_arr
                         cout << (unsigned)((c & 0xf0) >> 4);
                         cout << (unsigned)(c & 0xf);
                     }
-                    cout << endl << dna << "\n+\n";
-                    cout << dna + readlength + 1 << "\n";
+                    cout << endl << d << "\n+\n";
+                    cout << d + readlength + 1 << "\n";
                 } while (vp != vs);
             } while (kp != ks);
-            free(dna);
+            free(d);
             free(vs);
             free(ks);
         }
@@ -261,32 +260,35 @@ struct fq_arr
 
 private:
 
-    /**
-     * The sequence is converted to revcmp according to the central Nt, which is not part of the
-     * sequence.
-     *
-     * The deviant part is insensitive to the strand. The sequence part is converted to the other
-     * strand according to the 2nd bit of the central Nt. This ensures also the sequence part in
-     * the seqdeviant is the same, regardless of the original strand.
-     *
-     * For all promising 17 Nt windows fitting our sequences' readlength, the seqdev is calculated.
-     * The maximum thereof is kept as well as its offset and the first bit of the central Nt.
-     *
-     */
-    uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
+    uint32_t init_twisted(const uint8_t* sq)
     {
-        uint64_t lmax, maxv, c;
-        do {
+        uint64_t c;
+        dna = rev = 0ul;
+
+        for (rot = KEY_WIDTH; rot != 0; --rot) {
             if ((c = *sq++) == '\0') return 0;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             dna = (dna << 2) | c;
             rev = (c << KEY_TOP_NT) | (rev >> 2);
-
-        } while (++rot < 0);
-
+        }
         rev ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
+        return KEY_WIDTH;
+    }
+    /**
+     * The key is the sequence or revcmp dependent on the 2nd bit of the central Nt. As every
+     * other 2nd bit of each twobit, it is inverted for the reverse complement. Since this is
+     * the central Nt - odd KEY_LENGTH - the position is the same for the reverse complement.
+     *
+     * For all windows of KEY_LENGTH plus KEY_CUTOFF, the key value is calculated. The maximum
+     * thereof is kept as well as its offset.
+     *
+     */
+    uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
+    {
+        uint64_t lmax, maxv, c;
+
         // seq or revcmp according to 2nd bit of central Nt
         c = (dna & KEYNT_STRAND) ? dna : rev;
         lmax = c;
