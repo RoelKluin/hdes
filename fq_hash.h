@@ -31,6 +31,8 @@
 // complement - the alternative is the twisted halfdev conversion, but this is cheaper
 #define KEY_LENGTH 15
 #define KEY_CUTOFF 4
+//this must not exceed 32:
+#define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF)
 #define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
 
@@ -38,9 +40,6 @@
 #define KEYCOUNT_OFFSET 31
 #define KEY_BUFSZ (1u << (KEYCOUNT_OFFSET - 1))
 #define BUFOFFSET_MASK ((1ul << KEYCOUNT_OFFSET) - 1)
-
-//this must not exceed 32:
-#define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF)
 
 #define KEYNT_STRAND (1u << KEY_WIDTH)
 #define KEY_TOP_NT ((KEY_WIDTH - 1) * 2)
@@ -109,7 +108,7 @@ struct fq_arr
 
     /**
      * Store or update the entry with the given sequence. The key is the maximum of 16 Nts
-     * surrounding a central-Nt, the strand decided by the cNts' 2nd bit. see encode_twisted().
+     * surrounding a central-Nt, the strand decided by the cNts' 2nd bit. see maximize_key().
      * The value is a 64 bit consisting of an offset in buffer `s' in
      * the low bits and a count of keys after KEYCOUNT_OFFSET bits.
      *
@@ -137,13 +136,12 @@ struct fq_arr
         unsigned twisted, i = 0;
         uint8_t *b = s + l; // bytes to store max locations
         // get twisted: value that is the same for seq and revcmp
-        i = init_twisted(seq);
+        i = init_key(seq);
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
-        seq += KEY_WIDTH;
-        twisted = encode_twisted(seq, b, &i); // remove low bit, separate deviant
+        twisted = maximize_key(seq + KEY_WIDTH, b, &i);
         b += max_bitm - 1;
 
-        for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
+        for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
             *++b = i & 0xff;
 
         // TODO: do without KEYCOUNT (count per key - keep key_ct, i.e. tot key cpunt)
@@ -156,7 +154,7 @@ struct fq_arr
         *r += 1ul << KEYCOUNT_OFFSET;
 
         for (unsigned j = 0; j != 4; ++j, t >>= 8)
-            *++b = t & 0xff; // move former offset, or last element mark (1u) here
+            *++b = t & 0xff; // move former buffer offset, or last element mark (1u) here
 
         b = encode_seqphred(qual, seq, b);
         while ((*++b = *name) != '\0') ++name;
@@ -211,7 +209,7 @@ struct fq_arr
 
             do { /* loop over keys */
                 j = *--kp;
-                decode_twisted(seqrc, j);
+                decode_key(seqrc, j);
                 i = look[j] & BUFOFFSET_MASK;
                 assert(i != 1ul);
                 vp = vs;
@@ -227,11 +225,11 @@ struct fq_arr
 
                 sort(vs, vp, *this); // by offset/qualsum
                 do {
-                    uint8_t* b = s + *--vp + 8 + max_bitm;
+                    uint8_t* b = s + *--vp + max_bitm + 8;
                     unsigned len = decode_seqphred(b, d);
                     cout << (char*)b + len + 1 << " " <<
                         " 0x" << j << '\t' << seqrc << "\t";
-                    b -= 8 + max_bitm;
+                    b -= max_bitm + 8;
                     for (unsigned j = max_bitm; j != 0; --j) {
                         uint8_t c = BitReverseTable256[*b++];
                         cout << (unsigned)((c & 0xf0) >> 4);
@@ -260,7 +258,7 @@ struct fq_arr
 
 private:
 
-    uint32_t init_twisted(const uint8_t* sq)
+    uint32_t init_key(const uint8_t* sq)
     {
         uint64_t c;
         dna = rev = 0ul;
@@ -285,7 +283,7 @@ private:
      * thereof is kept as well as its offset.
      *
      */
-    uint32_t encode_twisted(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
+    uint32_t maximize_key(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
     {
         uint64_t lmax, maxv, c;
 
@@ -336,10 +334,11 @@ private:
                 *m |= 1u << (rot & 7);
             }
         }
+        *lmaxi += KEY_WIDTH;//
         lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
         return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
     }
-    void decode_twisted(char* seq, unsigned dna)
+    void decode_key(char* seq, unsigned dna)
     {
         char* revcmp = seq + (KEY_LENGTH << 1) + 1;
         *revcmp = '\0';
@@ -388,21 +387,21 @@ private:
     unsigned decode_seqphred(uint8_t* b, uint8_t* d)
     {
         unsigned len;
-        uint8_t *q = d + readlength + 1;
+        uint8_t *r = d + readlength + 1;
 
-        for(len = 0; *b != 0xff; ++len, ++b, ++d, ++q) {
+        for(len = 0; *b != 0xff; ++len, ++b, ++d, ++r) {
             unsigned c = *b;
             if (c >= 3) {
                 c -= 3;
                 *d = b6((c >> 5) & 0x6);
-                *q = (c & 0x3f) + phred_offset;
+                *r = (c & 0x3f) + phred_offset;
             } else {
                 *d = 'N';
-                *q = c + phred_offset;
+                *r = c + phred_offset;
             }
         }
         assert (len <= readlength);
-        *d = *q = '\0';
+        *d = *r = '\0';
         return len;
     }
     size_t l, m, fq_ent_max, nr, readlength;
