@@ -62,15 +62,11 @@ static unsigned phredtoe10[] = {
     251189, 316228, 398107, 501187, 630957, 794328, 1000000, 1258925, 1584893, 1995262
 };
 
-static inline void memset32(void* dest, uint32_t value, unsigned size)
+template<typename T>
+static inline void memset_T(void* dest, T value, T size)
 {
-  for(unsigned i = 0; i != size; i += 4)
-    memcpy(((char*)dest) + i, &value, 4);
-}
-static inline void memset64(void* dest, uint64_t value, uint64_t size)
-{
-  for(uint64_t i = 0; i != size; i += 8)
-    memcpy(((char*)dest) + i, &value, 8);
+  for(T i = 0; i != size; i += sizeof(T))
+    memcpy(((char*)dest) + i, &value, sizeof(T));
 }
 
 using namespace std;
@@ -81,11 +77,6 @@ static inline unsigned bytes_for_bits(unsigned v)
     v |= v >> 8;
     v |= v >> 16;
     return ++v;
-}
-static inline bool key_cmp(uint64_t a, uint64_t b) /* needed by sort kp/ks: sort on keycounts*/
-{
-    return (a & ~BUFOFFSET_MASK) < (b & ~BUFOFFSET_MASK);
-    //return (a & BUFOFFSET_MASK) < (b & BUFOFFSET_MASK);
 }
 
 struct fq_arr
@@ -102,7 +93,7 @@ struct fq_arr
         unsigned looklen = KEY_BUFSZ;
         look = (uint64_t*)malloc(sizeof(uint64_t)*looklen);
         assert(look != NULL);
-        memset64(look, 1ul, sizeof(uint64_t)*looklen);
+        memset_T<uint64_t>(look, 1ul, sizeof(uint64_t)*looklen);
         kroundup32(fq_ent_max);
     }
 
@@ -169,90 +160,42 @@ struct fq_arr
      */
     void dump() { /* must always be called to clean up */
         if (not is_err) {
-            unsigned *ks, *kp;
-            uint64_t *vp, *vs;
-            uint64_t i = 0u, keymax = 1ul << KEYCOUNT_OFFSET;
+            uint64_t i = 0u;
             uint8_t* d = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
-            kp = ks = (unsigned*)malloc(key_ct * sizeof(unsigned));
-
-            unsigned uniq = 0;
             uint64_t j = KEY_BUFSZ - 1;
             do {
-                if (look[j] != 1ul) { // has keys
-                    *kp++ = j;
-                    i = look[j];
-                    i &= ~BUFOFFSET_MASK;
-                    if (i == (1ul << KEYCOUNT_OFFSET)) ++uniq;
-                    else if (i > keymax) keymax = i;
+                i = look[j] & BUFOFFSET_MASK;
+                if (i != 1ul) {
+                    decode_key(seqrc, j);
+                    do { // has keys
+                        uint8_t* b = s + i + max_bitm + 7;
+                        i = *b; i <<= 8;
+                        i |= *--b; i <<= 8;
+                        i |= *--b; i <<= 8;
+                        i |= *--b;
+                        assert (i < KEY_BUFSZ);
+                        b += 4;
+                        unsigned len = decode_seqphred(b, d);
+                        cout << (char*)b + len + 1 << " " <<
+                            " 0x" << j << '\t' << seqrc << "\t";
+                        b -= max_bitm + 8;
+                        for (unsigned j = max_bitm; j != 0; --j) {
+                            uint8_t c = BitReverseTable256[*b++];
+                            cout << (unsigned)((c & 0xf0) >> 4);
+                            cout << (unsigned)(c & 0xf);
+                        }
+                        cout << endl << d << "\n+\n";
+                        cout << d + readlength + 1 << "\n";
+                    } while (i != 1ul);
                 }
             } while (--j != 0);
-            keymax >>= KEYCOUNT_OFFSET;
-
-            assert(kp != ks);
-            cerr << "== " << key_ct << " / " << nr << " keys per sequences," <<
-                " of which " << uniq << " were unique." <<
-                " the most frequent occured in " << keymax << " reads. ==\n";
-            ++keymax;
-
-            // FIXME: why is keymax not sufficient (valgrind on very large fq)? 
-            // maybe due to key collision?
-            // CTCTGTTGTGTCTGATT|AATCAGACACAACAGAG
-            // CTCTGTGGTGTCTGATT|AATCAGACACCACAGAG
-            //       ^                     ^
-            vs = (uint64_t*)malloc((keymax << 1) * sizeof(uint64_t));
-
-            sort(ks, kp, key_cmp); /* by keycount */
-            // TODO merge two loops, already [sorted on key]
-
-            do { /* loop over keys */
-                j = *--kp;
-                decode_key(seqrc, j);
-                i = look[j] & BUFOFFSET_MASK;
-                assert(i != 1ul);
-                vp = vs;
-                do { // loop over values belonging to key
-                    *vp++ = i; // XXX: valgrind: invalid write here?
-                    uint8_t* b = s + i + max_bitm + 7;
-                    i = *b; i <<= 8;
-                    i |= *--b; i <<= 8;
-                    i |= *--b; i <<= 8;
-                    i |= *--b;
-                    assert (i < KEY_BUFSZ);
-                } while (i != 1ul);
-
-                sort(vs, vp, *this); // by offset/qualsum
-                do {
-                    uint8_t* b = s + *--vp + max_bitm + 8;
-                    unsigned len = decode_seqphred(b, d);
-                    cout << (char*)b + len + 1 << " " <<
-                        " 0x" << j << '\t' << seqrc << "\t";
-                    b -= max_bitm + 8;
-                    for (unsigned j = max_bitm; j != 0; --j) {
-                        uint8_t c = BitReverseTable256[*b++];
-                        cout << (unsigned)((c & 0xf0) >> 4);
-                        cout << (unsigned)(c & 0xf);
-                    }
-                    cout << endl << d << "\n+\n";
-                    cout << d + readlength + 1 << "\n";
-                } while (vp != vs);
-            } while (kp != ks);
             free(d);
-            free(vs);
-            free(ks);
         }
 	free(s);
         free(look);
-    }
-
-    inline bool operator() (uint64_t a, uint64_t b) /* needed by sort vs/vp: sort on orientation*/
-    {
-        uint8_t *sa = s + max_bitm + a + 3, *sb = s + max_bitm + b + 3;
-        for (unsigned i = 0; i < 4; ++i, --sa, --sb)
-            if (*sa != *sb) return *sa < *sb;
-        return 0;
     }
     int is_err;
 
