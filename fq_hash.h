@@ -71,14 +71,6 @@ static inline void memset_T(void* dest, T value, T size)
 
 using namespace std;
 
-static inline unsigned bytes_for_bits(unsigned v)
-{
-    v >>= 3;
-    v |= v >> 8;
-    v |= v >> 16;
-    return ++v;
-}
-
 struct fq_arr
 {
     fq_arr(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
@@ -87,9 +79,7 @@ struct fq_arr
     {
         s = (uint8_t*)malloc(m);
         *s = '\0';
-        rl -= KEY_WIDTH;
         key_ct = 0u;
-        max_bitm = bytes_for_bits(rl);
         unsigned looklen = KEY_BUFSZ;
         look = (uint64_t*)malloc(sizeof(uint64_t)*looklen);
         assert(look != NULL);
@@ -129,11 +119,10 @@ struct fq_arr
         // get twisted: value that is the same for seq and revcmp
         i = init_key(seq);
         if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
-        twisted = maximize_key(seq + KEY_WIDTH, b, &i);
-        b += max_bitm - 1;
+        twisted = maximize_key(seq + KEY_WIDTH, &i);
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
-            *++b = i & 0xff;
+            *b++ = i & 0xff;
 
         // TODO: do without KEYCOUNT (count per key - keep key_ct, i.e. tot key cpunt)
         size_t* r = &look[twisted];
@@ -145,11 +134,11 @@ struct fq_arr
         *r += 1ul << KEYCOUNT_OFFSET;
 
         for (unsigned j = 0; j != 4; ++j, t >>= 8)
-            *++b = t & 0xff; // move former buffer offset, or last element mark (1u) here
+            *b++ = t & 0xff; // move former buffer offset, or last element mark (1u) here
 
         b = encode_seqphred(qual, seq, b);
-        while ((*++b = *name) != '\0') ++name;
-        l = ++b - s;
+        while ((*b++ = *name) != '\0') ++name;
+        l = b - s;
     }
 
     /**
@@ -171,7 +160,7 @@ struct fq_arr
                 if (i != 1ul) {
                     decode_key(seqrc, j);
                     do { // has keys
-                        uint8_t* b = s + i + max_bitm + 7;
+                        uint8_t* b = s + i + 7;
                         i = *b; i <<= 8;
                         i |= *--b; i <<= 8;
                         i |= *--b; i <<= 8;
@@ -180,15 +169,9 @@ struct fq_arr
                         b += 4;
                         unsigned len = decode_seqphred(b, d);
                         cout << (char*)b + len + 1 << " " <<
-                            " 0x" << j << '\t' << seqrc << "\t";
-                        b -= max_bitm + 8;
-                        for (unsigned j = max_bitm; j != 0; --j) {
-                            uint8_t c = BitReverseTable256[*b++];
-                            cout << (unsigned)((c & 0xf0) >> 4);
-                            cout << (unsigned)(c & 0xf);
-                        }
-                        cout << endl << d << "\n+\n";
-                        cout << d + readlength + 1 << "\n";
+                            " 0x" << j << '\t' << seqrc << endl;
+
+                        cout << d << "\n+\n" << d + readlength + 1 << "\n";
                     } while (i != 1ul);
                 }
             } while (--j != 0);
@@ -226,7 +209,7 @@ private:
      * thereof is kept as well as its offset.
      *
      */
-    uint32_t maximize_key(const uint8_t* sq, uint8_t* m, unsigned* lmaxi)
+    uint32_t maximize_key(const uint8_t* sq, unsigned* lmaxi)
     {
         uint64_t lmax, maxv, c;
 
@@ -235,12 +218,11 @@ private:
         lmax = c;
         maxv = c ^ (c >> 2); // maximize on gray Nt sequence
         *lmaxi = rot;
-        *m = 1;
 
         // if cNt bit is set: top part is seq, else revcmp
 
         while((c = *sq++) != '\0') { // search for maximum from left
-            if ((++rot & 7) == 0) *++m = 0u;
+            ++rot;
             c = b6(c);
             c = -isb6(c) & (c >> 1);
             dna = ((dna << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
@@ -254,27 +236,6 @@ private:
                 lmax = c;
                 maxv = Ntgc;
                 *lmaxi = rot;
-                *m |= 1u << (rot & 7);
-            }
-        }
-        *m |= 1u << (rot & 7);
-        sq -= KEY_WIDTH + 2;
-        c = (dna & KEYNT_STRAND) ? dna : rev;
-        maxv = c ^ (c >> 2);
-
-        while ((unsigned)--rot > *lmaxi) { // search for maximum from right
-            if ((rot & 7) == 0) --m;
-            c = *sq--;
-            c = b6(c);
-            c = -isb6(c) & (c >> 1);
-            dna = (c << KEY_TOP_NT) | (dna >> 2); // Note: walking back
-            rev = ((rev << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | (c ^ 2);
-            c = (dna & KEYNT_STRAND) ? dna : rev;
-            uint64_t Ntgc = c ^ (c >> 2);
-
-            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && !(dna & KEYNT_STRAND))) {
-                maxv = Ntgc;
-                *m |= 1u << (rot & 7);
             }
         }
         *lmaxi += KEY_WIDTH;//
@@ -311,7 +272,7 @@ private:
     uint8_t* encode_seqphred(const uint8_t* qual, const uint8_t* seq, uint8_t* b)
     {
         unsigned i = 0;
-        while ((*++b = *qual++) != '\0') {
+        while ((*b = *qual++) != '\0') {
             *b -= phred_offset;
             assert(*b <= 50);
             i += phredtoe10[*b];
@@ -320,8 +281,9 @@ private:
             // In case of an 'N' phred should always be less than 3
             // max phred for base (G) is 60 using this scheme
             if (isb6(c)) *b = (*b | (c << 5)) + 3;
+            ++b;
         }
-        *b = 0xff;
+        *b++ = 0xff;
         return b;
     }
     /**
@@ -348,7 +310,7 @@ private:
         return len;
     }
     size_t l, m, fq_ent_max, nr, readlength;
-    unsigned phred_offset, max_bitm, key_ct, rot;
+    unsigned phred_offset, key_ct, rot;
     uint8_t *s;
     uint64_t* look, dna, rev;
 };
