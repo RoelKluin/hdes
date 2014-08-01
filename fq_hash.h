@@ -25,7 +25,7 @@
 
 
 // maximum length of the read name
-#define RK_FQ_MAX_NAME_ETC    (1ul << 14)
+#define RK_FQ_MAX_NAME_ETC    (1u << 14)
 
 // KEY_LENGTH must be odd - or 2nd bit of central Nt is not always flipped in its
 // complement - the alternative is the twisted halfdev conversion, but this is cheaper
@@ -33,19 +33,17 @@
 #define KEY_CUTOFF 4
 //this must not exceed 32:
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF)
-#define KEYNT_AC (1u << (KEY_WIDTH - 1))
+#define KEY_BUFSZ (1u << ((KEY_LENGTH << 1) - 1))
+#define KEY_TRUNC_MASK (KEY_BUFSZ - 1u)
 
+#define KEYNT_AC (1ul << (KEY_WIDTH - 1))
+#define CNtM        (KEYNT_AC - 1ul)
 
-#define CNtM        (KEYNT_AC - 1)
-#define KEYCOUNT_OFFSET 31
-#define KEY_BUFSZ (1u << (KEYCOUNT_OFFSET - 1))
-#define BUFOFFSET_MASK ((1ul << KEYCOUNT_OFFSET) - 1)
-
-#define KEYNT_STRAND (1u << KEY_WIDTH)
+#define KEYNT_STRAND (1ul << KEY_WIDTH)
 #define KEY_TOP_NT ((KEY_WIDTH - 1) * 2)
 
 #define KEY_WIDTH_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
-#define HALF_KEY_WIDTH_MASK (KEYNT_STRAND - 1u)
+#define HALF_KEY_WIDTH_MASK (KEYNT_STRAND - 1ul)
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -63,9 +61,9 @@ static unsigned phredtoe10[] = {
 };
 
 template<typename T>
-static inline void memset_T(void* dest, T value, T size)
+static inline void memset_T(void* dest, T value, uint64_t size)
 {
-  for(T i = 0; i != size; i += sizeof(T))
+  for(uint64_t i = 0; i != size; i += sizeof(T))
     memcpy(((char*)dest) + i, &value, sizeof(T));
 }
 
@@ -73,25 +71,26 @@ using namespace std;
 
 struct fq_arr
 {
-    fq_arr(size_t rl, unsigned po) : is_err(0), l(0), m(1ul << 23),
-        fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0), readlength(rl),
+    fq_arr(unsigned rl, unsigned po) : is_err(0), l(0u), m(1u << 23),
+        fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0u), readlength(rl),
         phred_offset(po)
     {
         s = (uint8_t*)malloc(m);
         *s = '\0';
         key_ct = 0u;
         unsigned looklen = KEY_BUFSZ;
-        look = (uint64_t*)malloc(sizeof(uint64_t)*looklen);
+        look = (uint32_t*)malloc(sizeof(uint32_t)*looklen);
         assert(look != NULL);
-        memset_T<uint64_t>(look, 1ul, sizeof(uint64_t)*looklen);
+        memset_T<uint32_t>(look, 1u, sizeof(uint32_t)*looklen);
         kroundup32(fq_ent_max);
     }
 
     /**
-     * Store or update the entry with the given sequence. The key is the maximum of 16 Nts
-     * surrounding a central-Nt, the strand decided by the cNts' 2nd bit. see maximize_key().
-     * The value is a 64 bit consisting of an offset in buffer `s' in
-     * the low bits and a count of keys after KEYCOUNT_OFFSET bits.
+     * Store or update the entry with the given sequence. The key is the gray maximal of
+     * KEY_WIDTH Nts in the sequence, foreach the strand to be considered decided by the
+     * central Nt's 2nd bit, see maximize_key(). As value is stored a 64 bit consisting
+     * of an offset in buffer `s' and the offset of the selected key within the entire
+     * sequence.
      *
      * At the offset, buffer `s' holds four bytes - 1 bit, for the
      * offset of the max in the sequence,
@@ -114,24 +113,22 @@ struct fq_arr
             m <<= 1;
             s = (uint8_t*)realloc(s, m);
         }
-        unsigned twisted, i = 0;
+        unsigned key, i = KEY_WIDTH;
         uint8_t *b = s + l; // bytes to store max locations
-        // get twisted: value that is the same for seq and revcmp
-        i = init_key(seq);
-        if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
-        twisted = maximize_key(seq + KEY_WIDTH, &i);
+        if_ever (not init_key(seq)) return;           // XXX: means sequence too short. skipped.
+        // get key - insensitive to strand
+        key = maximize_key(seq + KEY_WIDTH, &i);
 
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
             *b++ = i & 0xff;
 
         // TODO: do without KEYCOUNT (count per key - keep key_ct, i.e. tot key cpunt)
-        size_t* r = &look[twisted];
-        size_t t = *r & BUFOFFSET_MASK;
+        uint32_t* r = look + key;
+        uint32_t t = *r;
 
-        if (t == 1ul) key_ct++; // first element
+        if (t == 1u) key_ct++; // first element
         assert (l < KEY_BUFSZ);
-        *r ^= t ^ l; // exchange by this offset
-        *r += 1ul << KEYCOUNT_OFFSET;
+        *r = l; // exchange by this offset
 
         for (unsigned j = 0; j != 4; ++j, t >>= 8)
             *b++ = t & 0xff; // move former buffer offset, or last element mark (1u) here
@@ -142,29 +139,25 @@ struct fq_arr
     }
 
     /**
-     * print the fastq entries in a sorted order. Fastq entries for deviant keys
-     * that occur the most first. Sorted on the phred sum for identical counts.
-     * for each deviant the reads are then sorted on the offset of the deviant
-     * key in the read. This occurs for both strands.
+     * print the fastq entries. 
      */
     void dump() { /* must always be called to clean up */
         if (not is_err) {
-            uint64_t i = 0u;
             uint8_t* d = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[(KEY_LENGTH+1)<<1];
             cout << hex;
 
-            uint64_t j = KEY_BUFSZ - 1;
+            uint32_t j = KEY_BUFSZ - 1u;
             do {
-                i = look[j] & BUFOFFSET_MASK;
-                if (i != 1ul) {
+                uint32_t i = look[j];
+                if (i != 1u) { // has keys
                     decode_key(seqrc, j);
-                    do { // has keys
+                    do {
                         uint8_t* b = s + i + 7;
                         i = *b; i <<= 8;
                         i |= *--b; i <<= 8;
                         i |= *--b; i <<= 8;
-                        i |= *--b;
+                        i |= *--b; // next seq offset for same key, or 1u.
                         assert (i < KEY_BUFSZ);
                         b += 4;
                         unsigned len = decode_seqphred(b, d);
@@ -172,9 +165,9 @@ struct fq_arr
                             " 0x" << j << '\t' << seqrc << endl;
 
                         cout << d << "\n+\n" << d + readlength + 1 << "\n";
-                    } while (i != 1ul);
+                    } while (i != 1u);
                 }
-            } while (--j != 0);
+            } while (--j != 0u);
             free(d);
         }
 	free(s);
@@ -184,13 +177,13 @@ struct fq_arr
 
 private:
 
-    uint32_t init_key(const uint8_t* sq)
+    bool init_key(const uint8_t* sq)
     {
         uint64_t c;
         dna = rev = 0ul;
 
         for (rot = KEY_WIDTH; rot != 0; --rot) {
-            if ((c = *sq++) == '\0') return 0;
+            if ((c = *sq++) == '\0') return false;
             // zero [min] for A or non-Nt. Maybe reads with N's should be processed at the end.
             c = b6(c);
             c = -isb6(c) & (c >> 1);
@@ -198,12 +191,12 @@ private:
             rev = (c << KEY_TOP_NT) | (rev >> 2);
         }
         rev ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
-        return KEY_WIDTH;
+        return true;
     }
     /**
      * The key is the sequence or revcmp dependent on the 2nd bit of the central Nt. As every
-     * other 2nd bit of each twobit, it is inverted for the reverse complement. Since this is
-     * the central Nt - odd KEY_LENGTH - the position is the same for the reverse complement.
+     * 2nd bit of each twobit, it is inverted for the reverse complement. Since this is the
+     * central Nt - odd KEY_LENGTH - the position also is the same for the reverse complement.
      *
      * For all windows of KEY_LENGTH plus KEY_CUTOFF, the key value is calculated. The maximum
      * thereof is kept as well as its offset.
@@ -219,8 +212,6 @@ private:
         maxv = c ^ (c >> 2); // maximize on gray Nt sequence
         *lmaxi = rot;
 
-        // if cNt bit is set: top part is seq, else revcmp
-
         while((c = *sq++) != '\0') { // search for maximum from left
             ++rot;
             c = b6(c);
@@ -228,19 +219,17 @@ private:
             dna = ((dna << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
             rev = ((c ^ 2) << KEY_TOP_NT) | (rev >> 2);
             c = (dna & KEYNT_STRAND) ? dna : rev;
+            // with gray Nt code, we may select a more specific subsequence.
             uint64_t Ntgc = c ^ (c >> 2);
 
-            // need to truncate before maximize check.
-            // rather than the max, we should search for the most distinct substring.
             if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (dna & KEYNT_STRAND))) {
                 lmax = c;
                 maxv = Ntgc;
                 *lmaxi = rot;
             }
         }
-        *lmaxi += KEY_WIDTH;//
-        lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK);     // excise out central Nt
-        return lmax & (KEY_BUFSZ - 1u); /* truncate on purpose */
+        lmax = ((lmax >> 1) & ~HALF_KEY_WIDTH_MASK) | (lmax & HALF_KEY_WIDTH_MASK); // excise out 2nd cNt bit
+        return lmax & KEY_TRUNC_MASK; /* truncate to make keys more random */
     }
     void decode_key(char* seq, unsigned dna)
     {
@@ -250,7 +239,7 @@ private:
         char c;
 
         for (unsigned i = 0; i != KEY_LENGTH - 1; ++i, ++seq, dna >>= 2) {
-            if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert central Nt */
+            if (i == ((KEY_WIDTH - 1) >> 1)) { /* insert 2nd central Nt */
                 c = (dna & 1) << 1;
                 *seq = b6(c);
                 *--revcmp = b6(c ^ 4);
@@ -266,7 +255,7 @@ private:
     }
 
     /**
-     * put sequence and phred qualities in one char foreach Nt. This includes the deviant
+     * put sequence and phred qualities in one char foreach Nt. This includes the key
      * sequence section currently, but this may change in the future - it is not needed.
      */
     uint8_t* encode_seqphred(const uint8_t* qual, const uint8_t* seq, uint8_t* b)
@@ -309,10 +298,11 @@ private:
         *d = *r = '\0';
         return len;
     }
-    size_t l, m, fq_ent_max, nr, readlength;
+    uint32_t l, m, fq_ent_max, nr, readlength;
     unsigned phred_offset, key_ct, rot;
     uint8_t *s;
-    uint64_t* look, dna, rev;
+    uint32_t* look;
+    uint64_t dna, rev;
 };
 
 
