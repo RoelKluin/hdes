@@ -73,11 +73,12 @@ struct fq_arr
 {
     fq_arr(unsigned rl, unsigned po) : is_err(0), l(0u), m(1u << 23),
         fq_ent_max((rl << 1) + RK_FQ_MAX_NAME_ETC), nr(0u), readlength(rl),
-        phred_offset(po)
+        phred_offset(po), tidi(0u), tidm(32u)
     {
         s = (uint8_t*)malloc(m);
         *s = '\0';
         key_ct = 0u;
+        tid = (unsigned*)malloc(tidm*sizeof(unsigned));
         unsigned looklen = KEY_BUFSZ;
         look = (uint32_t*)malloc(sizeof(uint32_t)*looklen);
         assert(look != NULL);
@@ -113,15 +114,108 @@ struct fq_arr
         // get key - insensitive to strand
         key = maximize_key(seq + KEY_WIDTH, &i);
         uint8_t *b = update_offsets(key, i);
-
-
-
-
-
         b = encode_seqphred(qual, seq, b);
         while ((*b++ = *name) != '\0') ++name;
         l = b - s;
     }
+    /*void fa_put(const uint8_t* seq, unsigned* lmaxi)
+    {
+        realloc_s();
+        unsigned key, i;
+        if (cNt & 1) {// => last line was a new tid, so need to refill maxes
+            if (cNt == 1) {i = 0; roti = -20; }
+            cNt &= ~3;                           // unset `need-more-char bits'
+            if (not init_key(seq)) { cNt |= 3; return; }
+            key = encode_twisted(seq, &i);
+            if (i == 0) { cNt |= 3; return; }    // need more chars
+            seq += roti % (rl - 20);             // we already got the max for these
+            update_offsets(key, i);
+        }
+        if (seq[0] != '>') {
+            uint8_t *b = s + l;
+            while((c = *sq++) != '\0') {
+                if (++rot == rl - 20) rot = 0;
+
+                c = b6(c);
+                c = -isb6(c) & (c >> 1);
+                dna = ((dna << 2) & KEY_WIDTH_MASK & 0xffffffffffffffff) | c;
+                rev = ((c ^ 2) << KEY_TOP_NT) | (rev >> 2);
+                unsigned t = dna & KEYNT_STRAND;
+                c = t ? dna : rev;
+                // with gray Nt code, we may select a more specific subsequence.
+                uint64_t Ntgc = c ^ (c >> 2);
+
+                // rather than the max, we should search for the most distinct substring.
+                if ((Ntgc > rot[*lmaxi]) || unlikely(Ntgc == rot[*lmaxi] && t)) {
+                    *lmaxi = rot;
+                    i = left_maxi | (-!(cNt ^ t) & 0x80000000);
+                    key = c & 0xffffffff;
+                    if_ever(insert_key(key, i) == false) // insert into database
+                        return;
+
+                } else if (roti == left_maxi) {
+                    // the max has left, we have to search for the next max
+                    // for each we also need to redetermine the twisted state
+                    left_maxi = roti;
+                    i = roti == 0 ? rl - 21 : roti - 1;
+                    // if the second bit is the same for the last rotation
+                    // the flip state was the same.
+                    t = (t != 0);
+                    t ^= (((rot[roti] >> 2) ^ rot[i]) & 0x2) != 0;
+                    do {
+                        // FIXME: calculate t:
+                        if ((rot[i] > c) || unlikely(rot[i] == c && t)) {
+                            left_maxi = i;
+                        }
+                        t ^= rot[i];
+                        if (i + 1 == rl) {
+                            t = rot[i] & 0x20000;
+                            i = 0;
+                    } while (i != roti);
+                    c = rot[roti]
+                }
+            // if a max is leaving, search for the new max
+            // insert every new char in buffer
+            // for each new max, insert its key in the database
+        } else if (seq[0] == '>') {
+            ins_fa_hdr(seq);
+            cNt = 1; // refill maxes and reset rotations
+        }
+
+
+        b = s + l;
+
+        unsigned twisted, i = 0;
+        // get twisted: value that is the same for seq and revcmp
+        twisted = encode_twisted(seq, &i); // remove low bit, separate deviant
+        if_ever (i == 0) return;           // XXX: means sequence too short. skipped.
+
+        for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert offset
+            *++b = i & 0xff;
+
+        // NOTE: the central Nt is not part of the key. A mismatch can occur at that Nt.
+        khiter_t k = kh_get(UQCT, H, twisted);
+        if (k == kh_end(H)) { // new deviant
+            k = kh_put(UQCT, H, twisted, &is_err);
+            if_ever ((is_err = (is_err < 0))) return;
+            kh_val(H, k) = 1ul << RK_FQ_KEYCOUNT_OFFSET; // keycount
+            i = 1; // marks last element
+
+        } else {
+            kh_val(H, k) += 1ul << RK_FQ_KEYCOUNT_OFFSET;
+
+            i = kh_val(H, k) & 0xffffffff; // former value offset
+            kh_val(H, k) ^= i;
+        }
+        kh_val(H, k) |= l;
+
+        for (unsigned j = 0; j != 4; ++j, i >>= 8) // last insert offset
+            *++b = i & 0xff;
+
+        b = encode_seqphred(qual, seq, b);
+        while ((*++b = *name) != '\0') ++name;
+        l = ++b - s;
+     }*/
 
     /**
      * print the fastq entries. 
@@ -158,6 +252,7 @@ struct fq_arr
             } while (--j != 0u);
             free(d);
         }
+        free(tid);
 	free(s);
         free(look);
     }
@@ -204,6 +299,20 @@ private:
             *b++ = i & 0xff; // move former buffer offset, or last element mark (1u) here
 
         return b;
+    }
+    void ins_fa_hdr(const uint8_t* seq)
+    {
+        uint8_t *b = s + l;
+        // insert position of next reference string.
+        if (tidi++ == tidm) {
+            tidm <<= 1;
+            tid = (unsigned*)realloc(tid, tidm*sizeof(unsigned));
+        }
+        *tid++ = l;
+
+        // insert reference string, skip '>'
+        while ((*b++ = *++seq) != '\0') {}
+        l = b - s;
     }
     /**
      * The key is the sequence or revcmp dependent on the 2nd bit of the central Nt. As every
@@ -311,8 +420,9 @@ private:
         return len;
     }
     uint32_t l, m, fq_ent_max, nr, readlength;
-    unsigned phred_offset, key_ct, rot;
+    unsigned phred_offset, key_ct, rot, tidi, tidm;
     uint8_t *s;
+    unsigned* tid;
     uint32_t* look;
     uint64_t dna, rev;
 };
