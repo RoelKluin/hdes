@@ -106,32 +106,17 @@ struct fq_arr
      */
     void put(const uint8_t* seq, const uint8_t* qual, const uint8_t* name)
     {
-        if_ever (is_err) return;
-        assert (l != 1);
         ++nr;
-        if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
-            m <<= 1;
-            s = (uint8_t*)realloc(s, m);
-        }
-        unsigned key, i = KEY_WIDTH;
-        uint8_t *b = s + l; // bytes to store max locations
-        if_ever (not init_key(seq)) return;           // XXX: means sequence too short. skipped.
+        realloc_s();
+        unsigned key, i;
+        if_ever (not init_key(seq)) return; // XXX: means sequence too short. skipped.
         // get key - insensitive to strand
         key = maximize_key(seq + KEY_WIDTH, &i);
+        uint8_t *b = update_offsets(key, i);
 
-        for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
-            *b++ = i & 0xff;
 
-        // TODO: do without KEYCOUNT (count per key - keep key_ct, i.e. tot key cpunt)
-        uint32_t* r = look + key;
-        uint32_t t = *r;
 
-        if (t == 1u) key_ct++; // first element
-        assert (l < KEY_BUFSZ);
-        *r = l; // exchange by this offset
 
-        for (unsigned j = 0; j != 4; ++j, t >>= 8)
-            *b++ = t & 0xff; // move former buffer offset, or last element mark (1u) here
 
         b = encode_seqphred(qual, seq, b);
         while ((*b++ = *name) != '\0') ++name;
@@ -141,7 +126,8 @@ struct fq_arr
     /**
      * print the fastq entries. 
      */
-    void dump() { /* must always be called to clean up */
+    void dump()
+    { /* must always be called to clean up */
         if (not is_err) {
             uint8_t* d = (uint8_t*)malloc((readlength<<1)+3);
             char seqrc[(KEY_LENGTH+1)<<1];
@@ -159,6 +145,8 @@ struct fq_arr
                         i |= *--b; i <<= 8;
                         i |= *--b; // next seq offset for same key, or 1u.
                         assert (i < KEY_BUFSZ);
+                        // similarly key offset could be retrieved, but KEY_WIDTH
+                        // needs to be added to get to the real offset.
                         b += 4;
                         unsigned len = decode_seqphred(b, d);
                         cout << (char*)b + len + 1 << " " <<
@@ -176,7 +164,13 @@ struct fq_arr
     int is_err;
 
 private:
-
+    void realloc_s()
+    {   assert (l != 1);
+        if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
+            m <<= 1;
+            s = (uint8_t*)realloc(s, m);
+        }
+    }
     bool init_key(const uint8_t* sq)
     {
         uint64_t c;
@@ -192,6 +186,24 @@ private:
         }
         rev ^= KEY_WIDTH_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
         return true;
+    }
+    uint8_t *update_offsets(uint32_t key, uint32_t i)
+    {   assert (l < KEY_BUFSZ);
+        uint8_t *b = s + l;
+        // we could decrease this size to e.g. uint16_t: (jmax = 2);
+        for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
+            *b++ = i & 0xff;
+
+        uint32_t* r = look + key;
+        i = *r;
+
+        if (i == 1u) key_ct++; // first element
+        *r = l; // exchange by this offset
+
+        for (unsigned j = 0; j != 4; ++j, i >>= 8)
+            *b++ = i & 0xff; // move former buffer offset, or last element mark (1u) here
+
+        return b;
     }
     /**
      * The key is the sequence or revcmp dependent on the 2nd bit of the central Nt. As every
@@ -222,7 +234,7 @@ private:
             // with gray Nt code, we may select a more specific subsequence.
             uint64_t Ntgc = c ^ (c >> 2);
 
-            if ((Ntgc > maxv) || unlikely((Ntgc == maxv) && (dna & KEYNT_STRAND))) {
+            if ((Ntgc > maxv) || unlikely(Ntgc == maxv && (dna & KEYNT_STRAND))) {
                 lmax = c;
                 maxv = Ntgc;
                 *lmaxi = rot;
