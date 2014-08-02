@@ -238,7 +238,6 @@ struct fq_arr
                         i |= *--b; i <<= 8;
                         i |= *--b; i <<= 8;
                         i |= *--b; // next seq offset for same key, or 1u.
-                        assert (i < KEY_BUFSZ);
                         // similarly key offset could be retrieved, but KEY_WIDTH
                         // needs to be added to get to the real offset.
                         b += 4;
@@ -260,7 +259,8 @@ struct fq_arr
 
 private:
     void realloc_s()
-    {   assert (l != 1);
+    {   assert (l != 1u);
+        assert((uint64_t)l + fq_ent_max < (1ul << 32));
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
             s = (uint8_t*)realloc(s, m);
@@ -283,7 +283,9 @@ private:
         return true;
     }
     uint8_t *update_offsets(uint32_t key, uint32_t i)
-    {   assert (l < KEY_BUFSZ);
+    {
+        // FIXME: assertion fails for large no. input reads.
+        assert (l < (1ul << 32)); // or we cannot store its offset here
         uint8_t *b = s + l;
         // we could decrease this size to e.g. uint16_t: (jmax = 2);
         for (unsigned j = 0; j != 4; ++j, i >>= 8) // insert key offset
