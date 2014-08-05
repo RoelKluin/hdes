@@ -190,10 +190,9 @@ fq_print(seqb2_t *fq)
                     }
                 }
                 *++d = *++w = '\n'; ++w; // for seq and qual
-//                *w = '\0'; fputs(buf, stderr);
             } while (i != 1u);
         }
-    } while (--j != 0u);
+    } while (j-- != 0u);
     c = w - (uint8_t *)buf;
 
     if (c && fh->write(fh, buf, c) < 0) ret = -1;

@@ -46,9 +46,13 @@ while (<>) {
 }' | ./uqct | ./fqless
 
 
-make clean && make && cmp <(zgrep -o "^.* " bar.gz | sort) <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort)
+make clean && make && cmp <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort)
 
 
-rm bar.gz && ./uqct SRR081241_1.filt.fastq.gz -o bar.gz
+./uqct SRR081241_1.filt.fastq.gz -o bar.gz -f
+
+diff -u0 <(zgrep -o "^.* " bar.gz | sort) <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort) | sed -n 's/^+@/@/p' | tr "\n" "|"
+
+
 
 
