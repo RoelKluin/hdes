@@ -11,13 +11,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <assert.h>
 #include <getopt.h>
-#include "seq.h"
+#include "fa.h"
 #include "fq.h"
-#include "gz.h"
-#include "util.h"
 
 static int
 b2_write(gzfh_t *fh, char *start, int len)
@@ -153,7 +149,7 @@ int main(int argc, char* const* argv)
         }
     }
 
-    if ((c = init_fq(&seq)) < 0) {
+    if ((c = init_seq(&seq)) < 0) {
         fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
         goto out;
     }
@@ -172,7 +168,7 @@ int main(int argc, char* const* argv)
         fprintf(stderr, "main: fa_b2() returned %d\n", c);*/
     ret = EXIT_SUCCESS;
 out: /* cleanup */
-    free_fq(&seq);
+    free_seq(&seq);
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].io == NULL) continue;
         // XXX: valgrind complains here but the problem is in zlib
@@ -185,49 +181,5 @@ out: /* cleanup */
     }
     return ret;
 }
-
-/*int main(int argc, const char* argv[])
-{
-    using namespace std;
-    int ret = EXIT_FAILURE;
-    igzstream fa(argv[1]);
-    igzstream fq(argv[2]);
-    unsigned phred_offset = 33;
-
-    if (argc > 4) {
-        phred_offset = atoi(argv[3]);
-        cerr << "Phred offset set to " << phred_offset << endl;
-    }
-    assert((phred_offset >= 33) && (phred_offset <= 126));
-    unsigned readlength = atoi(argv[argc - 1]);
-    struct fq_arr uqct(readlength, phred_offset);
-
-    string sq;
-
-    while (getline(fa, sq)) {
-        char c = sq[0];
-        if (c == '>') {
-            // refill, dna & revcmp up to KEY_WIDTH Nts
-            uqct.pre_init_key();
-            while(uqct.init_key(seq) == false)
-                if (not getline(fa, sq)) goto err;
-
-            uqct.add_max_key(sq + KEY_WIDTH);
-       }
-        uqct.fa_put((const uint8_t*)sq.c_str());
-        if (uqct.is_err) goto err;
-    }
-
-    string nm, tmp, ql;
-    while (getline(fq, nm) && getline(fq, sq) && getline(fq, tmp) && getline(fq, ql)) {
-        uqct.put((const uint8_t*)sq.c_str(), (const uint8_t*)ql.c_str(), (const uint8_t*)nm.c_str());
-        if (uqct.is_err) goto err;
-    }
-
-err: uqct.dump();
-    fq.close();
-    fa.close();
-    return ret;
-}*/
 
 

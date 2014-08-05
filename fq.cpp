@@ -8,46 +8,11 @@
  *
  *         Author:  Roel Kluin,
  */
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <errno.h>
-#include <zlib.h>
-#include "b6.h"
+#include <stdlib.h> // realloc()
+#include <ctype.h> // isspace()
+//#include <stdio.h> //fprintf()
+#include <errno.h> // ENOMEM
 #include "fq.h"
-//#include "fq_hash.h"
-#include "util.h"
-
-#define INIT_BUFSIZE (1u << 23)
-
-int
-init_fq(seqb2_t *fq)
-{
-    fq->m = INIT_BUFSIZE;
-    fq->s = (uint8_t*)malloc(INIT_BUFSIZE);
-    if (fq->s == NULL) return -ENOMEM;
-    *fq->s = '\0';
-
-    size_t i, v = 1, l = sizeof(*fq->lookup) * KEYNT_BUFSZ;
-    fq->lookup = (uint32_t*)malloc(l);
-    if (fq->lookup == NULL) {
-        free(fq->s);
-        return -ENOMEM;
-    }
-    for (i = 0; i != l; i += sizeof(*fq->lookup))
-        memcpy(((char*)fq->lookup) + i, &v, sizeof(*fq->lookup));
-    return 0;
-}
-
-void
-free_fq(seqb2_t *fq)
-{
-    if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
-    if (fq->s != NULL) { free(fq->s); fq->s = NULL; }
-}
 
 /*
  * store seqphred and return corresponding 2bit Nt

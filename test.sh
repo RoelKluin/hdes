@@ -46,13 +46,22 @@ while (<>) {
 }' | ./uqct | ./fqless
 
 
-make clean && make && cmp <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort)
+make clean && make && diff -u0 <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort)
 
 
 ./uqct SRR081241_1.filt.fastq.gz -o bar.gz -f
 
-diff -u0 <(zgrep -o "^.* " bar.gz | sort) <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort) | sed -n 's/^+@/@/p' | tr "\n" "|"
+diff -u0 <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) \
+    <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort)
+
+make clean && make
+zgrep -E -n -A3 "^($(diff -u0 <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) \
+    <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort) |
+sed -n '/^-@/{s/^.//;H;}; ${x; s/\n/|/g;s/^|//p;}'))" head_100K_SRR077487_1.filt.fastq.gz
 
 
+#./uqct head_100K_SRR077487_1.filt.fastq.gz | zgrep -E -n -A3 "^($(diff -u0 <(zgrep -o "^.* " head_100K_SRR077487_1.filt.fastq.gz | sort) \
+#    <(./uqct head_100K_SRR077487_1.filt.fastq.gz | grep -o "^.* " | sort) |
+#sed -n '/^-@/{s/^.//;H;}; ${x; s/\n/|/g;s/^|//p;}'))"
 
 

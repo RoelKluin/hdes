@@ -9,12 +9,13 @@
  *         Author:  Roel Kluin,
  */
 
-#ifndef RK_FQ_H
-#define RK_FQ_H
+#ifndef RK_FA_H
+#define RK_FA_H
 #include "seq.h"
 #include "gz.h"
 
-int fq_b2(seqb2_t *fq);
-int fq_print(seqb2_t *fq);
-
-#endif // RK_FQ_H
+int init_fa(seqb2_t *fa);
+int fa_b2(seqb2_t *fa);
+void free_fa(seqb2_t *fa);
+int fa_print(seqb2_t *fa);
+#endif // RK_FA_H

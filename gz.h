@@ -13,6 +13,7 @@
 #define RK_GZ_H
 #include <stdio.h>
 #include <zlib.h>
+#include "util.h"
 
 typedef struct gzfh_t {
     char* name;
@@ -26,4 +27,3 @@ typedef struct gzfh_t {
 int set_io_fh(struct gzfh_t* fh, uint64_t mode, uint64_t blocksize);
 
 #endif //RK_GZ_H
-

@@ -93,5 +93,3 @@ inline unsigned get_twisted_even(unsigned rev, unsigned sq)
     rev ^= m ^ (m << 1) ^ sq ^ !sq; // swap devbit to lowest and flip
     return ((rev & 0xffff) << 16) | (dev & 0xffff);
 }
-
-

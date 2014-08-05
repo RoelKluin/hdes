@@ -9,10 +9,8 @@
  *         Author:  Roel Kluin,
  */
 #include <errno.h>
-#include <stdint.h>
-#include <string.h>
+#include <string.h> //strstr()
 #include "gz.h"
-#include "util.h"
 
 static inline int
 b2gz_write(gzfh_t *fh, char *start, int len)

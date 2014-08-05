@@ -11,7 +11,8 @@
 
 #ifndef RK_UTIL_H
 #define RK_UTIL_H
-
+#include <stdint.h>
+#include <assert.h>
 
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))

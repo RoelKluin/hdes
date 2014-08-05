@@ -11,7 +11,9 @@
 
 #ifndef RK_SEQ_H
 #define RK_SEQ_H
-
+#include "gz.h"
+#include "b6.h"
+#include "util.h"
 
 // maximum length of the read name
 #define FQ_MAX_NAME_ETC    (1u << 14)
@@ -38,5 +40,19 @@
 #define BUF_OFFSET_BYTES 4
 #define SEQ_OFFSET_MAX ((1u << (SEQ_OFFSET_BYTES << 3)) - 1u)
 
-#endif //RK_SEQ_H
+#define INIT_BUFSIZE (1u << 23)
 
+typedef struct seqb2_t {
+        uint8_t *s;
+        uint32_t* lookup;
+	uint64_t mode, l, m;
+        uint32_t nr, key_ct, readlimit;
+        uint16_t readlength;
+        uint8_t phred_offset; //XXX:
+        struct gzfh_t fh[4]; /* reader and writer */
+} seqb2;
+
+int init_seq(seqb2_t *seq);
+void free_seq(seqb2_t *seq);
+
+#endif //RK_SEQ_H

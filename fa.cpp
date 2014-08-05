@@ -8,13 +8,15 @@
  *
  *         Author:  Roel Kluin,
  */
+#include "fa.h"
 
-#ifndef RK_FQ_H
-#define RK_FQ_H
-#include "seq.h"
-#include "gz.h"
+int fa_b2(seqb2_t *fa)
+{
+    return 1;
+}
 
-int fq_b2(seqb2_t *fq);
-int fq_print(seqb2_t *fq);
+int fa_print(seqb2_t *fa)
+{
+    return 1;
+}
 
-#endif // RK_FQ_H
