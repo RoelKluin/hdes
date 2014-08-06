@@ -177,14 +177,14 @@ fq_print(seqb2_t *fq)
 int
 fq_b2(seqb2_t *fq)
 {
-    const unsigned phred_offset = fq->phred_offset;
+    uint64_t l = fq->l, m = fq->m;
     uint8_t *s = fq->s;
     uint32_t *const lookup = fq->lookup;
-    uint64_t l = fq->l, m = fq->m;
     unsigned nr = fq->nr, key_ct = fq->key_ct;
-    register int c;
-    register uint8_t *b = s + l;
+    const unsigned phred_offset = fq->phred_offset;
     unsigned fq_ent_max = (fq->readlength << 1) + FQ_MAX_NAME_ETC;
+    register uint8_t *b = s + l;
+    register int c;
 
     void* g;
     int (*gc) (void*);

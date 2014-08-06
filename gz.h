@@ -24,6 +24,6 @@ typedef struct gzfh_t {
     int (*close) (gzFile);
 } gzfh;
 
-int set_io_fh(struct gzfh_t* fh, uint64_t mode, uint64_t blocksize);
+int set_io_fh(struct gzfh_t* fh, uint64_t* mode, uint64_t blocksize);
 
 #endif //RK_GZ_H

@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <string.h> //strstr()
+#include <regex.h>
 #include "fa.h"
 #include "fq.h"
 
@@ -42,7 +44,7 @@ static const char optstr[] = "1:2:r:o:m:l:b:p:fh";
 static struct option_description dopt[] = {
     {"fastq", required_argument, NULL, '1', "<FILE>\t[first] input fastq"},
     {"2nd-fastq", required_argument, NULL, '2', "<FILE>\t2nd input fastq (optional)"},
-    {"reference", required_argument, NULL, 'r', "<FILE>\tinput fasta reference (optional)"},
+    {"ref", required_argument, NULL, 'r', "<FILE>\tinput fasta reference (optional)"},
     {"out", required_argument, NULL, 'o', "<FILE>\toutput file prefix"},
     {"readlength", required_argument, NULL, 'l', "<INT>\treadlength (optional)"},
     {"maxreads", required_argument, NULL, 'm', "<INT>\tonly this many reads (optional)"},
@@ -64,6 +66,8 @@ static int usage()
     for (i = 0; dopt[i].name != NULL; ++i)
         fprintf(stderr, "\t-%c|--%s\t%s\n", dopt[i].val, dopt[i].name, dopt[i].descr);
     fputc('\n', stderr);
+    fputs("Instead of a file you may use stdin or stdout\n", stderr);
+    fputc('\n', stderr);
     return 1;
 }
 
@@ -80,10 +84,9 @@ int main(int argc, char* const* argv)
         {'p', 33, 32, 89}
     };
     seq.fh[0].fp = seq.fh[2].fp = stdin;
-    seq.fh[3].fp = stdout;
-    seq.fh[3].write = &b2_write;
+    seq.fh[fhsz - 1].fp = stdout;
+    seq.fh[fhsz - 1].write = &b2_write;
 
-    fputc('\n', stderr);
 
     /* parse cmdline args */
     while ((c = getopt_long_only(argc, argv, optstr, (option*)dopt, (int*)&i)) != -1) {
@@ -93,7 +96,7 @@ int main(int argc, char* const* argv)
             case 'r': ++i;
             case '2': ++i;
             case '1':
-                fprintf(stderr, "%s: %s\n", dopt[i].name, optarg);
+//                fprintf(stderr, "%s: %s\n", dopt[i].name, optarg);
                 assert((seq.fh[i].write == NULL) != (i == fhsz - 1));
                 seq.fh[i].name = optarg;
                 break;
@@ -122,10 +125,39 @@ int main(int argc, char* const* argv)
     seq.readlimit = optvals[1][1];
     seq.phred_offset = optvals[3][1];
 
-    /* open files and allocate memory */
-    for (i=0; i != fhsz; ++i)
-        if (seq.fh[i].name == NULL && optind != argc)
-            seq.fh[i].name = argv[optind++];
+    /* options without a flag */
+    while (optind != argc) {
+        char* f = (char*)argv[optind];
+        f += (c = strlen(f) - 1); // parse extension from right
+
+        i = 0;
+        if (*f == 'z') { //.gz
+            if (((c -= 3) < 3) || *--f != 'g' || *--f != '.') i |= fhsz;
+            --f;
+        }
+        if (i == 0) {
+            if (*f == 't') { // .txt(.gz)?
+                if (((c -= 4) < 0) || *--f != 'x' || *--f != 't' || *--f != '.') i |= fhsz;
+            } else {
+                if (*f == 'a') i = 2;
+                else if (*f != 'q') i |= fhsz;
+
+                if (*--f == 't') { // .fast[aq](.gz)??
+                    if (((c -= 3) < 3) || *--f != 's' || *--f != 'a') i |= fhsz;
+                    --f;
+                }
+                if (*f != 'f' || *--f != '.') i |= fhsz;
+            }
+        }
+        f = (char*)argv[optind++];
+        while (i < 2 && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
+
+        if (i >= fhsz || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.
+            fprintf(stderr, "Unhandled argument %s\n", f);
+            goto out;
+        }
+        seq.fh[i].name = f;
+    }
 
     if (optind != argc) {
         while (optind != argc)
@@ -134,38 +166,69 @@ int main(int argc, char* const* argv)
         goto out;
     }
 
+    /* open files and allocate memory */
     for (i=0; i != fhsz; ++i) {
-        if (seq.fh[i].fp == NULL) {
-            if ((dopt[i].val == '2') || (dopt[i].val == 'r')) continue; // SE or assembly
+        if (seq.fh[i].name == NULL) continue;
+        c = set_io_fh(&seq.fh[i], &seq.mode, (uint64_t)optvals[0][0] << 20);
+        if (c < 0) {
+            fprintf(stderr, "main: -%c [%s] failed.\n", dopt[i].val, dopt[i].name);
+            goto out;
+        }
 
-            fprintf(stderr, "main: Missing -%c [%s].\n",
-                    dopt[i].val, dopt[i].name);
-            goto out;
-        }
-        if (set_io_fh(&seq.fh[i], seq.mode, (uint64_t)optvals[0][0] << 20) != 0) {
-            fprintf(stderr, "main: -%c [%s] failed.\n",
-                    dopt[i].val, dopt[i].name);
-            goto out;
-        }
+        fprintf(stderr, "%s:\t", dopt[i].name);
+        if (c == 0)
+            fprintf(stderr, "%s\n", seq.fh[i].name);
+        else if (c == 1) fputs("(none given)\n", stderr);
+
     }
 
     if ((c = init_seq(&seq)) < 0) {
         fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
         goto out;
     }
-    if ((c = fq_b2(&seq)) != 0) {
-        fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
-        goto out;
+    if (seq.fh[2].name != NULL) {
+        if (seq.fh[1].name) {
+            fputs("Paired-end alignment\n", stderr);
+            /*if ((c = pe_fq_b2(&seq)) != 0) {
+                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                goto out;
+            }
+            fputc('\n', stderr);
+            fq_print(&seq);*/
+        } else if (seq.fh[0].name) {
+            fputs("Single-end alignment\n", stderr);
+            /*if ((c = fq_b2(&seq)) != 0) {
+                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                goto out;
+            }
+            fputc('\n', stderr);
+            fq_print(&seq);*/
+        } else {
+            fputs("Indexing\n", stderr);
+        }
+    } else {
+        if (seq.fh[1].name) {
+            fputs("Paired-end assembly\n", stderr);
+            /*if ((c = pe_fq_b2(&seq)) != 0) {
+                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                goto out;
+            }
+            fputc('\n', stderr);
+            fq_print(&seq);*/
+        } else if (seq.fh[0].name) {
+            fputs("Single-end assembly\n", stderr);
+            if ((c = fq_b2(&seq)) != 0) {
+                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                goto out;
+            }
+            fputc('\n', stderr);
+            fq_print(&seq);
+        } else {
+            fputs("No input files specified\n", stderr);
+            goto out;
+        }
     }
-    fq_print(&seq);
-    /* read fasta, transform and write file */
-/*    c = fa_b2(&seq, readlength);
-    if (c < 0)
-        fprintf(stderr, "main: fa_b2() returned %d\n", c);
-*/
-    /*c = seq_b2(&seq);
-    if (c < 0)
-        fprintf(stderr, "main: fa_b2() returned %d\n", c);*/
+
     ret = EXIT_SUCCESS;
 out: /* cleanup */
     free_seq(&seq);

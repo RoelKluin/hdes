@@ -12,6 +12,7 @@
 #include <string.h> // memcpy()
 #include <errno.h> // ENOMEM
 #include "seq.h"
+
 /**
  * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
  */

@@ -46,25 +46,25 @@ rgzopen(struct gzfh_t* fh, uint64_t blocksize)
 }
 
 int
-set_io_fh(struct gzfh_t* fh, uint64_t mode, uint64_t blocksize)
+set_io_fh(struct gzfh_t* fh, uint64_t* mode, uint64_t blocksize)
 {
-    if (fh->name == NULL) {
-        unsigned i = fh->write ? 'w' : 'r';
-        if (mode & amopt(i)) {
-            fprintf(stderr, "Std%s already in use\n", i == 'w' ? "out" : "in");
+    const char* t = strstr(fh->name, fh->write ? "stdout" : "stdin");
+    if (t) {
+        if (*mode & amopt(t[3])) {
+            fprintf(stderr, "%s was already assigned\n", t);
             return -EINVAL;
         }
-        mode |= amopt(i);
+        *mode |= amopt(t[3]);
         return 0;
     }
     fh->fp = fopen(fh->name, "r"); // test whether file exists
-    const char* t = strstr(fh->name,".gz"); // TODO: read magic gzip number in file
+    t = strstr(fh->name,".gz"); // TODO: read magic gzip number in file
 
     if (fh->write) { /* write without gzip by default */
         if (fh->fp) { /* file already exists, overwrite? */
             fclose(fh->fp);
-            if ((mode & amopt('f')) == 0) {
-                fprintf(stderr, "-f to force write %s\n", fh->name);
+            if ((*mode & amopt('f')) == 0) {
+                fprintf(stderr, "use -f to force write %s\n", fh->name);
                 return -EEXIST;
             }
         }
