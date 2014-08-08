@@ -11,8 +11,32 @@
 #include <stdlib.h> // realloc()
 #include <ctype.h> // isspace()
 //#include <stdio.h> //fprintf()
+#include <string.h> //memcpy()
 #include <errno.h> // ENOMEM
 #include "fq.h"
+
+/**
+ * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
+ */
+static inline int
+init_fq(seqb2_t *fq)
+{
+    fq->m = INIT_BUFSIZE;
+    fq->s = (uint8_t*)malloc(INIT_BUFSIZE);
+    if (fq->s == NULL) return -ENOMEM;
+    *fq->s = '\0';
+
+    size_t i, v = 1, l = sizeof(*fq->lookup) * KEYNT_BUFSZ;
+    fq->lookup = (uint32_t*)malloc(l);
+    if (fq->lookup == NULL) {
+        free(fq->s);
+        return -ENOMEM;
+    }
+    for (i = 0; i != l; i += sizeof(*fq->lookup))
+        memcpy(((char*)fq->lookup) + i, &v, sizeof(*fq->lookup));
+    return 0;
+}
+
 
 /*
  * store seqphred and return corresponding 2bit Nt
@@ -97,6 +121,7 @@ sprint0x(uint8_t *out, register uint64_t u)
 int
 fq_print(seqb2_t *fq)
 {
+    assert(fq->lookup != NULL);
     const unsigned readlength = fq->readlength;
 //    fprintf(stderr, "%u\n", readlength); fflush(NULL);
     const unsigned phred_offset = fq->phred_offset;
@@ -118,7 +143,7 @@ fq_print(seqb2_t *fq)
             decode_key(seqrc, j);
             do {
                 c = w - (uint8_t *)buf;
-                if ((c + (readlength << 1) + FQ_MAX_NAME_ETC) >= bufm) {
+                if ((c + (readlength << 1) + SEQ_MAX_NAME_ETC) >= bufm) {
                     if (fh->write(fh, buf, c) < 0) {
                         ret = -1;
                         break;
@@ -162,6 +187,8 @@ fq_print(seqb2_t *fq)
 
     if (c && fh->write(fh, buf, c) < 0) ret = -1;
 
+    if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
+    if (fq->s != NULL) { free(fq->s); fq->s = NULL; }
     return ret;
 }
 
@@ -177,14 +204,20 @@ fq_print(seqb2_t *fq)
 int
 fq_b2(seqb2_t *fq)
 {
+    register int c;
+    fputs("==Initializing memory", stderr);
+    if ((c = init_fq(fq)) < 0) {
+        fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
+        return -ENOMEM;
+    }
+
     uint64_t l = fq->l, m = fq->m;
     uint8_t *s = fq->s;
     uint32_t *const lookup = fq->lookup;
     unsigned nr = fq->nr, key_ct = fq->key_ct;
     const unsigned phred_offset = fq->phred_offset;
-    unsigned fq_ent_max = (fq->readlength << 1) + FQ_MAX_NAME_ETC;
+    unsigned fq_ent_max = (fq->readlength << 1) + SEQ_MAX_NAME_ETC;
     register uint8_t *b = s + l;
-    register int c;
 
     void* g;
     int (*gc) (void*);
@@ -213,11 +246,8 @@ fq_b2(seqb2_t *fq)
         }
         uint8_t* o = b;
         b += BUF_OFFSET_BYTES + SEQ_OFFSET_BYTES;
-        while (!isspace(c = gc(g)) && (c >= 0)) { /* header */
-            *b++ = c;
-            if_ever(++i == FQ_MAX_NAME_ETC) { c = 2; goto out; }
-        }
-        while (c != '\n' && (c >= 0)) c = gc(g); /* comment */
+        while (!isspace(c = gc(g)) && (c >= 0)) *b++ = c; /* header */
+        while (c != '\n' && (c >= 0)) c = gc(g);          /* comment */
         *b++ = '\0';
 //        fprintf(stderr, "%s...\n", b);fflush(NULL);
 
@@ -278,7 +308,7 @@ fq_b2(seqb2_t *fq)
 //            fprintf(stderr, "2s:'%c'\n", b6(c<<1)); fflush(NULL);
 
             // update window for both strands
-            dna = ((dna << 2) & KEYNT_MASK & 0xffffffffffffffff) | c;
+            dna = ((dna << 2) & KEYNT_MASK & ~0ul) | c;
             rev = ((uint64_t)(c ^ 2) << KEYNT_TOP) | (rev >> 2);
 
             // select a strand dependent on the central Nt

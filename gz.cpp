@@ -20,7 +20,7 @@ b2gz_write(gzfh_t *fh, char *start, int len)
         return len;
     }
     if (DEBUG)
-        fprintf(stderr, "%u bytes written\n", len);
+        fprintf(stderr, "%d bytes written\n", len);
 
     return gzeof(fh->io) ? -EIO : len;
 }
@@ -54,6 +54,7 @@ set_io_fh(struct gzfh_t* fh, uint64_t* mode, uint64_t blocksize)
             fprintf(stderr, "%s was already assigned\n", t);
             return -EINVAL;
         }
+        fh->fp = fh->write ? stdout : stdin;
         *mode |= amopt(t[3]);
         return 0;
     }

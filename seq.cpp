@@ -13,34 +13,32 @@
 #include <errno.h> // ENOMEM
 #include "seq.h"
 
+
 /**
- * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
+ * Return type of extension. 0:
  */
-int
-init_seq(seqb2_t *seq)
+unsigned
+get_fastx_type(char* f, const unsigned ref_i, const unsigned fhsz)
 {
-    seq->m = INIT_BUFSIZE;
-    seq->s = (uint8_t*)malloc(INIT_BUFSIZE);
-    if (seq->s == NULL) return -ENOMEM;
-    *seq->s = '\0';
+    unsigned i = 0, c = strlen(f) - 1;
+    f += c; // parse extension from right
 
-    size_t i, v = 1, l = sizeof(*seq->lookup) * KEYNT_BUFSZ;
-    seq->lookup = (uint32_t*)malloc(l);
-    if (seq->lookup == NULL) {
-        free(seq->s);
-        return -ENOMEM;
+    if (*f == 'z' && (((c -= 3) < 3) || *--f != 'g' || *--f != '.')) //.gz
+        return fhsz;
+
+    if (*--f == 't') { // .txt(.gz)?
+        if (((c -= 4) < 0) || *--f != 'x' || *--f != 't') return fhsz + 1;
+    } else {
+        if (*f == 'a') i = ref_i;
+        else if (*f != 'q') return fhsz + 2;
+
+        if (*--f == 't') { // .fast[aq](.gz)??
+            if (((c -= 3) < 3) || *--f != 's' || *--f != 'a') return fhsz + 3;
+            --f;
+        }
+        if (*f != 'f') return fhsz + 4;
     }
-    for (i = 0; i != l; i += sizeof(*seq->lookup))
-        memcpy(((char*)seq->lookup) + i, &v, sizeof(*seq->lookup));
-    return 0;
+    return *--f == '.' ? i : fhsz + 5;
 }
-
-void
-free_seq(seqb2_t *seq)
-{
-    if (seq->lookup != NULL) { free(seq->lookup); seq->lookup = NULL; }
-    if (seq->s != NULL) { free(seq->s); seq->s = NULL; }
-}
-
 
 

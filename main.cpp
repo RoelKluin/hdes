@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h> //strstr()
-#include <regex.h>
 #include "fa.h"
 #include "fq.h"
 
@@ -77,13 +76,13 @@ int main(int argc, char* const* argv)
     unsigned t, i = 0u, fhsz = ARRAY_SIZE(seq.fh);
     int c, ret = EXIT_FAILURE;
     int optvals[][4] = {
-        // (default) value, bottom limit, upper lim, enforce
-        {'l', 0, KEY_WIDTH, SEQ_OFFSET_MAX},
-        {'m', -1, 1, 0x7fffffff},
-        {'b', 32, 1, 8192},
-        {'p', 33, 32, 89}
+        // (default) value, bottom limit, upper lim, option
+        {0, KEY_WIDTH, SEQ_OFFSET_MAX, 'l'},
+        {-1, 1, 0x7fffffff, 'm'},
+        {32, 1, 1024, 'b'},
+        {33, 32, 89, 'p'}
     };
-    seq.fh[0].fp = seq.fh[2].fp = stdin;
+//    seq.fh[0].fp = seq.fh[2].fp = stdin; // default to stdin
     seq.fh[fhsz - 1].fp = stdout;
     seq.fh[fhsz - 1].write = &b2_write;
 
@@ -103,57 +102,37 @@ int main(int argc, char* const* argv)
             case 'p': ++i;
             case 'b': ++i;
             case 'm': ++i;
-            case 'l': assert(dopt[i + fhsz].val == optvals[i][0]);
+            case 'l': assert(dopt[i + fhsz].val == optvals[i][3]);
 //                fprintf(stderr, "%s: %s\n", dopt[i + fhsz].name, optarg);
                 c = atoi(optarg);
-                t = (c < optvals[i][2]);
-                if (t || (c > optvals[i][3])) {
+                t = (c < optvals[i][1]);
+                if (t || (c > optvals[i][2])) {
                     t = i + fhsz;
                     fprintf(stderr, "\t-%c|--%s %s is invalid.\n\t%s must be "
                         "between %u and %u\n", dopt[t].val, dopt[t].name, optarg,
-                        dopt[t].descr, optvals[i][2], optvals[i][3]);
+                        dopt[t].descr, optvals[i][1], optvals[i][2]);
                     goto out;
                 }
-                optvals[i][1] = c;
+                optvals[i][0] = c;
                 break;
             case 'h': usage();
             case '?': case ':': fputc('\n', stderr); goto out;
             default:  seq.mode |= amopt(c);
         }
     }
-    seq.readlength = optvals[0][1];
-    seq.readlimit = optvals[1][1];
-    seq.phred_offset = optvals[3][1];
+    seq.readlength = optvals[0][0];
+    seq.readlimit = optvals[1][0];
+    seq.blocksize = optvals[2][0];
+    seq.phred_offset = optvals[3][0];
 
     /* options without a flag */
     while (optind != argc) {
-        char* f = (char*)argv[optind];
-        f += (c = strlen(f) - 1); // parse extension from right
+        char* f = (char*)argv[optind++];
+        i = get_fastx_type(f, 2, fhsz);
+        while ((i < 2) && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
 
-        i = 0;
-        if (*f == 'z') { //.gz
-            if (((c -= 3) < 3) || *--f != 'g' || *--f != '.') i |= fhsz;
-            --f;
-        }
-        if (i == 0) {
-            if (*f == 't') { // .txt(.gz)?
-                if (((c -= 4) < 0) || *--f != 'x' || *--f != 't' || *--f != '.') i |= fhsz;
-            } else {
-                if (*f == 'a') i = 2;
-                else if (*f != 'q') i |= fhsz;
-
-                if (*--f == 't') { // .fast[aq](.gz)??
-                    if (((c -= 3) < 3) || *--f != 's' || *--f != 'a') i |= fhsz;
-                    --f;
-                }
-                if (*f != 'f' || *--f != '.') i |= fhsz;
-            }
-        }
-        f = (char*)argv[optind++];
-        while (i < 2 && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
-
-        if (i >= fhsz || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.
-            fprintf(stderr, "Unhandled argument %s\n", f);
+        if ((i >= fhsz) || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.
+            fprintf(stderr, "Unhandled argument %s (%u)\n", f, i);
             goto out;
         }
         seq.fh[i].name = f;
@@ -169,7 +148,7 @@ int main(int argc, char* const* argv)
     /* open files and allocate memory */
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].name == NULL) continue;
-        c = set_io_fh(&seq.fh[i], &seq.mode, (uint64_t)optvals[0][0] << 20);
+        c = set_io_fh(&seq.fh[i], &seq.mode, (uint64_t)seq.blocksize << 20);
         if (c < 0) {
             fprintf(stderr, "main: -%c [%s] failed.\n", dopt[i].val, dopt[i].name);
             goto out;
@@ -182,10 +161,6 @@ int main(int argc, char* const* argv)
 
     }
 
-    if ((c = init_seq(&seq)) < 0) {
-        fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
-        goto out;
-    }
     if (seq.fh[2].name != NULL) {
         if (seq.fh[1].name) {
             fputs("Paired-end alignment\n", stderr);
@@ -204,7 +179,16 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else {
+            //if (seq.readlength == 0) {
+            //    fputs("Readlength is required for indexing\n", stderr);
+            //    goto out;
+            //}
             fputs("Indexing\n", stderr);
+            if ((c = fa_ndx(&seq)) != 0) {
+                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                goto out;
+            }
+            fputc('\n', stderr);
         }
     } else {
         if (seq.fh[1].name) {
@@ -231,7 +215,6 @@ int main(int argc, char* const* argv)
 
     ret = EXIT_SUCCESS;
 out: /* cleanup */
-    free_seq(&seq);
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].io == NULL) continue;
         // XXX: valgrind complains here but the problem is in zlib

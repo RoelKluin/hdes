@@ -11,7 +11,7 @@ OBJS=		b6.o
 LIBS=		-lz -L.
 DEBUG=		-g
 OPT=		-O3
-SOURCES=	gz.cpp b6.cpp seq.cpp fq.cpp main.cpp
+SOURCES=	gz.cpp b6.cpp seq.cpp fa.cpp fq.cpp main.cpp
 DEFINES=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\"
 PREPROCESSED=	$(SOURCES:.cpp=.i)
 ASSEMBLIES=	$(SOURCES:.cpp=.s)
@@ -49,7 +49,7 @@ distclean: clean
 	rm -rf $(ARCHIVE).tar.gz
 
 dist:
-	tar -czf $(ARCHIVE).tar.gz $(SOURCES)  *.c *.h *.pl *.sh .git Makefile
+	tar -czf $(ARCHIVE).tar.gz $(SOURCES)  fqless *.c *.h *.pl *.sh .git Makefile
 
 depend:
 	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) -- *.cpp )
