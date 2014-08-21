@@ -74,46 +74,6 @@ decode_key(uint8_t* seq, unsigned dna)
     assert(revcmp == seq + 1);
 }
 
-/* the following should be enough for 32 bit int */
-
-static inline const uint8_t *
-sprints(uint8_t *out, const uint8_t *s)
-{
-    while (*s) { *++out = *s; ++s; }
-    return out;
-}
-
-
-static inline unsigned
-sprintu(uint8_t *out, register uint64_t u)
-{
-    register uint8_t *s = out + 21;
-    *s = '\0';
-
-    while (u) {
-        register unsigned t = u % 10;
-        u /= 10;
-        *--s = t + '0';
-    }
-    for (;*s; ++u, ++s) *++out = *s;
-    return u;
-}
-
-static inline unsigned
-sprint0x(uint8_t *out, register uint64_t u)
-{
-    *++out = '0'; *++out = 'x';
-    register uint8_t *s = out + 16;
-    *s = '\0';
-
-    while (u) {
-        register int t = u & 0xf;
-        *--s = t + (t >= 10 ? 'a' - 10 : '0');
-        u >>= 4;
-    }
-    for (u = 2;*s; ++u, ++s) *++out = *s;
-    return u;
-}
 
 /**
  * decode the sequence and phreds and print the fastq entries.
@@ -135,7 +95,7 @@ fq_print(seqb2_t *fq)
     uint8_t *w = (uint8_t *)buf;
     int ret = 0;
     register unsigned c = 0;
-    struct gzfh_t* fh = &fq->fh[ARRAY_SIZE(fq->fh) - 1];
+    struct gzfh_t* fh = fq->fh +ARRAY_SIZE(fq->fh) - 1;
 
     do {
         register uint32_t i = *look--;
@@ -144,7 +104,7 @@ fq_print(seqb2_t *fq)
             do {
                 c = w - (uint8_t *)buf;
                 if ((c + (readlength << 1) + SEQ_MAX_NAME_ETC) >= bufm) {
-                    if (fh->write(fh, buf, c) < 0) {
+                    if (fh->write(fh, buf, c, sizeof(char)) < 0) {
                         ret = -1;
                         break;
                     }
@@ -161,8 +121,8 @@ fq_print(seqb2_t *fq)
                 b += BUF_OFFSET_BYTES;
                 *w = '@'; *++w = *b;                     // write header
                 while ((c = *++b)) *++w = c;
-                *++w = ' ';  w += sprint0x(w, j);        // key in comment
-                *++w = '\t'; w += sprints(w, seqrc) - w; // and regexp
+                *++w = ' ';  w += sprint0x(w, j, '\t');        // key in comment
+                w += sprints(w, seqrc) - w; // and regexp
                 *++w = '\n';
 
                 register uint8_t *d = w;
@@ -185,7 +145,7 @@ fq_print(seqb2_t *fq)
     } while (j-- != 0u);
     c = w - (uint8_t *)buf;
 
-    if (c && fh->write(fh, buf, c) < 0) ret = -1;
+    if (c && fh->write(fh, buf, c, sizeof(char)) < 0) ret = -1;
 
     if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
     if (fq->s != NULL) { free(fq->s); fq->s = NULL; }

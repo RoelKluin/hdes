@@ -27,7 +27,49 @@
 #define expect(T)       if (likely(T))
 
 // get bit for alpha char, regardless of case [command line options]
-#define amopt(r)        (1 << ((r+7) & 0x1f))
+#define amopt(r)        (1ul << ((r+7) & 0x1f))
+
+/* the following should be enough for 32 bit int */
+
+static inline const uint8_t *
+sprints(uint8_t *out, const uint8_t *s)
+{
+    while (*s) { *++out = *s; ++s; }
+    return out;
+}
+
+
+static inline unsigned
+sprintu(uint8_t *out, register uint64_t u, uint8_t del)
+{
+    register uint8_t *s = out + 21;
+    *s = del;
+
+    while (u) {
+        register unsigned t = u % 10;
+        u /= 10;
+        *--s = t + '0';
+    }
+    for (;*s != del; ++u, ++s) *++out = *s;
+    return u;
+}
+
+static inline unsigned
+sprint0x(uint8_t *out, register uint64_t u, uint8_t del)
+{
+    *++out = '0'; *++out = 'x';
+    register uint8_t *s = out + 16;
+    *s = del;
+
+    while (u) {
+        register int t = u & 0xf;
+        *--s = t + (t >= 10 ? 'a' - 10 : '0');
+        u >>= 4;
+    }
+    for (u = 2;*s != del; ++u, ++s) *++out = *s;
+    return u;
+}
+
 
 #define DEBUG 1
 #endif // RK_UTIL_H

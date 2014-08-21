@@ -2,7 +2,7 @@ CC=		g++
 #CC=		clang --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3
 AR=		ar
-VERSION=	0.002
+VERSION=	0.003
 LOBJS=
 PROG=		uqct
 INCLUDES=	
@@ -11,7 +11,7 @@ OBJS=		b6.o
 LIBS=		-lz -L.
 DEBUG=		-g
 OPT=		-O3
-SOURCES=	gz.cpp b6.cpp seq.cpp fa.cpp fq.cpp main.cpp
+SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp fa.cpp fq.cpp main.cpp
 DEFINES=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\"
 PREPROCESSED=	$(SOURCES:.cpp=.i)
 ASSEMBLIES=	$(SOURCES:.cpp=.s)
@@ -63,6 +63,8 @@ seq.o: gz.h seq.h b6.h
 fq.o: gz.h b6.h seq.h fq.h
 
 fa.o: gz.h b6.h seq.h fa.h
+
+map.o: gz.h b6.h seq.h fa.h
 
 main.o: gz.h b6.h seq.h fa.h fq.h
 
