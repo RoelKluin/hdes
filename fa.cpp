@@ -190,7 +190,18 @@ int
 rd_keyct(seqb2_t *seq)
 {
     struct gzfh_t* fhin2 = seq->fh + ARRAY_SIZE(seq->fh) - 1;
-    return 1;
+    int c;
+    char* s = (char*) seq->s;
+    uint64_t l = seq->l;
+    while ((c = gzread(fhin2->io, s, l > INT_MAX ? INT_MAX : l)) > 0) {
+        if (c < 0) break;
+        fprintf(stderr, "==%d bytes read\n", c);
+        c /= sizeof(char), l -= c, s += c;
+    }
+
+    if (gzeof(fhin2->io) == 0) return 0;
+    fprintf(stderr, "%s\n", gzerror(fhin2->io, &c));
+    return -EIO;
 }
 
 
