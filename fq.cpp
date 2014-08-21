@@ -8,22 +8,17 @@
  *
  *         Author:  Roel Kluin,
  */
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <errno.h>
-#include <zlib.h>
-#include "b6.h"
+#include <stdlib.h> // realloc()
+#include <ctype.h> // isspace()
+//#include <stdio.h> //fprintf()
+#include <string.h> //memcpy()
+#include <errno.h> // ENOMEM
 #include "fq.h"
-//#include "fq_hash.h"
-#include "util.h"
 
-#define INIT_BUFSIZE (1u << 23)
-
-int
+/**
+ * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
+ */
+static inline int
 init_fq(seqb2_t *fq)
 {
     fq->m = INIT_BUFSIZE;
@@ -42,12 +37,6 @@ init_fq(seqb2_t *fq)
     return 0;
 }
 
-void
-free_fq(seqb2_t *fq)
-{
-    if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
-    if (fq->s != NULL) { free(fq->s); fq->s = NULL; }
-}
 
 /*
  * store seqphred and return corresponding 2bit Nt
@@ -85,46 +74,6 @@ decode_key(uint8_t* seq, unsigned dna)
     assert(revcmp == seq + 1);
 }
 
-/* the following should be enough for 32 bit int */
-
-static inline const uint8_t *
-sprints(uint8_t *out, const uint8_t *s)
-{
-    while (*s) { *++out = *s; ++s; }
-    return out;
-}
-
-
-static inline unsigned
-sprintu(uint8_t *out, register uint64_t u)
-{
-    register uint8_t *s = out + 21;
-    *s = '\0';
-
-    while (u) {
-        register unsigned t = u % 10;
-        u /= 10;
-        *--s = t + '0';
-    }
-    for (;*s; ++u, ++s) *++out = *s;
-    return u;
-}
-
-static inline unsigned
-sprint0x(uint8_t *out, register uint64_t u)
-{
-    *++out = '0'; *++out = 'x';
-    register uint8_t *s = out + 16;
-    *s = '\0';
-
-    while (u) {
-        register int t = u & 0xf;
-        *--s = t + (t >= 10 ? 'a' - 10 : '0');
-        u >>= 4;
-    }
-    for (u = 2;*s; ++u, ++s) *++out = *s;
-    return u;
-}
 
 /**
  * decode the sequence and phreds and print the fastq entries.
@@ -132,6 +81,7 @@ sprint0x(uint8_t *out, register uint64_t u)
 int
 fq_print(seqb2_t *fq)
 {
+    assert(fq->lookup != NULL);
     const unsigned readlength = fq->readlength;
 //    fprintf(stderr, "%u\n", readlength); fflush(NULL);
     const unsigned phred_offset = fq->phred_offset;
@@ -145,7 +95,7 @@ fq_print(seqb2_t *fq)
     uint8_t *w = (uint8_t *)buf;
     int ret = 0;
     register unsigned c = 0;
-    struct gzfh_t* fh = &fq->fh[ARRAY_SIZE(fq->fh) - 1];
+    struct gzfh_t* fh = fq->fh +ARRAY_SIZE(fq->fh) - 1;
 
     do {
         register uint32_t i = *look--;
@@ -153,8 +103,8 @@ fq_print(seqb2_t *fq)
             decode_key(seqrc, j);
             do {
                 c = w - (uint8_t *)buf;
-                if ((c + (readlength << 1) + FQ_MAX_NAME_ETC) >= bufm) {
-                    if (fh->write(fh, buf, c) < 0) {
+                if ((c + (readlength << 1) + SEQ_MAX_NAME_ETC) >= bufm) {
+                    if (fh->write(fh, buf, c, sizeof(char)) < 0) {
                         ret = -1;
                         break;
                     }
@@ -171,8 +121,8 @@ fq_print(seqb2_t *fq)
                 b += BUF_OFFSET_BYTES;
                 *w = '@'; *++w = *b;                     // write header
                 while ((c = *++b)) *++w = c;
-                *++w = ' ';  w += sprint0x(w, j);        // key in comment
-                *++w = '\t'; w += sprints(w, seqrc) - w; // and regexp
+                *++w = ' ';  w += sprint0x(w, j, '\t');        // key in comment
+                w += sprints(w, seqrc) - w; // and regexp
                 *++w = '\n';
 
                 register uint8_t *d = w;
@@ -190,14 +140,15 @@ fq_print(seqb2_t *fq)
                     }
                 }
                 *++d = *++w = '\n'; ++w; // for seq and qual
-//                *w = '\0'; fputs(buf, stderr);
             } while (i != 1u);
         }
-    } while (--j != 0u);
+    } while (j-- != 0u);
     c = w - (uint8_t *)buf;
 
-    if (c && fh->write(fh, buf, c) < 0) ret = -1;
+    if (c && fh->write(fh, buf, c, sizeof(char)) < 0) ret = -1;
 
+    if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
+    if (fq->s != NULL) { free(fq->s); fq->s = NULL; }
     return ret;
 }
 
@@ -213,14 +164,20 @@ fq_print(seqb2_t *fq)
 int
 fq_b2(seqb2_t *fq)
 {
-    const unsigned phred_offset = fq->phred_offset;
+    register int c;
+    fputs("==Initializing memory", stderr);
+    if ((c = init_fq(fq)) < 0) {
+        fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
+        return -ENOMEM;
+    }
+
+    uint64_t l = fq->l, m = fq->m;
     uint8_t *s = fq->s;
     uint32_t *const lookup = fq->lookup;
-    uint64_t l = fq->l, m = fq->m;
     unsigned nr = fq->nr, key_ct = fq->key_ct;
-    register int c;
+    const unsigned phred_offset = fq->phred_offset;
+    unsigned fq_ent_max = (fq->readlength << 1) + SEQ_MAX_NAME_ETC;
     register uint8_t *b = s + l;
-    unsigned fq_ent_max = (fq->readlength << 1) + FQ_MAX_NAME_ETC;
 
     void* g;
     int (*gc) (void*);
@@ -249,11 +206,8 @@ fq_b2(seqb2_t *fq)
         }
         uint8_t* o = b;
         b += BUF_OFFSET_BYTES + SEQ_OFFSET_BYTES;
-        while (!isspace(c = gc(g)) && (c >= 0)) { /* header */
-            *b++ = c;
-            if_ever(++i == FQ_MAX_NAME_ETC) { c = 2; goto out; }
-        }
-        while (c != '\n' && (c >= 0)) c = gc(g); /* comment */
+        while (!isspace(c = gc(g)) && (c >= 0)) *b++ = c; /* header */
+        while (c != '\n' && (c >= 0)) c = gc(g);          /* comment */
         *b++ = '\0';
 //        fprintf(stderr, "%s...\n", b);fflush(NULL);
 
@@ -314,7 +268,7 @@ fq_b2(seqb2_t *fq)
 //            fprintf(stderr, "2s:'%c'\n", b6(c<<1)); fflush(NULL);
 
             // update window for both strands
-            dna = ((dna << 2) & KEYNT_MASK & 0xffffffffffffffff) | c;
+            dna = ((dna << 2) & KEYNT_MASK & ~0ul) | c;
             rev = ((uint64_t)(c ^ 2) << KEYNT_TOP) | (rev >> 2);
 
             // select a strand dependent on the central Nt
