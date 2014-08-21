@@ -37,7 +37,8 @@
 #define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
 
 #define SEQ_OFFSET_BYTES 2
-#define BUF_OFFSET_BYTES 4
+#define NS_OFFSET_BYTES 3
+#define BUF_OFFSET_BYTES 5
 #define SEQ_OFFSET_MAX ((1u << (SEQ_OFFSET_BYTES << 3)) - 1u)
 
 #define INIT_BUFSIZE (1u << 23)

@@ -15,7 +15,7 @@
 
 
 /**
- * Return type of extension. 0:
+ * Return type of extension. 0:fq, 2:fa
  */
 unsigned
 get_fastx_type(char* f, const unsigned ref_i, const unsigned fhsz)
@@ -23,10 +23,12 @@ get_fastx_type(char* f, const unsigned ref_i, const unsigned fhsz)
     unsigned i = 0, c = strlen(f) - 1;
     f += c; // parse extension from right
 
-    if (*f == 'z' && (((c -= 3) < 3) || *--f != 'g' || *--f != '.')) //.gz
-        return fhsz;
-
-    if (*--f == 't') { // .txt(.gz)?
+    if (*f == 'z') {
+        if (((c -= 3) < 3) || *--f != 'g' || *--f != '.') //.gz
+            return fhsz;
+        --f;
+    }
+    if (*f == 't') { // .txt(.gz)?
         if (((c -= 4) < 0) || *--f != 'x' || *--f != 't') return fhsz + 1;
     } else {
         if (*f == 'a') i = ref_i;

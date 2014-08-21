@@ -17,16 +17,19 @@
 #include "fq.h"
 
 static int
-b2_write(gzfh_t *fh, char *start, int len)
+b2_write(const gzfh_t *fh, const char *s, uint64_t l,
+        const size_t sz)
 {
-    if ((len = write(fileno(fh->fp), start, len)) < 0) {
-        fputs("error while writing\n", stderr);
-        return -3;
+    while (l) {
+        int c = write(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
+        if (c < 0) {
+            fputs("error while writing\n", stderr);
+            return c;
+        }
+        fprintf(stderr, "==%d bytes written\n", c);
+        c /= sz, l -= c, s += c;
     }
-    if (DEBUG)
-        fprintf(stderr, "%u bytes written\n", len);
-
-    return ferror(fh->fp) ? -3 : len;
+    return ferror(fh->fp) ? -3 : 0;
 }
 
 typedef struct option_description
@@ -65,13 +68,14 @@ static int usage()
     for (i = 0; dopt[i].name != NULL; ++i)
         fprintf(stderr, "\t-%c|--%s\t%s\n", dopt[i].val, dopt[i].name, dopt[i].descr);
     fputc('\n', stderr);
-    fputs("Instead of a file you may use stdin or stdout\n", stderr);
+    fputs("Instead of providing a file you may specify stdin or stdout for some tasks\n", stderr);
     fputc('\n', stderr);
     return 1;
 }
 
 int main(int argc, char* const* argv)
 {
+    uint64_t blocksize;
     struct seqb2_t seq = {0}; /* init everything to 0 or NULL */
     unsigned t, i = 0u, fhsz = ARRAY_SIZE(seq.fh);
     int c, ret = EXIT_FAILURE;
@@ -124,6 +128,7 @@ int main(int argc, char* const* argv)
     seq.readlimit = optvals[1][0];
     seq.blocksize = optvals[2][0];
     seq.phred_offset = optvals[3][0];
+    blocksize = (uint64_t)seq.blocksize << 20;
 
     /* options without a flag */
     while (optind != argc) {
@@ -148,7 +153,11 @@ int main(int argc, char* const* argv)
     /* open files and allocate memory */
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].name == NULL) continue;
-        c = set_io_fh(&seq.fh[i], &seq.mode, (uint64_t)seq.blocksize << 20);
+
+        c = set_stdio_fh(&seq.fh[i], &seq.mode);
+        if (c == 0)
+            c = set_io_fh(&seq.fh[i], blocksize, (seq.mode & amopt('f')) != 0);
+
         if (c < 0) {
             fprintf(stderr, "main: -%c [%s] failed.\n", dopt[i].val, dopt[i].name);
             goto out;
@@ -179,13 +188,9 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else {
-            //if (seq.readlength == 0) {
-            //    fputs("Readlength is required for indexing\n", stderr);
-            //    goto out;
-            //}
-            fputs("Indexing\n", stderr);
-            if ((c = fa_ndx(&seq)) != 0) {
-                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+            fa_index(&seq);
+            if (c < 0) {
+                fputs("failed to create keyct.\n", stderr);
                 goto out;
             }
             fputc('\n', stderr);

@@ -20,10 +20,11 @@ typedef struct gzfh_t {
     FILE *fp;
     int fd;
     gzFile io;
-    int (*write) (gzfh_t *fh, char*, int);
+    int (*write) (const gzfh_t *fh, const char*, uint64_t, const size_t);
     int (*close) (gzFile);
 } gzfh;
 
-int set_io_fh(struct gzfh_t* fh, uint64_t* mode, uint64_t blocksize);
+int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
+int set_io_fh(struct gzfh_t* fh, uint64_t blocksize, int force);
 
 #endif //RK_GZ_H

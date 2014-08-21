@@ -14,8 +14,6 @@
 #include "seq.h"
 #include "gz.h"
 
-int init_fa(seqb2_t *fa);
-int fa_ndx(seqb2_t *fa);
-void free_fa(seqb2_t *fa);
+int fa_index(seqb2_t *seq);
 int fa_print(seqb2_t *fa);
 #endif // RK_FA_H

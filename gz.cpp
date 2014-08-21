@@ -13,16 +13,20 @@
 #include "gz.h"
 
 static inline int
-b2gz_write(gzfh_t *fh, char *start, int len)
+b2gz_write(const gzfh_t* fh, const char* s, uint64_t l,
+        const size_t sz)
 {
-    if ((len = gzwrite(fh->io, start, len)) < 0) {
-        fprintf(stderr, "%s\n", gzerror(fh->io, &len));
-        return len;
+    while (l) {
+        int c = gzwrite(fh->io, s, l > INT_MAX ? INT_MAX : l);
+        if (c < 0) {
+            fprintf(stderr, "%s\n", gzerror(fh->io, &c));
+            return c;
+        }
+        fprintf(stderr, "==%d bytes written\n", c);
+        c /= sz, l -= c, s += c;
     }
-    if (DEBUG)
-        fprintf(stderr, "%d bytes written\n", len);
 
-    return gzeof(fh->io) ? -EIO : len;
+    return gzeof(fh->io) ? -EIO : 0;
 }
 
 static int
@@ -46,25 +50,31 @@ rgzopen(struct gzfh_t* fh, uint64_t blocksize)
 }
 
 int
-set_io_fh(struct gzfh_t* fh, uint64_t* mode, uint64_t blocksize)
+set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
 {
     const char* t = strstr(fh->name, fh->write ? "stdout" : "stdin");
-    if (t) {
-        if (*mode & amopt(t[3])) {
-            fprintf(stderr, "%s was already assigned\n", t);
-            return -EINVAL;
-        }
-        fh->fp = fh->write ? stdout : stdin;
-        *mode |= amopt(t[3]);
-        return 0;
+    if (!t) return 0;
+
+    if (*mode & amopt(t[3])) {
+        fprintf(stderr, "%s was already assigned\n", t);
+        return -EINVAL;
     }
-    fh->fp = fopen(fh->name, "r"); // test whether file exists
-    t = strstr(fh->name,".gz"); // TODO: read magic gzip number in file
+    fh->fp = fh->write ? stdout : stdin;
+    *mode |= amopt(t[3]);
+    return 1;
+}
+
+int
+set_io_fh(struct gzfh_t* fh, uint64_t blocksize, int force)
+{
+    if (fh->fp == NULL)
+        fh->fp = fopen(fh->name, "r"); // test whether file exists
+    const char* t = strstr(fh->name,".gz"); // TODO: read magic gzip number in file
 
     if (fh->write) { /* write without gzip by default */
         if (fh->fp) { /* file already exists, overwrite? */
             fclose(fh->fp);
-            if ((*mode & amopt('f')) == 0) {
+            if (!force) {
                 fprintf(stderr, "use -f to force write %s\n", fh->name);
                 return -EEXIST;
             }
