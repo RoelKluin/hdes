@@ -68,7 +68,7 @@ static int usage()
     for (i = 0; dopt[i].name != NULL; ++i)
         fprintf(stderr, "\t-%c|--%s\t%s\n", dopt[i].val, dopt[i].name, dopt[i].descr);
     fputc('\n', stderr);
-    fputs("Instead of providing a file you may specify stdin or stdout for some tasks\n", stderr);
+    fputs("Instead of a file you may specify stdin or stdout for some tasks\n", stderr);
     fputc('\n', stderr);
     return 1;
 }
@@ -163,16 +163,12 @@ int main(int argc, char* const* argv)
             goto out;
         }
 
-        fprintf(stderr, "%s:\t", dopt[i].name);
-        if (c == 0)
-            fprintf(stderr, "%s\n", seq.fh[i].name);
-        else if (c == 1) fputs("(none given)\n", stderr);
-
+        fprintf(stderr, "%s:\t%s\n", dopt[i].name, c == 0 ? seq.fh[i].name :
+                (i == fhsz - 1 ? "stdout" : "stdin"));
     }
-
     if (seq.fh[2].name != NULL) {
         if (seq.fh[1].name) {
-            fputs("Paired-end alignment\n", stderr);
+            fputs("== Paired-end alignment\n", stderr);
             /*if ((c = pe_fq_b2(&seq)) != 0) {
                 fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
                 goto out;
@@ -180,7 +176,7 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
-            fputs("Single-end alignment\n", stderr);
+            fputs("== Single-end alignment\n", stderr);
             /*if ((c = fq_b2(&seq)) != 0) {
                 fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
                 goto out;
@@ -190,14 +186,14 @@ int main(int argc, char* const* argv)
         } else {
             fa_index(&seq);
             if (c < 0) {
-                fputs("failed to create keyct.\n", stderr);
+                fputs("== failed to create keyct.\n", stderr);
                 goto out;
             }
             fputc('\n', stderr);
         }
     } else {
         if (seq.fh[1].name) {
-            fputs("Paired-end assembly\n", stderr);
+            fputs("== Paired-end assembly\n", stderr);
             /*if ((c = pe_fq_b2(&seq)) != 0) {
                 fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
                 goto out;
@@ -205,7 +201,7 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
-            fputs("Single-end assembly\n", stderr);
+            fputs("== Single-end assembly\n", stderr);
             if ((c = fq_b2(&seq)) != 0) {
                 fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
                 goto out;

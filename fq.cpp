@@ -115,13 +115,14 @@ fq_print(seqb2_t *fq)
                 i = *b; i <<= 8;
                 i |= *--b; i <<= 8;
                 i |= *--b; i <<= 8;
+                i |= *--b; i <<= 8;
                 i |= *--b; // next seq offset for same key, or 1u.
                 // similarly key offset could be retrieved, but KEY_WIDTH
                 // needs to be added to get to the real offset.
                 b += BUF_OFFSET_BYTES;
-                *w = '@'; *++w = *b;                     // write header
-                while ((c = *++b)) *++w = c;
-                *++w = ' ';  w += sprint0x(w, j, '\t');        // key in comment
+                *w = '@';                     // write header
+                while ((c = *b)) { *++w = c; ++b; }
+                *++w = ' ';  w += sprint0x(w, j, '\t', 8);        // key in comment
                 w += sprints(w, seqrc) - w; // and regexp
                 *++w = '\n';
 

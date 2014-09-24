@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <assert.h>
 
+
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 #endif
@@ -31,8 +32,8 @@
 
 /* the following should be enough for 32 bit int */
 
-static inline const uint8_t *
-sprints(uint8_t *out, const uint8_t *s)
+static inline uint8_t *
+sprints(uint8_t *out, uint8_t *s)
 {
     while (*s) { *++out = *s; ++s; }
     return out;
@@ -51,24 +52,27 @@ sprintu(uint8_t *out, register uint64_t u, uint8_t del)
         *--s = t + '0';
     }
     for (;*s != del; ++u, ++s) *++out = *s;
-    return u;
+    return ++u;
 }
 
 static inline unsigned
-sprint0x(uint8_t *out, register uint64_t u, uint8_t del)
+sprint0x(uint8_t *out, register uint64_t u, uint8_t del, uint8_t len)
 {
+    register unsigned i;
     *++out = '0'; *++out = 'x';
-    register uint8_t *s = out + 16;
+    register uint8_t *s = out + len + 1;
     *s = del;
 
-    while (u) {
+    // hex: zero padded.
+    for (i = 0; i != len; ++i) {
         register int t = u & 0xf;
         *--s = t + (t >= 10 ? 'a' - 10 : '0');
         u >>= 4;
     }
-    for (u = 2;*s != del; ++u, ++s) *++out = *s;
-    return u;
+    return len + 3;
 }
+
+
 
 
 #define DEBUG 1
