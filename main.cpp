@@ -184,7 +184,7 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else {
-            fa_index(&seq);
+            c = fa_index(&seq);
             if (c < 0) {
                 fputs("== failed to create keyct.\n", stderr);
                 goto out;
@@ -220,10 +220,8 @@ out: /* cleanup */
         if (seq.fh[i].io == NULL) continue;
         // XXX: valgrind complains here but the problem is in zlib
         // probably not a bug.
-        if (seq.fh[i].close && seq.fh[i].close(seq.fh[i].io) != Z_OK) {
+        if (seq.fh[i].close && seq.fh[i].close(seq.fh[i].io) != Z_OK)
             fprintf(stderr, "main: gzclose fails for %s\n", dopt[i].name);
-            close(seq.fh[i].fd);
-        }
         close(seq.fh[i].fd);
     }
     return ret;
