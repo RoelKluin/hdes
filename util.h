@@ -30,36 +30,46 @@
 // get bit for alpha char, regardless of case [command line options]
 #define amopt(r)        (1ul << ((r+7) & 0x1f))
 
-/* the following should be enough for 32 bit int */
-
+/* copy buffer and return pointer to one past it
+ * s must be zero terminated, and out have sufficient size always.
+ */
 static inline uint8_t *
 sprints(uint8_t *out, uint8_t *s)
 {
-    while (*s) { *++out = *s; ++s; }
+    for (; *s; ++out, ++s) *out = *s;
     return out;
 }
 
-
+/*
+ * almost equivalent to `sprints(out, "%lu%c", u, del)'
+ * the following should be enough for 64 bit int
+ */
 static inline unsigned
 sprintu(uint8_t *out, register uint64_t u, uint8_t del)
 {
+    register unsigned len = 0;
     register uint8_t *s = out + 21;
-    *s = del;
 
-    while (u) {
+    do {
+        ++len;
         register unsigned t = u % 10;
         u /= 10;
         *--s = t + '0';
-    }
-    for (;*s != del; ++u, ++s) *++out = *s;
-    return ++u;
+    } while (u);
+    while (u++ != len) *out++ = *s++;
+    *out = del;
+    return len + 1;
 }
 
+/*
+ * almost equivalent to `sprints(out, "0x%016lx%c", u, del)' if len == 16.
+ * again should be enough for 64 bit int
+ */
 static inline unsigned
 sprint0x(uint8_t *out, register uint64_t u, uint8_t del, uint8_t len)
 {
     register unsigned i;
-    *++out = '0'; *++out = 'x';
+    *out = '0'; *++out = 'x';
     register uint8_t *s = out + len + 1;
     *s = del;
 
