@@ -64,6 +64,7 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
     return 1;
 }
 
+/* a force of 2 forces read */
 int
 set_io_fh(struct gzfh_t* fh, uint64_t blocksize, int force)
 {
@@ -71,7 +72,7 @@ set_io_fh(struct gzfh_t* fh, uint64_t blocksize, int force)
         fh->fp = fopen(fh->name, "r"); // test whether file exists
     const char* t = strstr(fh->name,".gz"); // TODO: read magic gzip number in file
 
-    if (fh->write) { /* write without gzip by default */
+    if (fh->write && force != 2) { /* write without gzip by default */
         if (fh->fp) { /* file already exists, overwrite? */
             fclose(fh->fp);
             if (!force) {
