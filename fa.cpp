@@ -39,89 +39,41 @@ static void free_ndx(seqb2_t *fa)
     fa->s = NULL;
 }
 
-/*
- * zero on success.
- */
-static int fa_keyct(seqb2_t *seq, void* g, int (*gc) (void*))
+// a keycount of 255 == 0xff is a sticky max.
+static inline int increment_keyct(uint8_t* p, kct_t* nop)
 {
-    register unsigned i = 0;
+    if (*p != 255) (*p)++;
+    return 0;
+}
+
+static inline int
+write_kcbed(uint8_t* p, kct_t* kct)
+{
+    // a keycount of 255 == 0xff is a sticky max.
+    assert(*p != 0);
+    kct->x[kct->l++] = *p;
+
+    if (BUF_STACK - kct->l < 64) {
+	int c = gzwrite(kct->out, kct->x, kct->l);
+	if (c < 0) return c;
+        kct->l = 0;
+    }
+    return 0;
+}
+
+/*
+ * zero or -1 on success.
+ */
+static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
+{
     register int c;
     register uint8_t* p;
     uint8_t* s = seq->s;
-
-    while ((c = gc(g)) != '>') if (c == -1 || c == '@') return c; // skip to first
-    do {
-        while (c != '\n' && ((c = gc(g)) >= 0)) fputc(c, stderr); /* header etc */
-
-        i = 0;
-        while (c != '>' && c > 0) { // foreach stretch of N's
-            unsigned t = i;
-            while((c = gc(g)) == 'N' || isspace(c)) i += (c == 'N');
-            t = i - t;
-            if (t) fprintf(stderr, "Skipped %d N's\n", t);
-
-            // (re)initialize key
-            register uint64_t dna = 0ul, rev = 0ul;
-            t = i + KEY_WIDTH;
-            while (i != t && likely(c != '>' && c != -1)) {
-                if (!isspace(c)) {
-                    c = b6(c);
-                    c = -isb6(c) & (c >> 1); // zero [min] for N - but also for A.
-
-                    dna = (dna << 2) | c;
-                    rev = ((uint64_t)c << KEYNT_TOP) | (rev >> 2); // xor 0x2 after loop
-                    ++i;
-                }
-                c = gc(g);
-            }
-            rev ^= KEYNT_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
-
-            register uint64_t b = (dna & KEYNT_STRAND) ? rev : dna;
-            // excise out 2nd cNt bit
-            b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
-            p = s + (b & KEYNT_TRUNC_MASK);
-            // a keycount of 255 == 0xff is a sticky max.
-            if (*p != 255) (*p)++;
-
-            while ((dna || c != 'N') && c != '>' && c != -1) {
-                if (!isspace(c)) {
-                    // seq or revcmp according to 2nd bit of central Nt
-                    b = b6(c);
-                    b = -isb6(b) & (b >> 1);
-
-                    dna = (dna << 2) | b;
-                    rev = ((b ^ 2) << KEYNT_TOP) | (rev >> 2);
-                    b = (dna & KEYNT_STRAND) ? rev : dna;
-                    b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
-                    p = s + (b & KEYNT_TRUNC_MASK);
-                    if (*p != 255) (*p)++;
-                    ++i;
-                }
-                c = gc(g);
-            }
-            if (c == -1) c = 0;
-        }
-        fprintf(stderr, "processed %u Nts\n", i + 1);
-    } while (c > 0);
-
-    return c;
-}
-
-static int fa_kcbed(seqb2_t *seq, void* g, int (*gc) (void*))
-{
-    register int c;
-    register uint8_t* x;
-    const uint8_t* s = seq->s;
-    register const uint8_t* p;
-    struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
-    gzFile out = fhout->io;
-    char line[BUF_STACK];
     int t;
 
     while ((c = gc(g)) != '>') if (c == -1 || c == '@') return c; // skip to first
     do {
         while (c != '\n' && ((c = gc(g)) >= 0)) fputc(c, stderr); /* header etc */
-        x = (uint8_t*)line;
 
         while (c != '>' && (c > 0)) { // foreach stretch of N's
             while((c = gc(g)) == 'N' || isspace(c)) {};
@@ -146,8 +98,9 @@ static int fa_kcbed(seqb2_t *seq, void* g, int (*gc) (void*))
             // excise out 2nd cNt bit
             b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
             p = s + (b & KEYNT_TRUNC_MASK);
-            assert(*p != 0);
-            *x++ = *p;
+            // a keycount of 255 == 0xff is a sticky max.
+            t = kc->process(p, kc);
+            if (t < 0) return t;
 
             while ((dna || c != 'N') && c != '>' && c != -1) {
                 if (!isspace(c)) {
@@ -160,26 +113,14 @@ static int fa_kcbed(seqb2_t *seq, void* g, int (*gc) (void*))
                     b = (dna & KEYNT_STRAND) ? rev : dna;
                     b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
                     p = s + (b & KEYNT_TRUNC_MASK);
-                    assert(*p != 0);
-                    *x++ = *p;
-                    c = (char*)x - line;
-                    if (BUF_STACK - c < 64) {
-                        //*x = '\0';
-                        c = gzwrite(out, line, c);
-                        if (c < 0) return c;
-                        x = (uint8_t *)line;
-                    }
+                    t = kc->process(p, kc);
+                    if (t < 0) return t;
                 }
                 c = gc(g);
             }
         }
     } while (c > 0);
 
-    if (c == -1) {
-        *x++ = '\0';
-        t = gzwrite(out, line, (char*)x - line);
-        c = (t <= 0) ? t : 0;
-    }
     return c;
 }
 
@@ -226,15 +167,14 @@ int fa_index(struct seqb2_t* seq)
     struct gzfh_t* fhin = seq->fh + 2; // init with ref
     uint64_t blocksize = (uint64_t)seq->blocksize << 20;
     int i, res, ret = -1;
-    char file[256];
     void* g;
     int (*gc) (void*);
     int is_gzfile = fhin->io != NULL;
+    char file[256];
+    char line[BUF_STACK];
 
-    struct index_action ndxact[2] = {
-        {".fa", ".keyct.gz", &fa_keyct},
-        {".keyct.gz", ".kcbed.gz", &fa_kcbed}
-    };
+    const char* ndxact[5] = {".fa", ".keyct.gz", ".keyct.gz", ".kcbed.gz"};
+    kct_t kc = { .process = &increment_keyct };
 
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
@@ -258,15 +198,15 @@ int fa_index(struct seqb2_t* seq)
         gc = (int (*)(void*))&fgetc;
     }
 
-    for (i = 0; i != ARRAY_SIZE(ndxact) && res >= 0; ++i) {
+    for (i = 0; i != 2 && res >= 0; ++i) {
 
-        if (!fn_convert(fhout, ndxact[i].search, ndxact[i].replace))
+        if (!fn_convert(fhout, ndxact[i*2], ndxact[i*2 + 1]))
             continue; // skip if this file was not requested on the commandline
         fprintf(stderr, "== %s(%lu)\n", fhout->name, fhout - seq->fh);
         fhout->fp = fopen(fhout->name, "r"); // test whether file exists
         if (fhout->fp) {
             fprintf(stderr, "== %s already exists\n", fhout->name);
-            if (i == ARRAY_SIZE(ndxact) - 1) {
+            if (i == 2 - 1) {
                 // only keyct should be read in seq->s.
                 fprintf(stderr, "== done.");
                 break;
@@ -297,7 +237,21 @@ int fa_index(struct seqb2_t* seq)
         res = set_io_fh(fhout, blocksize, 0);
         if (res < 0) { fprintf(stderr, "== set_io_fh failed:%d", res); break; }
 
-        res = ndxact[i].index(seq, g, gc);
+        if (i == 1) {
+            kc.process = &write_kcbed;
+            kc.x = line;
+            kc.out = fhout->io;
+            kc.l = 0;
+        }
+        res = fa_kc(seq, &kc, g, gc);
+        if (res == -1) {
+            res = 0;
+            if (i == 1) {
+                kc.x[kc.l++] = '\0';
+                res = gzwrite(fhout->io, line, kc.l);
+                if (res > 0) res = 0;
+            }
+        }
         if (res < 0) { fprintf(stderr, "== .index failed:%d", res);  break; }
 
         if (i == 0) {

@@ -18,8 +18,16 @@
 typedef struct index_action {
     const char* search;
     const char* replace;
-    int (*index) (seqb2_t*, void*, int (*) (void*));
 } index_action_t;
+
+typedef struct kct {
+    int (*process) (uint8_t*, struct kct*);
+    gzFile out;
+    char* x;
+    unsigned l;
+} kct_t;
+
+
 
 int fa_index(seqb2_t *seq);
 int fa_print(seqb2_t *fa);
