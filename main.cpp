@@ -163,7 +163,7 @@ int main(int argc, char* const* argv)
             goto out;
         }
 
-        fprintf(stderr, "%s:\t%s\n", dopt[i].name, c == 0 ? seq.fh[i].name :
+        fprintf(stderr, "%s(%u):\t%s\n", dopt[i].name, i, c == 0 ? seq.fh[i].name :
                 (i == fhsz - 1 ? "stdout" : "stdin"));
     }
     if (seq.fh[2].name != NULL) {
@@ -217,7 +217,8 @@ int main(int argc, char* const* argv)
     ret = EXIT_SUCCESS;
 out: /* cleanup */
     for (i=0; i != fhsz; ++i) {
-        if (seq.fh[i].io == NULL) continue;
+        if (seq.fh[i].fp == NULL) continue;
+        fprintf(stderr, "closing %u\n", i);
         // XXX: valgrind complains here but the problem is in zlib
         // probably not a bug.
         if (seq.fh[i].close && seq.fh[i].close(seq.fh[i].io) != Z_OK)
