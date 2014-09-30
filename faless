@@ -4,12 +4,12 @@
 F="$1"
 
 if [ ! -e "$1" ]; then
-   ./fqcolor.pl "$@" | less -R
+   ./facolor.pl "$@" | less -R
 else
 	shift;
 	if [[ "$F" =~ \.gz$ ]]; then
-		zcat "$F" | ./fqcolor.pl "$@" | less -R
+		zcat "$F" | ./facolor.pl "$@" | less -R
 	else
-		cat "$F" | ./fqcolor.pl "$@" | less -R
+		cat "$F" | ./facolor.pl "$@" | less -R
 	fi
 fi

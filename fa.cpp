@@ -39,7 +39,6 @@ static void free_ndx(seqb2_t *fa)
     fa->s = NULL;
 }
 
-// a keycount of 255 == 0xff is a sticky max.
 static inline int increment_keyct(uint8_t* p, kct_t* nop)
 {
     if (*p != 255) (*p)++;
@@ -47,13 +46,12 @@ static inline int increment_keyct(uint8_t* p, kct_t* nop)
 }
 
 static inline int
-write_kcbed(uint8_t* p, kct_t* kct)
+write_kcpos(uint8_t* p, kct_t* kct)
 {
-    // a keycount of 255 == 0xff is a sticky max.
     assert(*p != 0);
-    kct->x[kct->l++] = *p;
+    kct->x[kct->l] = *p;
 
-    if (BUF_STACK - kct->l < 64) {
+    if (++kct->l == BUF_STACK) {
 	int c = gzwrite(kct->out, kct->x, kct->l);
 	if (c < 0) return c;
         kct->l = 0;
@@ -173,7 +171,7 @@ int fa_index(struct seqb2_t* seq)
     char file[256];
     char line[BUF_STACK];
 
-    const char* ndxact[5] = {".fa", ".keyct.gz", ".keyct.gz", ".kcbed.gz"};
+    const char* ndxact[4] = {".fa", ".keyct.gz", ".kcpos.gz"};
     kct_t kc = { .process = &increment_keyct };
 
 
@@ -200,7 +198,7 @@ int fa_index(struct seqb2_t* seq)
 
     for (i = 0; i != 2 && res >= 0; ++i) {
 
-        if (!fn_convert(fhout, ndxact[i*2], ndxact[i*2 + 1]))
+        if (!fn_convert(fhout, ndxact[i], ndxact[i + 1]))
             continue; // skip if this file was not requested on the commandline
         fprintf(stderr, "== %s(%lu)\n", fhout->name, fhout - seq->fh);
         fhout->fp = fopen(fhout->name, "r"); // test whether file exists
@@ -238,7 +236,7 @@ int fa_index(struct seqb2_t* seq)
         if (res < 0) { fprintf(stderr, "== set_io_fh failed:%d", res); break; }
 
         if (i == 1) {
-            kc.process = &write_kcbed;
+            kc.process = &write_kcpos;
             kc.x = line;
             kc.out = fhout->io;
             kc.l = 0;
@@ -247,15 +245,15 @@ int fa_index(struct seqb2_t* seq)
         if (res == -1) {
             res = 0;
             if (i == 1) {
-                kc.x[kc.l++] = '\0';
-                res = gzwrite(fhout->io, line, kc.l);
+                kc.x[kc.l] = '\0';
+                res = gzwrite(fhout->io, line, ++kc.l);
                 if (res > 0) res = 0;
             }
         }
         if (res < 0) { fprintf(stderr, "== .index failed:%d", res);  break; }
 
         if (i == 0) {
-            // the kcbed index function alreay wrote to disk, no read needed here.
+            // the kcpos index function alreay wrote to disk, no read needed here.
             res = fhout->write(fhout, (char*)seq->s, seq->m, sizeof(char));
             if (res < 0) { fprintf(stderr, "== ->write failed:%d", res);  break; }
             fprintf(stderr, "== closing %s\n", fhout->name);

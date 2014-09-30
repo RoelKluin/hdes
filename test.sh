@@ -67,3 +67,13 @@ sed -n '/^-@/{s/^.//;H;}; ${x; s/\n/|/g;s/^|//p;}'))" head_100K_SRR077487_1.filt
 
 
 make clean && make && zcat /net/RTAdump/HiSeq2000/140716_M00872_0140_000000000-A9AAV_M153/Data/Intensities/BaseCalls/Unaligned/Project_MM153_Sander_Kelderman_2852/Sample_2852_29_CRC6_1_C5/2852_29_CRC6_1_C5_ATTGAGGA_L001_R1_001.fastq.gz | head -n10000 | valgrind ./uqct 200 2>&1 | ./fqless
+
+make clean && make && ./uqct hg19.fa.gz
+
+#zcat hg19_including_nonprimary.fa.gz |
+#awk '/^>/ {FA="fa_parts/" substr($0,2,index($0," ")-1)}; {print | "gzip -c --fast - >> "FA; close(FA)}'
+
+#for chr in `seq 1 22` X Y MT; do
+#    zcat fa_parts/$chr
+#done | gzip --fast > hg19.fa.gz
+
