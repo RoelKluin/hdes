@@ -53,7 +53,7 @@ write_kcpos(uint8_t* p, kct_t* kct)
 
     if (++kct->l == BUF_STACK) {
 	int c = gzwrite(kct->out, kct->x, kct->l);
-	if (c < 0) return c;
+	if (c < 0) return c - 1;
         kct->l = 0;
     }
     return 0;
@@ -66,7 +66,6 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
     uint8_t* s = seq->s;
-    int t;
 
     while ((c = gc(g)) != '>') if (c == -1 || c == '@') return c; // skip to first
     do {
@@ -76,41 +75,34 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
             while((c = gc(g)) == 'N' || isspace(c)) {};
 
             // (re)initialize key
-            register uint64_t b, dna = 0ul, rev = 0ul;
-            t = 0;
+            register uint64_t t = 0, dna = 0ul, rev = 0ul;
             while (t != KEY_WIDTH && likely(c != '>' && c != -1)) {
                 if (!isspace(c)) {
-                    b = b6N0(c);
-                    dna = (dna << 2) | b;
-                    rev = ((uint64_t)b << KEYNT_TOP) | (rev >> 2); // xor 0x2 after loop
+                    add_b6N0(c, c, dna, rev);
                     ++t;
                 }
                 c = gc(g);
             }
-            rev ^= KEYNT_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
 
             // excise out 2nd cNt bit
-            b = get_b2cn_key(b, dna, rev);
+            t = get_b2cn_key(t, dna, rev);
             // a keycount of 255 == 0xff is a sticky max.
-            t = kc->process(s + b, kc);
-            if (t < 0) return t;
+            t = kc->process(s + t, kc);
 
-            while ((dna || c != 'N') && c != '>' && c != -1) {
+            while ((dna || c != 'N') && c != '>' && c != -1 && t == 0) {
                 if (!isspace(c)) {
                     // seq or revcmp according to 2nd bit of central Nt
-                    b = b6N0(c);
-                    dna = (dna << 2) | b;
-                    rev = ((b ^ 2) << KEYNT_TOP) | (rev >> 2);
-                    b = get_b2cn_key(b, dna, rev);
-                    t = kc->process(s + b, kc);
-                    if (t < 0) return t;
+                    add_b6N0(t, c, dna, rev);
+                    t = get_b2cn_key(t, dna, rev);
+                    t = kc->process(s + t, kc);
                 }
                 c = gc(g);
             }
+            if (t) c = (int)t;
         }
     } while (c > 0);
 
-    return c;
+    return c & -(c != -1);
 }
 
 int
@@ -233,13 +225,10 @@ int fa_index(struct seqb2_t* seq)
             kc.l = 0;
         }
         res = fa_kc(seq, &kc, g, gc);
-        if (res == -1) {
-            res = 0;
-            if (i == 1) {
-                kc.x[kc.l] = '\0';
-                res = gzwrite(fhout->io, line, ++kc.l);
-                if (res > 0) res = 0;
-            }
+        if (res == 0 && i == 1) {
+            kc.x[kc.l] = '\0';
+            res = gzwrite(fhout->io, line, ++kc.l);
+            if (res > 0) res = 0;
         }
         if (res < 0) { fprintf(stderr, "== .index failed:%d", res);  break; }
 

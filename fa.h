@@ -15,9 +15,15 @@
 #include "gz.h"
 #define BUF_STACK (1 << 22)
 
+#define add_b6N0(t, c, dna, rev) ({\
+        t = b6N0(c);\
+        dna = (dna << 2) | t;\
+        rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
+})
+
 // twobit, complement-neutral key
-#define get_b2cn_key(t, dna, rc) ({\
-        t = (dna & KEYNT_STRAND) ? rc : dna;\
+#define get_b2cn_key(t, dna, rev) ({\
+        t = (dna & KEYNT_STRAND) ? ((rev) ^ 0xaaaaaaaaaaaaaaaa) : dna;\
         (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
 })
 
