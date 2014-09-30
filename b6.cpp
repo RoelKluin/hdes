@@ -30,6 +30,16 @@ unsigned b6(unsigned c)
 	return c ^ cs ^ (-TUDE_conv & B6_RNA) ^ no_u;
 }
 
+// zero [min] for N - but also for A.
+unsigned b6N0(unsigned c)
+{	/* don't expect first two to change very often, so may move them out */
+	unsigned no_u = !ischar_ignore_cs(c, 'U');
+	unsigned cs = (c | B6_UC) & B6_LC;
+	unsigned TUDE_conv = (c & 0x8e) == 0x4; // conversion if qr/[TUDE]/
+	c ^= cs ^ (-TUDE_conv & B6_RNA) ^ no_u;
+        return -isb6(c) & (c >> 1);
+}
+
 /* if uc DNA is expected use with cs = B6_UC, no_u = 1 */
 inline unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u)
 {

@@ -15,6 +15,12 @@
 #include "gz.h"
 #define BUF_STACK (1 << 22)
 
+// twobit, complement-neutral key
+#define get_b2cn_key(t, dna, rc) ({\
+        t = (dna & KEYNT_STRAND) ? rc : dna;\
+        (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
+})
+
 typedef struct index_action {
     const char* search;
     const char* replace;

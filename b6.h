@@ -29,6 +29,7 @@
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
 
 unsigned b6(unsigned c);
+unsigned b6N0(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 inline uint64_t revseq(uint64_t x);
 inline unsigned get_twisted_even(unsigned rev, unsigned sq);

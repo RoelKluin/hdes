@@ -41,7 +41,7 @@ static void free_ndx(seqb2_t *fa)
 
 static inline int increment_keyct(uint8_t* p, kct_t* nop)
 {
-    if (*p != 255) (*p)++;
+    if (*p != 255) (*p)++; // the max keyct is sticky.
     return 0;
 }
 
@@ -65,7 +65,6 @@ write_kcpos(uint8_t* p, kct_t* kct)
 static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
-    register uint8_t* p;
     uint8_t* s = seq->s;
     int t;
 
@@ -77,41 +76,33 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
             while((c = gc(g)) == 'N' || isspace(c)) {};
 
             // (re)initialize key
-            register uint64_t dna = 0ul, rev = 0ul;
+            register uint64_t b, dna = 0ul, rev = 0ul;
             t = 0;
             while (t != KEY_WIDTH && likely(c != '>' && c != -1)) {
                 if (!isspace(c)) {
-                    c = b6(c);
-                    c = -isb6(c) & (c >> 1); // zero [min] for N - but also for A.
-
-                    dna = (dna << 2) | c;
-                    rev = ((uint64_t)c << KEYNT_TOP) | (rev >> 2); // xor 0x2 after loop
+                    b = b6N0(c);
+                    dna = (dna << 2) | b;
+                    rev = ((uint64_t)b << KEYNT_TOP) | (rev >> 2); // xor 0x2 after loop
                     ++t;
                 }
                 c = gc(g);
             }
             rev ^= KEYNT_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
 
-            register uint64_t b = (dna & KEYNT_STRAND) ? rev : dna;
             // excise out 2nd cNt bit
-            b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
-            p = s + (b & KEYNT_TRUNC_MASK);
+            b = get_b2cn_key(b, dna, rev);
             // a keycount of 255 == 0xff is a sticky max.
-            t = kc->process(p, kc);
+            t = kc->process(s + b, kc);
             if (t < 0) return t;
 
             while ((dna || c != 'N') && c != '>' && c != -1) {
                 if (!isspace(c)) {
                     // seq or revcmp according to 2nd bit of central Nt
-                    b = b6(c);
-                    b = -isb6(b) & (b >> 1);
-
+                    b = b6N0(c);
                     dna = (dna << 2) | b;
                     rev = ((b ^ 2) << KEYNT_TOP) | (rev >> 2);
-                    b = (dna & KEYNT_STRAND) ? rev : dna;
-                    b = ((b >> 1) & ~HALF_KEYNT_MASK) | (b & HALF_KEYNT_MASK);
-                    p = s + (b & KEYNT_TRUNC_MASK);
-                    t = kc->process(p, kc);
+                    b = get_b2cn_key(b, dna, rev);
+                    t = kc->process(s + b, kc);
                     if (t < 0) return t;
                 }
                 c = gc(g);
