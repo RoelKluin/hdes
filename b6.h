@@ -26,6 +26,28 @@
 
 # define B6_ALT_CASE			0x20
 
+// XXX TODO XXX: if we do not search for a max, but rather select a key based on
+// keycount lookup, then the cutoff is not needed and can be removed. However...
+
+// KEY_WIDTH must be odd - or 2nd bit of central Nt is not always flipped in its
+// complement - the alternative is the twisted halfdev conversion, but this is cheaper
+
+#define KEY_LENGTH 16                       // <= this many Nts are used as key
+#define KEY_CUTOFF 5                        // cut off, to get random keys, odd!
+#define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
+#define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
+
+// zero [min] for N - but also for A.
+#define add_b6N0(t, c, dna, rev) ({\
+        t = c ^ ((c | B6_UC) & B6_LC);\
+        t ^= -((c & 0x8e) == 0x4) & B6_RNA;\
+        t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
+        t = -((t | B6_MASK) == B6_MASK) & (t >> 1);\
+        dna = (dna << 2) | t;\
+        rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
+})
+
+
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
 
 unsigned b6(unsigned c);

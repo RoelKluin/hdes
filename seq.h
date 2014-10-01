@@ -18,13 +18,6 @@
 // maximum length of the read name
 #define SEQ_MAX_NAME_ETC    (1u << 14)
 
-// KEY_WIDTH must be odd - or 2nd bit of central Nt is not always flipped in its
-// complement - the alternative is the twisted halfdev conversion, but this is cheaper
-
-#define KEY_LENGTH 16                       // <= this many Nts are used as key
-#define KEY_CUTOFF 5                        // cut off, to get random keys, odd!
-#define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
-
 // KEYNT: 2bits, therefore multiplied by 2.
 #define KEYNT_BUFSZ (1ul << (KEY_LENGTH * 2))
 #define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1u)
@@ -32,7 +25,6 @@
 #define KEYNT_STRAND (1ul << KEY_WIDTH)
 #define KEYNT_AC (1ul << (KEY_WIDTH - 1))
 
-#define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
 #define KEYNT_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
 #define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
 
