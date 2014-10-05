@@ -27,10 +27,7 @@ init_ndx(seqb2_t *fa)
 {
     fa->m = sizeof(*fa->s) * KEYNT_BUFSZ;
     fa->s = (uint8_t*)malloc(fa->m);
-    if (fa->s == NULL) return -ENOMEM;
-    memset(fa->s, '\0', fa->m);
-
-    return 0;
+    return fa->s != NULL ? 0 : -ENOMEM;
 }
 
 static void free_ndx(seqb2_t *fa)
@@ -39,16 +36,32 @@ static void free_ndx(seqb2_t *fa)
     fa->s = NULL;
 }
 
-static inline int increment_keyct(uint8_t* p, kct_t* nop)
+static inline int increment_keyct(uint8_t* p, uint64_t key, kct_t* kct)
 {
-    if (*p != 255) (*p)++; // the max keyct is sticky.
+    if (*p != 255) {
+        (*p)++;
+    } else {
+        // the max keyct is sticky.
+        // hash lookup and increment
+        typeof(kct->H) H = kct->H;
+        khiter_t k = kh_get(UQCT, H, key);
+        if (k == kh_end(H)) {
+            int err;
+            k = kh_put(UQCT, H, key, &err);
+            if_ever (err < 0) return err;
+        }
+        kh_val(H, k)++;
+    }
     return 0;
 }
 
 static inline int
-write_kcpos(uint8_t* p, kct_t* kct)
+write_kcpos(uint8_t* p, uint64_t key, kct_t* kct)
 {
-    assert(*p != 0);
+    if (*p == 0) {
+        fprintf(stderr, "0x%lx == %u, assertion fails at %u!\n", key, *p, kct->l);
+        return -1;
+    }
     kct->x[kct->l] = *p;
 
     if (++kct->l == BUF_STACK) {
@@ -84,17 +97,17 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                 c = gc(g);
             }
 
-            // excise out 2nd cNt bit
+            // t is 2nd cNt bit excised, rev or dna
             t = get_b2cn_key(t, dna, rev);
             // a keycount of 255 == 0xff is a sticky max.
-            t = kc->process(s + t, kc);
+            t = kc->process(s + t, t, kc);
 
             while ((dna || c != 'N') && c != '>' && c != -1 && t == 0) {
                 if (!isspace(c)) {
                     // seq or revcmp according to 2nd bit of central Nt
                     add_b6N0(t, c, dna, rev);
                     t = get_b2cn_key(t, dna, rev);
-                    t = kc->process(s + t, kc);
+                    t = kc->process(s + t, t, kc);
                 }
                 c = gc(g);
             }
@@ -106,22 +119,57 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 }
 
 int
-read_s(struct gzfh_t* fhin, char*s)
+read_s(struct gzfh_t* fhin, struct seqb2_t* seq, kct_t* kc)
 {
     int c;
-    unsigned m = INT_MAX;
-    while ((c = gzread(fhin->io, s, m)) == (int)m) {
-        fprintf(stderr, "==%d bytes read\n", c);
-        c /= sizeof(char);
-        s += c;
+    char *s = (char*)seq->s;
+    uint64_t m = seq->m;
+    fprintf(stderr, "==reading buffer s\n");
+    while (m > INT_MAX) {
+        c = gzread(fhin->io, s, INT_MAX);
+        fprintf(stderr, "==read %d bytes\n", c);
+        if (c == -1) return -1;
+        m -= INT_MAX;
+        s += INT_MAX;
     }
-    fprintf(stderr, "==%d bytes read\n", c);
-    if (c >= 0) return 0;
-    if (gzeof(fhin->io) == 1) return -1;
-    m = c;
-    fprintf(stderr, "== err... %s:%d:%s\n", fhin->name, (int)m, gzerror(fhin->io, &c));
-    fprintf(stderr, "== err:%d\n", c);
-    return -EIO;
+    c = gzread(fhin->io, s, m);
+    fprintf(stderr, "==read %d bytes\n", c);
+    if (c == -1) return -1;
+
+    // kh_init already allocated struct.
+    if (gzread(fhin->io, &kc->H->n_buckets, sizeof(khint_t)) == -1)
+        return -1;
+
+    if (gzread(fhin->io, &kc->H->size, sizeof(khint_t)) == -1)
+        return -1;
+
+    if (gzread(fhin->io, &kc->H->n_occupied, sizeof(khint_t)) == -1)
+        return -1;
+
+    if (gzread(fhin->io, &kc->H->upper_bound, sizeof(khint_t)) == -1)
+        return -1;
+
+    khint_t nb = kc->H->n_buckets;
+    size_t t = __ac_fsize(nb) * sizeof(khint32_t);
+    kc->H->flags = (khint32_t*)krealloc(kc->H->flags, t);
+    if (kc->H->flags == NULL) return -ENOMEM;
+    if (gzread(fhin->io, kc->H->flags, t) == -1)
+        return -1;
+
+    t = nb * sizeof(*kc->H->keys);
+    kc->H->keys = (typeof(kc->H->keys))krealloc(kc->H->keys, t);
+    if (kc->H->keys == NULL) return -ENOMEM;
+    if (gzread(fhin->io, kc->H->keys, t) == -1)
+        return -1;
+
+    t = nb * sizeof(*kc->H->vals);
+    kc->H->vals = (typeof(kc->H->vals))krealloc(kc->H->vals, t);
+    if (kc->H->vals == NULL) return -ENOMEM;
+    if (gzread(fhin->io, kc->H->vals, t) == -1)
+        return -1;
+    fprintf(stderr, "==done reading khash\n");
+
+    return 0;
 }
 
 
@@ -156,7 +204,7 @@ int fa_index(struct seqb2_t* seq)
 
     const char* ndxact[4] = {".fa", ".keyct.gz", ".kcpos.gz"};
     kct_t kc = { .process = &increment_keyct };
-
+    kc.H = kh_init(UQCT);
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
         strncpy(file, fhout->name, res);
@@ -195,7 +243,7 @@ int fa_index(struct seqb2_t* seq)
 
             struct gzfh_t* fhin2 = seq->fh;
             assert(fhin2->name == NULL);
-            fhin2->name = &file[0]; // us as input 2 instead.
+            fhin2->name = &file[0]; // use as input 2 instead.
             fhin2->fd = fhout->fd;
             fhin2->fp = fhout->fp;
 
@@ -203,7 +251,7 @@ int fa_index(struct seqb2_t* seq)
             fprintf(stderr, "== reopened %s:%d\n", fhin2->name, res);
             if (res < 0) break;
 
-            res = read_s(fhin2, (char*) seq->s);
+            res = read_s(fhin2, seq, &kc);
             fprintf(stderr, "== reread %s:%d\n", fhin2->name, res);
             if (res < 0) break;
 
@@ -213,6 +261,9 @@ int fa_index(struct seqb2_t* seq)
             close(fhin2->fd);
             fhin2->fp = NULL; // prevent segfault on close in main()
             continue;
+        } else if (i == 0) {
+            fprintf(stderr, "== %s does not yet exist\n", fhout->name);
+            memset(seq->s, '\0', seq->m);
         }
 
         res = set_io_fh(fhout, blocksize, 0);
@@ -234,10 +285,37 @@ int fa_index(struct seqb2_t* seq)
 
         if (i == 0) {
             // the kcpos index function alreay wrote to disk, no read needed here.
+            khint_t nb = kc.H->n_buckets;
+            size_t nf = __ac_fsize(nb) * sizeof(khint32_t);
+            size_t nk = nb * sizeof(*kc.H->keys);
+            size_t nv = nb * sizeof(*kc.H->vals);
+            size_t kisz = sizeof(khint_t);
+            size_t new_m = seq->m + 4 * kisz + nf + nk + nv;
+
+            char* s = (char*)realloc(seq->s, new_m);
+            if (s == NULL) {
+                ret = -ENOMEM;
+                goto out;
+            }
+            seq->s = (uint8_t*)s;
+            s += seq->m;
+            seq->m = new_m;
+
+            fprintf(stderr, "== appending khash (%u)\n", nb);
+            memcpy(s, &kc.H->n_buckets, kisz); s += kisz;
+            memcpy(s, &kc.H->size, kisz); s += kisz;
+            memcpy(s, &kc.H->n_occupied, kisz); s += kisz;
+            memcpy(s, &kc.H->upper_bound, kisz); s += kisz;
+            memcpy(s, kc.H->flags, nf); s += nf;
+            memcpy(s, kc.H->keys, nk); s += nk;
+            memcpy(s, kc.H->vals, nv);
+            assert(seq->m == ((uint8_t*)s - seq->s) + nv);
+
+            fprintf(stderr, "== writing to disk\n"); fflush(NULL);
             res = fhout->write(fhout, (char*)seq->s, seq->m, sizeof(char));
             if (res < 0) { fprintf(stderr, "== ->write failed:%d", res);  break; }
-            fprintf(stderr, "== closing %s\n", fhout->name);
 
+            fprintf(stderr, "== closing %s\n", fhout->name);
             if (fhout->close && fhout->close(fhout->io) != Z_OK)
                 fprintf(stderr, "main: gzclose fails for %s\n", fhout->name);
             close(fhout->fd);
@@ -252,6 +330,7 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
+    kh_destroy(UQCT, kc.H);
     free_ndx(seq);
     return ret;
 

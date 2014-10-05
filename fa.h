@@ -12,6 +12,7 @@
 #ifndef RK_FA_H
 #define RK_FA_H
 #include "seq.h"
+#include "klib/khash.h"
 #include "gz.h"
 #define BUF_STACK (1 << 22)
 
@@ -21,16 +22,19 @@
         (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
 })
 
+KHASH_MAP_INIT_INT64(UQCT, unsigned)
+
 typedef struct index_action {
     const char* search;
     const char* replace;
 } index_action_t;
 
 typedef struct kct {
-    int (*process) (uint8_t*, struct kct*);
+    int (*process) (uint8_t*, uint64_t, struct kct*);
     gzFile out;
     char* x;
     unsigned l;
+    khash_t(UQCT) *H;
 } kct_t;
 
 
