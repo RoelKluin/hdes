@@ -62,7 +62,7 @@ seq.o: gz.h seq.h b6.h
 
 fq.o: gz.h b6.h seq.h fq.h
 
-fa.o: gz.h b6.h seq.h fa.h
+fa.o: klib/khash.h gz.h b6.h seq.h fa.h
 
 map.o: gz.h b6.h seq.h fa.h
 
