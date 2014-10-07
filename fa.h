@@ -24,20 +24,12 @@
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
-typedef struct index_action {
-    const char* search;
-    const char* replace;
-} index_action_t;
-
 typedef struct kct {
-    int (*process) (uint8_t*, uint64_t, struct kct*);
-    gzFile out;
+    int (*process) (struct seqb2_t*, struct kct*, uint64_t);
     char* x;
-    unsigned l;
     khash_t(UQCT) *H;
+    unsigned l;
 } kct_t;
-
-
 
 int fa_index(seqb2_t *seq);
 int fa_print(seqb2_t *fa);

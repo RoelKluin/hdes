@@ -36,14 +36,15 @@ static void free_ndx(seqb2_t *fa)
     fa->s = NULL;
 }
 
-static inline int increment_keyct(uint8_t* p, uint64_t key, kct_t* kct)
+static inline int increment_keyct(seqb2_t *seq, kct_t* kct, uint64_t key)
 {
+    uint8_t* p = seq->s + key;
     if (*p != 255) {
         (*p)++;
     } else {
         // the max keyct is sticky.
         // hash lookup and increment
-        typeof(kct->H) H = kct->H;
+        khash_t(UQCT) *H = kct->H;
         khiter_t k = kh_get(UQCT, H, key);
         if (k == kh_end(H)) {
             int err;
@@ -56,8 +57,10 @@ static inline int increment_keyct(uint8_t* p, uint64_t key, kct_t* kct)
 }
 
 static inline int
-write_kcpos(uint8_t* p, uint64_t key, kct_t* kct)
+write_kcpos(seqb2_t *seq, kct_t* kct, uint64_t key)
 {
+    uint8_t* p = seq->s + key;
+    struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
     if (*p == 0) {
         fprintf(stderr, "0x%lx == %u, assertion fails at %u!\n", key, *p, kct->l);
         return -1;
@@ -65,7 +68,7 @@ write_kcpos(uint8_t* p, uint64_t key, kct_t* kct)
     kct->x[kct->l] = *p;
 
     if (++kct->l == BUF_STACK) {
-	int c = gzwrite(kct->out, kct->x, kct->l);
+	int c = gzwrite(fhout->io, kct->x, kct->l);
 	if (c < 0) return c - 1;
         kct->l = 0;
     }
@@ -78,43 +81,60 @@ write_kcpos(uint8_t* p, uint64_t key, kct_t* kct)
 static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
-    uint8_t* s = seq->s;
-
-    while ((c = gc(g)) != '>') if (c == -1 || c == '@') return c; // skip to first
+    register uint64_t t = INT_MAX, b, dna = 1ul, rev = 0ul;
     do {
-        while (c != '\n' && ((c = gc(g)) >= 0)) fputc(c, stderr); /* header etc */
+        c = gc(g);
 
-        while (c != '>' && (c > 0)) { // foreach stretch of N's
-            while((c = gc(g)) == 'N' || isspace(c)) {};
+        /* convert to twobit */
+        b = c ^ ((c | B6_UC) & B6_LC);
+        b ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);
+        b ^= -((c & 0x8e) == 0x4) & B6_RNA;
+        //fprintf(stderr, "%c:%lu\n", c, t);
 
-            // (re)initialize key
-            register uint64_t t = 0, dna = 0ul, rev = 0ul;
-            while (t != KEY_WIDTH && likely(c != '>' && c != -1)) {
-                if (!isspace(c)) {
-                    add_b6N0(c, c, dna, rev);
-                    ++t;
+        bool is_key_ready = t == 0ul;
+        if (is_key_ready || --t < KEY_WIDTH) {
+            /* is twobit or just a few N's? the latter treated as A's */
+            if ((b | B6_MASK) == B6_MASK ||
+                    (dna && (b &= -(c ^ 'N')) == 0)) {
+append_anyway:  dna = (dna << 2) | (b >> 1);
+                rev = (b << (KEYNT_TOP - 1)) | (rev >> 2);
+                if (is_key_ready) {
+                    // t is 2nd cNt bit excised, rev or dna
+                    b = (dna & KEYNT_STRAND) ? (rev ^ 0xaaaaaaaaaaaaaaaa) : dna;
+                    b = (((b >> 1) & ~HALF_KEYNT_MASK) |
+                            (b & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
+
+                    c = kc->process(seq, kc, b);
                 }
-                c = gc(g);
-            }
-
-            // t is 2nd cNt bit excised, rev or dna
-            t = get_b2cn_key(t, dna, rev);
-            // a keycount of 255 == 0xff is a sticky max.
-            t = kc->process(s + t, t, kc);
-
-            while ((dna || c != 'N') && c != '>' && c != -1 && t == 0) {
-                if (!isspace(c)) {
-                    // seq or revcmp according to 2nd bit of central Nt
-                    add_b6N0(t, c, dna, rev);
-                    t = get_b2cn_key(t, dna, rev);
-                    t = kc->process(s + t, t, kc);
+            } else if (!isspace(c)) {
+                if (c == 'N') {
+                    t = KEY_WIDTH; // N of stretch: need to rebuild key.
+                } else if (c == '>') {
+                    t = INT_MAX >> 1; /* start printing header */
+                } else if (c == -1) {
+                    break;
+                } else {
+                    fprintf(stderr, "Strange nucleotide:%c (ignored)\n", c);
+                    b = 0;
+                    goto append_anyway;
                 }
-                c = gc(g);
+                c ^= c;
             }
-            if (t) c = (int)t;
+        } else if (t < (INT_MAX >> 1)) {
+            dna = (c != '\n');
+            fputc(c, stderr); // header
+            if (c == '\n') t = KEY_WIDTH; /* start building key */
+            c ^= c;
+        } else if ((int)t < 0) {
+            fprintf(stderr, "2end:%c:%lu\n", c, t);
+            c = int(t);
+        } else if (c != '@') { // skip until header
+            if (c == '>')
+                t = INT_MAX >> 1;
+            c ^= c;
+            fprintf(stderr, "end:%c:%lu\n", c, t);
         }
-    } while (c > 0);
-
+    } while (t <= KEY_WIDTH || c == 0);
     return c & -(c != -1);
 }
 
@@ -181,9 +201,6 @@ int fa_print(seqb2_t *fa)
 int
 fn_convert(struct gzfh_t* fhout, const char* search, const char* replace)
 {
-    if (fhout->fp)
-        fclose(fhout->fp);
-
     char* f = strstr(fhout->name, search);
     if (f == NULL) return 0;
     strncpy(f, replace, strlen(replace) + 1);
@@ -258,6 +275,7 @@ int fa_index(struct seqb2_t* seq)
             fprintf(stderr, "== closing %s\n", fhin2->name);
             if (fhin2->close && fhin2->close(fhin2->io) != Z_OK)
                 fprintf(stderr, "main: gzclose fails for %s\n", fhin2->name);
+
             close(fhin2->fd);
             fhin2->fp = NULL; // prevent segfault on close in main()
             continue;
@@ -272,7 +290,6 @@ int fa_index(struct seqb2_t* seq)
         if (i == 1) {
             kc.process = &write_kcpos;
             kc.x = line;
-            kc.out = fhout->io;
             kc.l = 0;
         }
         res = fa_kc(seq, &kc, g, gc);
@@ -281,7 +298,7 @@ int fa_index(struct seqb2_t* seq)
             res = gzwrite(fhout->io, line, ++kc.l);
             if (res > 0) res = 0;
         }
-        if (res < 0) { fprintf(stderr, "== .index failed:%d", res);  break; }
+        if (res < 0) { fprintf(stderr, "== index failed:%d", res);  break; }
 
         if (i == 0) {
             // the kcpos index function alreay wrote to disk, no read needed here.
