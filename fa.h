@@ -22,12 +22,21 @@
         (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
 })
 
-KHASH_MAP_INIT_INT64(UQCT, unsigned)
+KHASH_MAP_INIT_INT(UQCT, unsigned)
+
+typedef struct mmap {
+    unsigned* ct;
+    unsigned* first_pos;
+    uint64_t lastmmap;
+    unsigned l, m;
+} mmap_t;
 
 typedef struct kct {
     int (*process) (struct seqb2_t*, struct kct*, uint64_t);
     char* x;
     khash_t(UQCT) *H;
+    mmap_t* mm;
+    uint64_t pos;
     unsigned l;
 } kct_t;
 

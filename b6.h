@@ -38,8 +38,18 @@
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
 
 // zero [min] for N - but also for A.
+//
+#define b6N0(t, c) ({\
+        t = c;\
+        t ^= ((c | B6_UC) & B6_LC);/* FIXME maybe simplify with line below?*/\
+        t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
+        t ^= -((c & 0x8e) == 0x4) & B6_RNA;\
+        -((t | B6_MASK) == B6_MASK) & (t >> 1);\
+});
+
 #define add_b6N0(t, c, dna, rev) ({\
-        t = c ^ ((c | B6_UC) & B6_LC);\
+        t = c;\
+        t ^= ((c | B6_UC) & B6_LC);\
         t ^= -((c & 0x8e) == 0x4) & B6_RNA;\
         t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
         t = -((t | B6_MASK) == B6_MASK) & (t >> 1);\
@@ -47,11 +57,14 @@
         rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
 })
 
+#define add_b(t, dna, rev) ({\
+        dna = (dna << 2) | t;\
+        rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
+})
 
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
 
 unsigned b6(unsigned c);
-unsigned b6N0(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 inline uint64_t revseq(uint64_t x);
 inline unsigned get_twisted_even(unsigned rev, unsigned sq);

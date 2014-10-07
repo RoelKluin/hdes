@@ -46,13 +46,30 @@ static inline int increment_keyct(seqb2_t *seq, kct_t* kct, uint64_t key)
         // hash lookup and increment
         khash_t(UQCT) *H = kct->H;
         khiter_t k = kh_get(UQCT, H, key);
+        unsigned l;
         if (k == kh_end(H)) {
             int err;
             k = kh_put(UQCT, H, key, &err);
             if_ever (err < 0) return err;
+            l = kct->mm->l++;
+            kh_val(H, k) = l;
+            if (l >= kct->mm->m) {
+                kct->mm->m <<= 1;
+                kct->mm->ct = (unsigned*)realloc(kct->mm->ct,
+                        kct->mm->m * sizeof(unsigned));
+                kct->mm->first_pos = (unsigned*)realloc(kct->mm->first_pos,
+                        kct->mm->m * sizeof(unsigned));
+            }
+            kct->mm->first_pos[l] = kct->pos;
+            kct->mm->ct[l] = 0u;
+        } else {
+            l = kh_val(H, k);
         }
-        kh_val(H, k)++;
+        kct->mm->ct[l]++;
+
+        // Usually there are more 0xff's after one another
     }
+    kct->mm->lastmmap = kct->pos++;
     return 0;
 }
 
@@ -220,8 +237,15 @@ int fa_index(struct seqb2_t* seq)
     char line[BUF_STACK];
 
     const char* ndxact[4] = {".fa", ".keyct.gz", ".kcpos.gz"};
-    kct_t kc = { .process = &increment_keyct };
+    kct_t kc = { .process = &increment_keyct};
     kc.H = kh_init(UQCT);
+    kc.pos = 0ul;
+    kc.mm = (mmap_t*)malloc(sizeof(mmap_t));
+    kc.mm->l = 0;
+    kc.mm->m = 1 << 6;
+    kc.mm->ct = (unsigned*)calloc(kc.mm->m, sizeof(unsigned));
+    kc.mm->first_pos = (unsigned*)calloc(kc.mm->m, sizeof(unsigned));
+
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
         strncpy(file, fhout->name, res);
@@ -258,7 +282,7 @@ int fa_index(struct seqb2_t* seq)
                 break;
             }
 
-            struct gzfh_t* fhin2 = seq->fh;
+            struct gzfh_t* fhin2 = seq->fh; // 0
             assert(fhin2->name == NULL);
             fhin2->name = &file[0]; // use as input 2 instead.
             fhin2->fd = fhout->fd;
@@ -291,6 +315,7 @@ int fa_index(struct seqb2_t* seq)
             kc.process = &write_kcpos;
             kc.x = line;
             kc.l = 0;
+            kc.pos = 0;
         }
         res = fa_kc(seq, &kc, g, gc);
         if (res == 0 && i == 1) {
@@ -332,13 +357,13 @@ int fa_index(struct seqb2_t* seq)
             res = fhout->write(fhout, (char*)seq->s, seq->m, sizeof(char));
             if (res < 0) { fprintf(stderr, "== ->write failed:%d", res);  break; }
 
-            fprintf(stderr, "== closing %s\n", fhout->name);
+            fprintf(stderr, "== closing %s\n", fhout->name); // last before valg
             if (fhout->close && fhout->close(fhout->io) != Z_OK)
                 fprintf(stderr, "main: gzclose fails for %s\n", fhout->name);
             close(fhout->fd);
             fhout->fp = NULL;
 
-            if (is_gzfile)
+            if (is_gzfile) // valgrind complaind here about uninit value.
                 gzrewind(fhin->io);
             else
                 rewind(fhin->fp);
@@ -347,9 +372,13 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
+    free(kc.mm->ct);
+    free(kc.mm->first_pos);
+    free(kc.mm);
     kh_destroy(UQCT, kc.H);
     free_ndx(seq);
     return ret;
 
 }
+
 
