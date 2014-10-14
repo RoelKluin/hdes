@@ -24,20 +24,17 @@
 
 KHASH_MAP_INIT_INT(UQCT, unsigned)
 
-typedef struct mmap {
-    unsigned* ct;
-    unsigned* first_pos;
-    uint64_t lastmmap;
-    unsigned l, m;
-} mmap_t;
+#define MM_KEY 9
+#define MM_CT 8
 
 typedef struct kct {
-    int (*process) (struct seqb2_t*, struct kct*, uint64_t);
+    int (*process) (struct seqb2_t*, struct kct*);
     char* x;
     khash_t(UQCT) *H;
-    mmap_t* mm;
-    uint64_t pos;
-    unsigned l;
+    unsigned* mm;
+    uint64_t dna, rev, pos, last_mmpos;
+    unsigned last, mm_l, mm_m; // rep
+    unsigned l; // length of char* x;
 } kct_t;
 
 int fa_index(seqb2_t *seq);

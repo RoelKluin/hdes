@@ -36,46 +36,83 @@ static void free_ndx(seqb2_t *fa)
     fa->s = NULL;
 }
 
-static inline int increment_keyct(seqb2_t *seq, kct_t* kct, uint64_t key)
+static inline int
+increment_keyct(seqb2_t *seq, kct_t* kct)
 {
+    // key is 2nd cNt bit excised, rev or dna
+
+    unsigned ai = kct->dna & KEYNT_STRAND;
+    uint64_t key = ai ? kct->dna : (kct->rev ^ 0xaaaaaaaaaaaaaaaa);
+    key = (((key >> 1) & ~HALF_KEYNT_MASK) |
+            (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
+
+    // could instead use only 1, 2 or 4 bits only to account multimappers.
+    // This could use less memory, but complicate accounting a bit.
+    // but could aide 17 Nt in 32 bit packaging.
     uint8_t* p = seq->s + key;
-    if (*p != 255) {
+    if (*p != 255) { // until 255 we just count them
         (*p)++;
     } else {
-        // the max keyct is sticky.
-        // hash lookup and increment
+        unsigned l = 0xffffffff; // default to a new multimapper.
         khash_t(UQCT) *H = kct->H;
-        khiter_t k = kh_get(UQCT, H, key);
-        unsigned l;
-        if (k == kh_end(H)) {
-            int err;
-            k = kh_put(UQCT, H, key, &err);
-            if_ever (err < 0) return err;
-            l = kct->mm->l++;
-            kh_val(H, k) = l;
-            if (l >= kct->mm->m) {
-                kct->mm->m <<= 1;
-                kct->mm->ct = (unsigned*)realloc(kct->mm->ct,
-                        kct->mm->m * sizeof(unsigned));
-                kct->mm->first_pos = (unsigned*)realloc(kct->mm->first_pos,
-                        kct->mm->m * sizeof(unsigned));
-            }
-            kct->mm->first_pos[l] = kct->pos;
-            kct->mm->ct[l] = 0u;
-        } else {
-            l = kh_val(H, k);
-        }
-        kct->mm->ct[l]++;
+        unsigned *n = &l;
+        // saturated multimappers cluster. Their internal linkage is used or if
+        // 0xffffffff (unintialized) its insertion in the khash is pending.
 
-        // Usually there are more 0xff's after one another
+        if (++(kct->last_mmpos) == kct->pos) {
+            ai = ((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4);
+            n = kct->mm + kct->last + ai; // update this count instead
+            l = *n;
+        } else { ai = 0; }
+        // FIXME: key difference shouldn't occur, key storage shouldnt be neccessary
+        // but there's something not right...
+        if (l == 0xffffffff || kct->mm[l + MM_KEY] != key) { // existing, dna should be same
+            if (l != 0xffffffff) {
+                // FIXME: shouldn't happen, but it apperently does.
+                //fprintf(stderr, "%lx != %lx(%u, %lx) at %lu\n", kct->mm[l].key, key, l, kct->mm[l].key ^ key, kct->pos);
+            }
+            khiter_t k = kh_get(UQCT, H, key);
+            if (k != kh_end(H)) { // already existing
+                l = *n = kh_val(H, k);
+                //fprintf(stderr, "%s 0x%lx(%u) at %lu\n", kct->last_mmpos == kct->pos ?
+                //    "fusing" : "existing", key, l, kct->pos);
+            } else { // new key
+
+                int err;
+                k = kh_put(UQCT, H, key, &err);
+                if_ever (err < 0) return err;
+                l = *n = kh_val(H, k) = kct->mm_l;
+                //fprintf(stderr, "%s 0x%lx(%u) at %lu\n", kct->last_mmpos == kct->pos ?
+                //    "link" : "isolated", key, l, kct->pos);
+                kct->mm_l += 10;
+                if (kct->mm_l >= kct->mm_m) {
+                    kct->mm_m <<= 1;
+                    unsigned* mm = (unsigned*)realloc(kct->mm,
+                            kct->mm_m * sizeof(unsigned));
+                    if (mm == NULL) return -ENOMEM;
+                    kct->mm = mm;
+                }
+                for (int i = 0; i != 8; ++i)
+                    kct->mm[l + i] = 0xffffffff; // init as undefined
+                kct->mm[l + MM_CT] = 255;
+            }
+            kct->mm[l + MM_KEY] = key;
+        }
+        kct->last = l;
+        kct->mm[l + MM_CT]++;
+        kct->last_mmpos = kct->pos;
     }
-    kct->mm->lastmmap = kct->pos++;
+    kct->pos++;
     return 0;
 }
 
 static inline int
-write_kcpos(seqb2_t *seq, kct_t* kct, uint64_t key)
+write_kcpos(seqb2_t *seq, kct_t* kct)
 {
+    unsigned ai = kct->dna & KEYNT_STRAND;
+    uint64_t key = ai ? kct->dna : (kct->rev ^ 0xaaaaaaaaaaaaaaaa);
+    key = (((key >> 1) & ~HALF_KEYNT_MASK) |
+            (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
     uint8_t* p = seq->s + key;
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
     if (*p == 0) {
@@ -98,60 +135,56 @@ write_kcpos(seqb2_t *seq, kct_t* kct, uint64_t key)
 static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
-    register uint64_t t = INT_MAX, b, dna = 1ul, rev = 0ul;
+    register uint64_t b, t = INT_MAX;
+    kc->dna = kc->rev = 0ul;
     do {
         c = gc(g);
+        if (!isspace(c) && (t <= KEY_WIDTH)) {
 
-        /* convert to twobit */
-        b = c ^ ((c | B6_UC) & B6_LC);
-        b ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);
-        b ^= -((c & 0x8e) == 0x4) & B6_RNA;
-        //fprintf(stderr, "%c:%lu\n", c, t);
+            /* convert to twobit */
+            b = c ^ ((c | B6_UC) & B6_LC);
+            b ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);
+            b ^= -((c & 0x8e) == 0x4) & B6_RNA;
+            //fprintf(stderr, "%c:%lu\n", c, t);
 
-        bool is_key_ready = t == 0ul;
-        if (is_key_ready || --t < KEY_WIDTH) {
-            /* is twobit or just a few N's? the latter treated as A's */
-            if ((b | B6_MASK) == B6_MASK ||
-                    (dna && (b &= -(c ^ 'N')) == 0)) {
-append_anyway:  dna = (dna << 2) | (b >> 1);
-                rev = (b << (KEYNT_TOP - 1)) | (rev >> 2);
-                if (is_key_ready) {
-                    // t is 2nd cNt bit excised, rev or dna
-                    b = (dna & KEYNT_STRAND) ? (rev ^ 0xaaaaaaaaaaaaaaaa) : dna;
-                    b = (((b >> 1) & ~HALF_KEYNT_MASK) |
-                            (b & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
-
-                    c = kc->process(seq, kc, b);
-                }
-            } else if (!isspace(c)) {
-                if (c == 'N') {
-                    t = KEY_WIDTH; // N of stretch: need to rebuild key.
-                } else if (c == '>') {
-                    t = INT_MAX >> 1; /* start printing header */
-                } else if (c == -1) {
-                    break;
+            /* is twobit? => c zero*/
+            c &= -((b | B6_MASK) != B6_MASK);
+            if (c) {
+                if (c == '>') {
+                    t = (INT_MAX >> 1) + 1ul; /* start printing header */
                 } else {
-                    fprintf(stderr, "Strange nucleotide:%c (ignored)\n", c);
-                    b = 0;
-                    goto append_anyway;
+                    if (c != 'N') {
+                        if (c == -1) break;
+                        fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
+                    }
+                    if (kc->dna == 0ul) /* rebuild new key entirely */
+                        t = KEY_WIDTH;
                 }
-                c ^= c;
+                b = c ^= c;
             }
-        } else if (t < (INT_MAX >> 1)) {
-            dna = (c != '\n');
-            fputc(c, stderr); // header
-            if (c == '\n') t = KEY_WIDTH; /* start building key */
-            c ^= c;
-        } else if ((int)t < 0) {
-            fprintf(stderr, "2end:%c:%lu\n", c, t);
-            c = int(t);
-        } else if (c != '@') { // skip until header
-            if (c == '>')
+            kc->dna = (kc->dna << 2) | (b >> 1);
+            kc->dna &= KEYNT_MASK; // prevent setting carriage bit.
+            kc->rev = (b << (KEYNT_TOP - 1)) | (kc->rev >> 2);
+            if (t == 0ul) {
+                c = kc->process(seq, kc);
+                if (c < 0)
+                    fprintf(stderr, "process fails\n");
+            }
+            else --t;
+        } else {
+            if (t == (INT_MAX >> 1)) {
+                fputc(c, stderr);
+                if (c == '\n') {
+                    kc->dna ^= kc->dna;
+                    t = KEY_WIDTH;
+                }
+            } else if (c == '>')
                 t = INT_MAX >> 1;
+            else if (c == '@')
+                break; // not fastq, fasta
             c ^= c;
-            fprintf(stderr, "end:%c:%lu\n", c, t);
         }
-    } while (t <= KEY_WIDTH || c == 0);
+    } while (c == 0);
     return c & -(c != -1);
 }
 
@@ -206,6 +239,16 @@ read_s(struct gzfh_t* fhin, struct seqb2_t* seq, kct_t* kc)
         return -1;
     fprintf(stderr, "==done reading khash\n");
 
+    if (gzread(fhin->io, &kc->mm_l, sizeof(unsigned)) == -1)
+        return -1;
+
+    t = kc->mm_l * sizeof(unsigned);
+    kc->mm = (unsigned*)krealloc(kc->mm, t);
+    if (kc->mm == NULL) return -ENOMEM;
+    if (gzread(fhin->io, kc->mm, t) == -1)
+        return -1;
+    fprintf(stderr, "==done reading mmap\n");
+
     return 0;
 }
 
@@ -240,11 +283,13 @@ int fa_index(struct seqb2_t* seq)
     kct_t kc = { .process = &increment_keyct};
     kc.H = kh_init(UQCT);
     kc.pos = 0ul;
-    kc.mm = (mmap_t*)malloc(sizeof(mmap_t));
-    kc.mm->l = 0;
-    kc.mm->m = 1 << 6;
-    kc.mm->ct = (unsigned*)calloc(kc.mm->m, sizeof(unsigned));
-    kc.mm->first_pos = (unsigned*)calloc(kc.mm->m, sizeof(unsigned));
+    kc.last_mmpos = -2ul;
+    kc.mm_m = 1 << 8;
+    kc.mm_l = 0;
+
+    unsigned* mm = (unsigned*)malloc(kc.mm_m * sizeof(unsigned));
+    if (mm == NULL) return -ENOMEM;
+    kc.mm = mm;
 
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
@@ -270,8 +315,9 @@ int fa_index(struct seqb2_t* seq)
 
     for (i = 0; i != 2 && res >= 0; ++i) {
 
-        if (!fn_convert(fhout, ndxact[i], ndxact[i + 1]))
+        if (!fn_convert(fhout, ndxact[i], ndxact[i + 1])) //XXX still needed?
             continue; // skip if this file was not requested on the commandline
+
         fprintf(stderr, "== %s(%lu)\n", fhout->name, fhout - seq->fh);
         fhout->fp = fopen(fhout->name, "r"); // test whether file exists
         if (fhout->fp) {
@@ -282,9 +328,9 @@ int fa_index(struct seqb2_t* seq)
                 break;
             }
 
-            struct gzfh_t* fhin2 = seq->fh; // 0
+            struct gzfh_t* fhin2 = seq->fh;
             assert(fhin2->name == NULL);
-            fhin2->name = &file[0]; // use as input 2 instead.
+            fhin2->name = &file[0]; // use as 2nd input instead.
             fhin2->fd = fhout->fd;
             fhin2->fp = fhout->fp;
 
@@ -332,7 +378,9 @@ int fa_index(struct seqb2_t* seq)
             size_t nk = nb * sizeof(*kc.H->keys);
             size_t nv = nb * sizeof(*kc.H->vals);
             size_t kisz = sizeof(khint_t);
-            size_t new_m = seq->m + 4 * kisz + nf + nk + nv;
+            size_t usz = sizeof(unsigned);
+            size_t n_mm = usz * kc.mm_l;
+            size_t new_m = seq->m + 4 * kisz + nf + nk + nv + usz + n_mm;
 
             char* s = (char*)realloc(seq->s, new_m);
             if (s == NULL) {
@@ -350,8 +398,11 @@ int fa_index(struct seqb2_t* seq)
             memcpy(s, &kc.H->upper_bound, kisz); s += kisz;
             memcpy(s, kc.H->flags, nf); s += nf;
             memcpy(s, kc.H->keys, nk); s += nk;
-            memcpy(s, kc.H->vals, nv);
-            assert(seq->m == ((uint8_t*)s - seq->s) + nv);
+            memcpy(s, kc.H->vals, nv); s += nv;
+            fprintf(stderr, "== appending mmap (%u)\n", n_mm);
+            memcpy(s, &kc.mm_l, usz); s += usz;
+            memcpy(s, kc.mm, n_mm);
+            assert(seq->m == (uint8_t*)s - seq->s + n_mm);
 
             fprintf(stderr, "== writing to disk\n"); fflush(NULL);
             res = fhout->write(fhout, (char*)seq->s, seq->m, sizeof(char));
@@ -372,8 +423,6 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
-    free(kc.mm->ct);
-    free(kc.mm->first_pos);
     free(kc.mm);
     kh_destroy(UQCT, kc.H);
     free_ndx(seq);
