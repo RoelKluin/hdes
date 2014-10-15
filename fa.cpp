@@ -322,7 +322,7 @@ int fa_index(struct seqb2_t* seq)
         fhout->fp = fopen(fhout->name, "r"); // test whether file exists
         if (fhout->fp) {
             fprintf(stderr, "== %s already exists\n", fhout->name);
-            if (i == 2 - 1) {
+            if (i == 1) {
                 // only keyct should be read in seq->s.
                 fprintf(stderr, "== done.");
                 break;
@@ -344,7 +344,7 @@ int fa_index(struct seqb2_t* seq)
 
             fprintf(stderr, "== closing %s\n", fhin2->name);
             if (fhin2->close && fhin2->close(fhin2->io) != Z_OK)
-                fprintf(stderr, "main: gzclose fails for %s\n", fhin2->name);
+                fprintf(stderr, "gzclose fails for %s\n", fhin2->name);
 
             close(fhin2->fd);
             fhin2->fp = NULL; // prevent segfault on close in main()
@@ -399,7 +399,7 @@ int fa_index(struct seqb2_t* seq)
             memcpy(s, kc.H->flags, nf); s += nf;
             memcpy(s, kc.H->keys, nk); s += nk;
             memcpy(s, kc.H->vals, nv); s += nv;
-            fprintf(stderr, "== appending mmap (%u)\n", n_mm);
+            fprintf(stderr, "== appending mmap (%lu)\n", n_mm);
             memcpy(s, &kc.mm_l, usz); s += usz;
             memcpy(s, kc.mm, n_mm);
             assert(seq->m == (uint8_t*)s - seq->s + n_mm);
@@ -410,13 +410,15 @@ int fa_index(struct seqb2_t* seq)
 
             fprintf(stderr, "== closing %s\n", fhout->name); // last before valg
             if (fhout->close && fhout->close(fhout->io) != Z_OK)
-                fprintf(stderr, "main: gzclose fails for %s\n", fhout->name);
+                fprintf(stderr, "gzclose fails for %s\n", fhout->name);
             close(fhout->fd);
             fhout->fp = NULL;
 
-            if (is_gzfile) // valgrind complaind here about uninit value.
+            if (is_gzfile) {// valgrind complaind here about uninit value.
+                gzclearerr(fhin->io); // XXX: why needed???
+                fprintf(stderr, "rewinding gz.\n");
                 gzrewind(fhin->io);
-            else
+            } else
                 rewind(fhin->fp);
         }
     }
