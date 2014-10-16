@@ -135,11 +135,15 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
 static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
-    register uint64_t b, t = INT_MAX;
+    register uint64_t b, t = KEY_WIDTH + 255;
     kc->dna = kc->rev = 0ul;
-    do {
+
+    while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first
+    c &= -(c != '>');
+
+    while (c == 0) {
         c = gc(g);
-        if (!isspace(c) && (t <= KEY_WIDTH)) {
+        if ((t <= KEY_WIDTH) && !isspace(c)) {
 
             /* convert to twobit */
             b = c ^ ((c | B6_UC) & B6_LC);
@@ -149,42 +153,41 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 
             /* is twobit? => c zero*/
             c &= -((b | B6_MASK) != B6_MASK);
-            if (c) {
+            if (c) { /* exceptions: header, N's, end or odd Nts */
                 if (c == '>') {
-                    t = (INT_MAX >> 1) + 1ul; /* start printing header */
+                    t = KEY_WIDTH + 256; /* is later decremented: start with header */
                 } else {
                     if (c != 'N') {
                         if (c == -1) break;
                         fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
                     }
-                    if (kc->dna == 0ul) /* rebuild new key entirely */
+                    if (kc->dna == 0ul) /* rebuild key before next entry */
                         t = KEY_WIDTH;
                 }
-                b = c ^= c;
+                b = c ^= c; // enter twobit 0 (A), and prevent error-out
             }
+            /* append the twobit to dna and rev */
             kc->dna = (kc->dna << 2) | (b >> 1);
             kc->dna &= KEYNT_MASK; // prevent setting carriage bit.
             kc->rev = (b << (KEYNT_TOP - 1)) | (kc->rev >> 2);
-            if (t == 0ul) {
+            if (t == 0ul) { // is key complete?
                 c = kc->process(seq, kc);
                 if (c < 0)
                     fprintf(stderr, "process fails\n");
             }
             else --t;
         } else {
-            if (t == (INT_MAX >> 1)) {
+            if (t > KEY_WIDTH) {
+                t -= KEY_WIDTH;
                 fputc(c, stderr);
-                if (c == '\n') {
-                    kc->dna ^= kc->dna;
-                    t = KEY_WIDTH;
-                }
-            } else if (c == '>')
-                t = INT_MAX >> 1;
-            else if (c == '@')
-                break; // not fastq, fasta
+                // '\0' for each space or last
+                tid[255 - t] = c & -!(isspace(c) | t == 0);
+                // iterate header up to newline, but fill only until 255th char 
+                t = KEY_WIDTH + ((t - (t != 0)) & -(c != '\n'));
+            }
             c ^= c;
         }
-    } while (c == 0);
+    }
     return c & -(c != -1);
 }
 

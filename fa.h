@@ -35,6 +35,7 @@ typedef struct kct {
     uint64_t dna, rev, pos, last_mmpos;
     unsigned last, mm_l, mm_m; // rep
     unsigned l; // length of char* x;
+    char tid[256];
 } kct_t;
 
 int fa_index(seqb2_t *seq);
