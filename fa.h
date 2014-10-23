@@ -24,10 +24,11 @@
 
 KHASH_MAP_INIT_INT(UQCT, unsigned)
 
-#define MM_KEY 9
 #define MM_CT 8
-
-#define MULTIMAPPER 0xff // 0xff is max for char
+#define NO_MULTIMAPPER 0
+#define EXISTING_MULTIMAPPER 1
+#define NEW_MULTIMAPPER 2
+#define _MULTIMAPPER 0xff // 0xff is max for char
 #define NO_LINK_YET 0xffffffff
 
 typedef struct kct {

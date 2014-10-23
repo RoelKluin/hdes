@@ -39,8 +39,9 @@ static void free_ndx(seqb2_t *fa)
 
 /*
  * Create key. Up to MULTIMAPPER just count. Thereafter insert/update hash.
- * hash contains an index for kct->mm. Each has 10 uints. 8 for each nucleotide
- * and strand orientation combination. This enables internal linkage.
+ * hash contains an index for kct->mm. Each has 9 uints. 8 for each nucleotide
+ * and strand orientation combination. This enables internal linkage, and one
+ * count.
  */
 static inline int
 increment_keyct(seqb2_t *seq, kct_t* kct)
@@ -53,41 +54,36 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
     uint8_t* p = seq->s + key;
-    if (*p != MULTIMAPPER) {
+    khiter_t k;
+    khash_t(UQCT) *H = kct->H;
+    t = *p == _MULTIMAPPER;
+    if (t == NO_MULTIMAPPER) {
+        if (_MULTIMAPPER < 16) {
         // could instead use only 1, 2 or 4 bits only to account multimappers.
         // then 2nd middle Nt bit should be excised and determine nibble to incr.
-        if (MULTIMAPPER < 16) {
-        } else {
-            (*p)++;
+        } else if (++(*p) == _MULTIMAPPER) {
+            k = kh_get(UQCT, H, key);
+            assert (k == kh_end(H)); // must be new.
+            t = NEW_MULTIMAPPER;
         }
     }
-    if (*p == MULTIMAPPER) {
+    if (t != NO_MULTIMAPPER) {
         unsigned l = NO_LINK_YET;
-        khash_t(UQCT) *H = kct->H;
         unsigned *n = &l;
         if (kct->last_mmpos + 1u == kct->pos) { // adjacent multimapper
            // handle internal linkage:
-            t = ((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4);
-            n = kct->mm + kct->last + t; // update linked instead
+            l = ((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4);
+            n = kct->mm + kct->last + l; // update linked instead
             l = *n;
         }
 
-        // TODO: remove key in kct: redundant: only for assertion.
-        if (l == NO_LINK_YET || kct->mm[l + MM_KEY] != key) {
-            if (l != NO_LINK_YET) {
-                fprintf(stderr, "key %x(last) != %x(now) in link %u at %u\n",
-                  kct->mm[l + MM_KEY], key, t, kct->pos);
-            }
-            khiter_t k = kh_get(UQCT, H, key);
-            if (k != kh_end(H)) { // already existing
-                l = *n = kh_val(H, k);
-            } else { // new key
-
+        if (l == NO_LINK_YET) {
+            if (t == NEW_MULTIMAPPER) {
                 int err;
                 k = kh_put(UQCT, H, key, &err);
                 if_ever (err < 0) return err;
                 l = *n = kh_val(H, k) = kct->mm_l;
-                kct->mm_l += 10;
+                kct->mm_l += MM_CT + 1;
                 if (kct->mm_l >= kct->mm_m) {
                     kct->mm_m <<= 1;
                     unsigned* mm = (unsigned*)realloc(kct->mm,
@@ -95,12 +91,15 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
                     if (mm == NULL) return -ENOMEM;
                     kct->mm = mm;
                 }
-                for (int i = 0; i != 8; ++i)
+                for (int i = 0; i != MM_CT; ++i)
                     kct->mm[l + i] = NO_LINK_YET;
-                kct->mm[l + MM_CT] = MULTIMAPPER;
+                kct->mm[l + MM_CT] = _MULTIMAPPER;
+            } else {
+                k = kh_get(UQCT, H, key);
+                assert (k != kh_end(H));
+                l = *n = kh_val(H, k);
             }
-            kct->mm[l + MM_KEY] = key;
-        }
+        } else assert(t == EXISTING_MULTIMAPPER);
         kct->last = l;
         kct->mm[l + MM_CT]++;
         kct->last_mmpos = kct->pos;
@@ -122,7 +121,7 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
                 key, kct->pos);
         return -1;
     }
-    if (*p == MULTIMAPPER) {
+    if (*p == _MULTIMAPPER) {
         unsigned l = NO_LINK_YET;
         khash_t(UQCT) *H = kct->H;
         unsigned *n = &l;
@@ -131,7 +130,8 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
             t = ((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4);
             n = kct->mm + kct->last + t; // update linked instead
             l = *n;
-            t = kct->at[kct->at_l] - kct->pos - seq->readlength + KEY_LENGTH;
+            // make t >= 0 for mmap ends: beyond seq->readlength - KEY_LENGTH
+            t = kct->at[kct->at_l] - kct->pos - (seq->readlength - KEY_LENGTH);
         }
         if (t > 0) { // start of non-multimapper region, moves along.
             kct->at[kct->at_l] = kct->pos + 1;
@@ -149,19 +149,13 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
                 kct->at[kct->at_l + !!kct->last_mmpos] = kct->pos;
             }
         }
-        // TODO: remove key in kct: redundant: only for assertion.
-        if (l == NO_LINK_YET || kct->mm[l + MM_KEY] != key) {
-            if (l != NO_LINK_YET) {
-                fprintf(stderr, "key %x(last) != %x(now) in link %u at %u\n",
-                  kct->mm[l + MM_KEY], key, t, kct->pos);
-            }
+        if (l == NO_LINK_YET) {
             khiter_t k = kh_get(UQCT, H, key);
             if (k == kh_end(H)) {
                 fprintf(stderr, "k == kh_end(H): key:%x, at %u!\n", key, kct->pos);
                 return -EINVAL;
             }
             l = *n = kh_val(H, k);
-            kct->mm[l + MM_KEY] = key;
         }
         kct->last = l;
         kct->last_mmpos = kct->pos;
