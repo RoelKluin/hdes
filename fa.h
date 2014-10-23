@@ -27,13 +27,18 @@ KHASH_MAP_INIT_INT(UQCT, unsigned)
 #define MM_KEY 9
 #define MM_CT 8
 
+#define MULTIMAPPER 0xff // 0xff is max for char
+#define NO_LINK_YET 0xffffffff
+
 typedef struct kct {
     int (*process) (struct seqb2_t*, struct kct*);
     char* x;
     khash_t(UQCT) *H;
     unsigned* mm;
-    uint64_t dna, rev, pos, last_mmpos;
-    unsigned last, mm_l, mm_m; // rep
+    unsigned *at;
+    uint64_t dna, rev;
+    unsigned pos, last_mmpos;
+    unsigned last, mm_l, mm_m, at_m, at_l; // rep
     unsigned l; // length of char* x;
     char tid[256];
 } kct_t;
