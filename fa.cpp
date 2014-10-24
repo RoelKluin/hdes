@@ -197,14 +197,16 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
             if (c) { /* exceptions: header, N's, end or odd Nts */
                 if (c == '>') {
                     kc->last_mmpos = 0u;
+                    kc->Nmask = 0u;
                     kc->pos = -1u; /* later incremented. */
                     t = KEY_WIDTH + 256; /* later decremented: start with header */
                 } else {
+                    kc->Nmask |= 1;
                     if (c != 'N') {
                         if (c == -1) break;
                         fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
                     }
-                    if (kc->dna == 0ul) /* rebuild key before next entry */
+                    if (kc->Nmask == N_MASK) /* rebuild key before next entry */
                         t = KEY_WIDTH;
                 }
                 b = c ^= c; // enter twobit 0 (A), and prevent error-out
@@ -220,6 +222,7 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
             }
             else --t;
             ++(kc->pos);
+            kc->Nmask = (kc->Nmask << 1) & N_MASK;
         } else {
             if (t > KEY_WIDTH) {
                 t -= KEY_WIDTH;

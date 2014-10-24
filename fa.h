@@ -31,6 +31,8 @@ KHASH_MAP_INIT_INT(UQCT, unsigned)
 #define _MULTIMAPPER 0xff // 0xff is max for char
 #define NO_LINK_YET 0xffffffff
 
+#define N_MASK ((1u << KEY_WIDTH) - 1u)
+
 typedef struct kct {
     int (*process) (struct seqb2_t*, struct kct*);
     char* x;
@@ -38,7 +40,7 @@ typedef struct kct {
     unsigned* mm;
     unsigned *at;
     uint64_t dna, rev;
-    unsigned pos, last_mmpos;
+    unsigned pos, last_mmpos, Nmask;
     unsigned last, mm_l, mm_m, at_m, at_l; // rep
     unsigned l; // length of char* x;
     char tid[256];
