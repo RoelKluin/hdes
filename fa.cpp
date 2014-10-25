@@ -68,14 +68,13 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
 {
     // key is 2nd cNt bit excised, rev or dna
 
-    int t = kct->dna & KEYNT_STRAND;
-    unsigned key = t ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
+    unsigned key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
     key = (((key >> 1) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
     uint8_t* p = seq->s + key;
     khiter_t k;
-    t = (*p == _MULTIMAPPER);
+    int t = (*p == _MULTIMAPPER);
     if (t == NO_MULTIMAPPER_YET) {
         if (kct->Nmask)
             return 0; // key uncertain, don't increment
@@ -118,8 +117,7 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
 static int
 write_kcpos(seqb2_t *seq, kct_t* kct)
 {
-    int t = kct->dna & KEYNT_STRAND;
-    unsigned key = t ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
+    unsigned key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
     key = (((key >> 1) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
@@ -132,12 +130,12 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
     }
     if (*p == _MULTIMAPPER || (kct->Nmask && kct->last_mmpos + 1u == kct->pos)) {
         unsigned l = UNDEFINED_LINK;
-        t = kct->last_mmpos + 1u == kct->pos; // adjacent multimapper
+        int t = kct->last_mmpos + 1u == kct->pos; // adjacent multimapper
         if (t) { // there may be some internal linkage left
             l = kct->last + (((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4));
             l = kct->mm[l];
-            // make t >= 0 for mmap ends: beyond seq->readlength - KEY_LENGTH
-            t = kct->at[kct->at_l] - kct->pos - (seq->readlength - KEY_LENGTH);
+            // make t >= 0 for mmap ends
+            t = kct->at[kct->at_l] - kct->pos;
         }
         if (t > 0) { // start of non-multimapper region, moves along.
             kct->at[kct->at_l] = kct->pos + 1;
