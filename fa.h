@@ -25,11 +25,10 @@
 KHASH_MAP_INIT_INT(UQCT, unsigned)
 
 #define MM_CT 8
-#define NO_MULTIMAPPER 0
-#define EXISTING_MULTIMAPPER 1
+#define NO_MULTIMAPPER_YET 0
 #define NEW_MULTIMAPPER 2
 #define _MULTIMAPPER 0xff // 0xff is max for char
-#define NO_LINK_YET 0xffffffff
+#define UNDEFINED_LINK 0xffffffff
 
 #define N_MASK ((1u << KEY_WIDTH) - 1u)
 
