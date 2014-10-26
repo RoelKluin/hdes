@@ -31,7 +31,8 @@ init_ndx(seqb2_t *fa)
     return fa->s != NULL ? 0 : -ENOMEM;
 }
 
-static void free_ndx(seqb2_t *fa)
+static void
+free_ndx(seqb2_t *fa)
 {
     if (fa->s) free(fa->s);
     fa->s = NULL;
@@ -53,7 +54,14 @@ insert_mmapper(kct_t* kct, unsigned* l, unsigned key)
     *l = kct->mm_l;
     kct->mm_l += MM_CT + 1;
     for (t = 0; t != MM_CT; ++t)
-        kct->mm[*l + t] = UNDEFINED_LINK;
+        kct->mm[*l + t] = UNDEFINED_LINK; // XXX: Invalid write on kcpos restore
+    return 0;
+}
+
+
+static int
+no_header(seqb2_t *seq, kct_t* kct)
+{
     return 0;
 }
 
@@ -72,27 +80,27 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
     key = (((key >> 1) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
-    uint8_t* p = seq->s + key;
+    unsigned l = seq->s[key];
     khiter_t k;
-    int t = (*p == _MULTIMAPPER);
+    int t = (l == _MULTIMAPPER);
     if (t == NO_MULTIMAPPER_YET) {
         if (kct->Nmask)
             return 0; // key uncertain, don't increment
         if (_MULTIMAPPER < 16) {
         // could instead use only 1, 2 or 4 bits only to account multimappers.
         // then 2nd middle Nt bit should be excised and determine nibble to incr.
-        } else if (++*p != _MULTIMAPPER) {
+        } else if (++(seq->s[key]) != _MULTIMAPPER) {
             return 0;
         }
         k = kh_get(UQCT, kct->H, key);
         t = NEW_MULTIMAPPER;
     }
-    unsigned l = UNDEFINED_LINK;
+    l = UNDEFINED_LINK;
     if (kct->last_mmpos + 1u == kct->pos) {
         // adjacent multimapper without N's: update link instead
         l = kct->last + (((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4));
         l = kct->mm[l];
-        // can still be `undefined'...
+        // l can still be `undefined'.
     }
 
     if (l == UNDEFINED_LINK) {
@@ -115,21 +123,49 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
 }
 
 static int
+write_kcwig_fixedStep0(seqb2_t *seq, kct_t* kct)
+{
+    if (kct->l + 512 >= BUF_STACK) {
+        struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
+	int c = gzwrite(fhout->io, kct->x, kct->l);
+	if (c < 0) return c;
+        kct->l = 0;
+    }
+    uint8_t* w = (uint8_t*)&kct->x[kct->l];
+    w = sprints(w, (uint8_t*)"fixedStep\tchrom=chr");
+    w = sprints(w, (uint8_t*)kct->tid);
+    // wig is one-based, each key spans KEY_WIDTH Nt's, first ia from 1-KEYWIDTH
+    w = sprints(w, (uint8_t*)"\tstart=");
+
+    // FIXME: this is fasta specific, but needed due to multiple Y's
+    // value between 4th and 5th ':' in tid is start
+    uint8_t* s = (uint8_t*)kct->tid;
+    for(int i=0; *++s != ':' || ++i != 4;) {}
+    while (*++s != ':') *w++ = *s;
+
+    // span must be 1 or wigtobigwig fails. Alternatively write bed file
+    w = sprints(w, (uint8_t*)"\tstep=1\tspan=1\n");
+    //w += sprintu(w, KEY_WIDTH, '\n');
+    kct->l += w - (uint8_t*)&kct->x[kct->l];
+    return 0;
+}
+
+static int
 write_kcpos(seqb2_t *seq, kct_t* kct)
 {
     unsigned key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
     key = (((key >> 1) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
-    uint8_t* p = seq->s + key;
+    unsigned l = seq->s[key];
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
-    if (*p == 0 && kct->Nmask == 0u) {
+    if (l == 0 && kct->Nmask == 0u) {
         fprintf(stderr, "ERROR: new key %x at %u in reiteration for kcpos!\n",
                 key, kct->pos);
         return -1;
     }
-    if (*p == _MULTIMAPPER || (kct->Nmask && kct->last_mmpos + 1u == kct->pos)) {
-        unsigned l = UNDEFINED_LINK;
+    if (l == _MULTIMAPPER || (kct->Nmask && kct->last_mmpos + 1u == kct->pos)) {
+        l = UNDEFINED_LINK;
         int t = kct->last_mmpos + 1u == kct->pos; // adjacent multimapper
         if (t) { // there may be some internal linkage left
             l = kct->last + (((kct->dna)& 3) | (-!(kct->dna & (KEYNT_STRAND << 2)) & 4));
@@ -150,6 +186,7 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
                 kct->at_l += 2; // initiate next start of non-multimapper region.
                 kct->at[kct->at_l] = kct->pos + 1u;
             } else {
+                // kct->last_mmpos == 0: is start of chromosome.
                 kct->at[kct->at_l + !!kct->last_mmpos] = kct->pos;
             }
         }
@@ -160,7 +197,7 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
                     assert (kct->last_mmpos + 1u == kct->pos);
                     t = insert_mmapper(kct, &l, key);
                     if_ever (t < 0) return t;
-                    kct->mm[l + MM_CT] = *p;
+                    kct->mm[l + MM_CT] = seq->s[key];
                 } else {
                     fprintf(stderr, "k == kh_end(H): key:%x, at %u!\n", key, kct->pos);
                     return -EINVAL;
@@ -169,22 +206,26 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
             l = kh_val(kct->H, k);
         }
         kct->last = l;
+        l = kct->mm[l + MM_CT];
         kct->last_mmpos = kct->pos;
     }
-    kct->x[kct->l] = *p;
-
-    if (++kct->l == BUF_STACK) {
+    if (kct->l + 16 >= BUF_STACK) {
 	int c = gzwrite(fhout->io, kct->x, kct->l);
 	if (c < 0) return c - 1;
         kct->l = 0;
     }
+    if (kct->header == &write_kcwig_fixedStep0)
+        kct->l += sprintu((uint8_t*)&kct->x[kct->l], l, '\n');
+    else
+        kct->x[kct->l] = seq->s[key];
     return 0;
 }
 
 /*
  * zero on success.
  */
-static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
+static int
+fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
 {
     register int c;
     register uint64_t b, t = KEY_WIDTH + 255;
@@ -242,8 +283,12 @@ static int fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                 fputc(c, stderr);
                 // '\0' for each space or last
                 kc->tid[255 - t] = c & -!(isspace(c) | (t == 0));
-                // iterate header up to newline, but fill only until 255th char 
+                // iterate header up to newline, but fill only until 255th char
                 t = KEY_WIDTH + ((t - (t != 0)) & -(c != '\n'));
+                if (t == KEY_WIDTH) {
+                    c = kc->header(seq, kc);
+                    if (c < 0) return c - 1;
+                }
             }
             c ^= c;
         }
@@ -316,7 +361,8 @@ read_s(struct gzfh_t* fhin, struct seqb2_t* seq, kct_t* kc)
 }
 
 
-int fa_print(seqb2_t *fa)
+int
+fa_print(seqb2_t *fa)
 {
     return 1;
 }
@@ -342,8 +388,8 @@ int fa_index(struct seqb2_t* seq)
     char file[256];
     char line[BUF_STACK];
 
-    const char* ndxact[4] = {".fa", ".keyct.gz", ".kcpos.gz"};
-    kct_t kc = { .process = &increment_keyct};
+    const char* ndxact[4] = {".fa", ".keyct.gz", "_kcpos.wig.gz"};
+    kct_t kc = { .process = &increment_keyct, .header = &no_header};
     kc.H = kh_init(UQCT);
     kc.mm_m = 1 << 8;
     kc.mm_l = 0;
@@ -426,6 +472,7 @@ int fa_index(struct seqb2_t* seq)
 
         if (i == 1) {
             kc.process = &write_kcpos;
+            kc.header = &write_kcwig_fixedStep0; // XXX remove to write binary instead
             kc.x = line;
             kc.l = 0;
         }

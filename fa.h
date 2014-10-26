@@ -34,6 +34,7 @@ KHASH_MAP_INIT_INT(UQCT, unsigned)
 
 typedef struct kct {
     int (*process) (struct seqb2_t*, struct kct*);
+    int (*header) (struct seqb2_t*, struct kct*);
     char* x;
     khash_t(UQCT) *H;
     unsigned* mm;
