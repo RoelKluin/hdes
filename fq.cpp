@@ -88,7 +88,7 @@ fq_print(seqb2_t *fq)
     uint8_t seqrc[(KEY_LENGTH+1)<<1];
     uint8_t *const s = fq->s + SEQ_OFFSET_BYTES + BUF_OFFSET_BYTES;
 
-    register uint32_t j = KEYNT_BUFSZ - 1u;
+    register uint64_t j = KEYNT_BUFSZ - 1ul;
     uint32_t* look = &fq->lookup[j];
     const unsigned bufm = 1u << 20;
     char buf[bufm];

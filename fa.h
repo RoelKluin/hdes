@@ -22,7 +22,7 @@
         (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
 })
 
-KHASH_MAP_INIT_INT(UQCT, unsigned)
+KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define MM_CT 8
 #define NO_MULTIMAPPER_YET 0

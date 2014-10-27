@@ -77,3 +77,10 @@ make clean && make && ./uqct hg19.fa.gz
 #    zcat fa_parts/$chr
 #done | gzip --fast > hg19.fa.gz
 
+samtools faidx hg19.fa.gz
+cut -f 1,2 hg19.fa.gz.fai | uniq | sed 's/^/chr/' > chrom.sizes
+
+make clean && make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
+zcat hg19_kcpos.wig.gz | ucsc/userApps/bin/wigToBigWig -clip stdin chrom.sizes /tmp/out.bw
+~/dev/git/IGV/igv.sh /tmp/out.bw
+

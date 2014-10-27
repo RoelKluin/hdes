@@ -39,7 +39,7 @@ free_ndx(seqb2_t *fa)
 }
 
 static int
-insert_mmapper(kct_t* kct, unsigned* l, unsigned key)
+insert_mmapper(kct_t* kct, unsigned* l, uint64_t key)
 {
     int t;
     khiter_t k = kh_put(UQCT, kct->H, key, &t);
@@ -76,22 +76,18 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
 {
     // key is 2nd cNt bit excised, rev or dna
 
-    unsigned key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
-    key = (((key >> 1) & ~HALF_KEYNT_MASK) |
+    uint64_t key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaaaaaaaaaa);
+    key = (((key >> 2) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
     unsigned l = seq->s[key];
     khiter_t k;
+
     int t = (l == _MULTIMAPPER);
     if (t == NO_MULTIMAPPER_YET) {
-        if (kct->Nmask)
-            return 0; // key uncertain, don't increment
-        if (_MULTIMAPPER < 16) {
-        // could instead use only 1, 2 or 4 bits only to account multimappers.
-        // then 2nd middle Nt bit should be excised and determine nibble to incr.
-        } else if (++(seq->s[key]) != _MULTIMAPPER) {
-            return 0;
-        }
+        if (kct->Nmask || ++(seq->s[key]) != _MULTIMAPPER)
+            return 0; // if key uncertain, don't increment
+
         k = kh_get(UQCT, kct->H, key);
         t = NEW_MULTIMAPPER;
     }
@@ -153,14 +149,15 @@ write_kcwig_fixedStep0(seqb2_t *seq, kct_t* kct)
 static int
 write_kcpos(seqb2_t *seq, kct_t* kct)
 {
-    unsigned key = (kct->dna & KEYNT_STRAND) ? kct->dna : (kct->rev ^ 0xaaaaaaaa);
-    key = (((key >> 1) & ~HALF_KEYNT_MASK) |
+    uint64_t key = (kct->dna & KEYNT_STRAND) ? kct->dna :
+        (kct->rev ^ 0xaaaaaaaaaaaaaaaa);
+    key = (((key >> 2) & ~HALF_KEYNT_MASK) |
             (key & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;
 
     unsigned l = seq->s[key];
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
     if (l == 0 && kct->Nmask == 0u) {
-        fprintf(stderr, "ERROR: new key %x at %u in reiteration for kcpos!\n",
+        fprintf(stderr, "ERROR: new key %lx at %u in reiteration for kcpos!\n",
                 key, kct->pos);
         return -1;
     }
@@ -199,7 +196,7 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
                     if_ever (t < 0) return t;
                     kct->mm[l + MM_CT] = seq->s[key];
                 } else {
-                    fprintf(stderr, "k == kh_end(H): key:%x, at %u!\n", key, kct->pos);
+                    fprintf(stderr, "k == kh_end(H): key:%lx, at %u!\n", key, kct->pos);
                     return -EINVAL;
                 }
             }
@@ -259,8 +256,6 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                         if (c == -1) break;
                         fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
                     }
-                    if (kc->Nmask == N_MASK) /* rebuild key before next entry */
-                        t = KEY_WIDTH;
                 }
                 b = c ^= c; // enter twobit 0 (A), and prevent error-out
             }
@@ -286,6 +281,8 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                 // iterate header up to newline, but fill only until 255th char
                 t = KEY_WIDTH + ((t - (t != 0)) & -(c != '\n'));
                 if (t == KEY_WIDTH) {
+                    if (kc->tid[0] == 'Y')
+                        return 0; // skip Y
                     c = kc->header(seq, kc);
                     if (c < 0) return c - 1;
                 }
