@@ -44,14 +44,8 @@ insert_mmapper(kct_t* kct, unsigned* l, uint64_t key)
     int t;
     khiter_t k = kh_put(UQCT, kct->H, key, &t);
     if_ever (t < 0) return t;
-    if (kct->mm_l + MM_CT + 1 >= kct->mm_m) {
-        kct->mm_m <<= 1;
-        unsigned* mm = (unsigned*)realloc(kct->mm, kct->mm_m * sizeof(unsigned));
-        if_ever (mm == NULL) return -ENOMEM;
-        kct->mm = mm;
-    }
-    kh_val(kct->H, k) = kct->mm_l;
-    *l = kct->mm_l;
+    kh_val(kct->H, k) = *l = kct->mm_l;
+    _buf_grow(kct->mm, MM_CT + 1);
     kct->mm_l += MM_CT + 1;
     for (t = 0; t != MM_CT; ++t)
         kct->mm[*l + t] = UNDEFINED_LINK; // XXX: Invalid write on kcpos restore
@@ -173,12 +167,7 @@ write_kcpos(seqb2_t *seq, kct_t* kct)
         if (t > 0) { // start of non-multimapper region, moves along.
             kct->at[kct->at_l] = kct->pos + 1;
         } else if (t == 0) { // start or end
-            if (kct->at_l + 1 > kct->at_m) {
-                unsigned* at = (unsigned*)realloc(kct->at,
-                        kct->at_m * sizeof(unsigned));
-                if (at == NULL) return -ENOMEM;
-                kct->at = at;
-            }
+            _buf_grow(kct->at, 1);
             if (kct->last_mmpos == kct->pos) {
                 kct->at_l += 2; // initiate next start of non-multimapper region.
                 kct->at[kct->at_l] = kct->pos + 1u;
@@ -388,18 +377,9 @@ int fa_index(struct seqb2_t* seq)
     const char* ndxact[4] = {".fa", ".keyct.gz", "_kcpos.wig.gz"};
     kct_t kc = { .process = &increment_keyct, .header = &no_header};
     kc.H = kh_init(UQCT);
-    kc.mm_m = 1 << 8;
-    kc.mm_l = 0;
-    kc.at_m = 1 << 8;
-    kc.at_l = 0;
 
-    unsigned* mm = (unsigned*)malloc(kc.mm_m * sizeof(unsigned));
-    if (mm == NULL) return -ENOMEM;
-    kc.mm = mm;
-
-    unsigned* at = (unsigned*)malloc(kc.at_m * sizeof(unsigned));
-    if (at == NULL) return -ENOMEM;
-    kc.at = at;
+    kc.mm = _buf_init(kc.mm, 8);
+    kc.at = _buf_init(kc.at, 8);
 
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {

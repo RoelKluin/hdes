@@ -30,6 +30,21 @@
 // get bit for alpha char, regardless of case [command line options]
 #define amopt(r)        (1ul << ((r+7) & 0x1f))
 
+#define _buf_init(buf, sz) ({\
+    buf##_m = sz;\
+    buf##_l = 0;\
+    typeof(buf) __t = (typeof(buf))malloc((1ul << buf##_m) * sizeof(*(buf)));\
+    if (__t == NULL) return -ENOMEM;\
+    __t;\
+})
+
+#define _buf_grow(buf, step) \
+if (buf##_l + step >= (1ul << buf##_m)) {\
+    typeof(buf) __t = (typeof(buf))realloc(buf, (1ul << ++(buf##_m)) * sizeof(*buf));\
+    if_ever (__t == NULL) return -ENOMEM;\
+    buf = __t;\
+}
+
 /* copy buffer and return pointer to one past it
  * s must be zero terminated, and out have sufficient size always.
  */
