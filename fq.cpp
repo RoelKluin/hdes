@@ -237,7 +237,7 @@ fq_b2(seqb2_t *fq)
         }
         b -= i;
         i = KEY_WIDTH;
-        if_ever (nr++ == fq->readlimit) break;
+        if_ever (nr++ == fq->maxreads) break;
 
         // initialize key
         register uint64_t dna = 0ul, rev = 0ul;

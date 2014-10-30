@@ -37,7 +37,7 @@ typedef struct option_description
     const char *name;
     int has_arg;
     int *flag;
-    int val;
+    unsigned val;
     const char *descr;
 } option_description_t;
 
@@ -48,8 +48,8 @@ static struct option_description dopt[] = {
     {"2nd-fastq", required_argument, NULL, '2', "<FILE>\t2nd input fastq (optional)"},
     {"ref", required_argument, NULL, 'r', "<FILE>\tinput fasta reference (optional)"},
     {"out", required_argument, NULL, 'o', "<FILE>\toutput file prefix"},
-    {"readlength", required_argument, NULL, 'l', "<INT>\treadlength (optional)"},
     {"maxreads", required_argument, NULL, 'm', "<INT>\tonly this many reads (optional)"},
+    {"readlength", required_argument, NULL, 'l', "<INT>\treadlength (optional)"},
     {"blocksize", required_argument, NULL, 'b', "<INT>\tgzip blocksize in Mb"},
     {"phred", required_argument, NULL, 'p', "<INT>\tphred offset for quality scores"},
     {"force", no_argument, NULL, 'f', "\tforce overwrite"},
@@ -77,14 +77,14 @@ int main(int argc, char* const* argv)
 {
     uint64_t blocksize;
     struct seqb2_t seq = {0}; /* init everything to 0 or NULL */
-    unsigned t, i = 0u, fhsz = ARRAY_SIZE(seq.fh);
+    unsigned i = 0u, fhsz = ARRAY_SIZE(seq.fh);
     int c, ret = EXIT_FAILURE;
-    int optvals[][4] = {
-        // (default) value, bottom limit, upper lim, option
-        {0, KEY_WIDTH, SEQ_OFFSET_MAX, 'l'},
-        {-1, 1, 0x7fffffff, 'm'},
-        {32, 1, 1024, 'b'},
-        {33, 32, 89, 'p'}
+    uint32_t optvals[16] = {
+        // maxreads, readlength, blocksize, phred_offset
+        -1u, 0, 32, 33,                // default values
+        1, KEY_WIDTH, 1, 32,           // bottom limit (minima)
+        -1u, SEQ_OFFSET_MAX, 1024, 89, // maxima
+        'm', 'l', 'b', 'p'             // respective option
     };
 //    seq.fh[0].fp = seq.fh[2].fp = stdin; // default to stdin
     seq.fh[fhsz - 1].fp = stdout;
@@ -105,29 +105,30 @@ int main(int argc, char* const* argv)
                 break;
             case 'p': ++i;
             case 'b': ++i;
-            case 'm': ++i;
-            case 'l': assert(dopt[i + fhsz].val == optvals[i][3]);
+            case 'l': ++i;
+            case 'm': {
+                assert(dopt[i + fhsz].val == optvals[12 + i]);
 //                fprintf(stderr, "%s: %s\n", dopt[i + fhsz].name, optarg);
-                c = atoi(optarg);
-                t = (c < optvals[i][1]);
-                if (t || (c > optvals[i][2])) {
+                unsigned t = atoi(optarg);
+                if ((t < optvals[4 + i]) || (t > optvals[8 + i])) {
                     t = i + fhsz;
                     fprintf(stderr, "\t-%c|--%s %s is invalid.\n\t%s must be "
                         "between %u and %u\n", dopt[t].val, dopt[t].name, optarg,
-                        dopt[t].descr, optvals[i][1], optvals[i][2]);
+                        dopt[t].descr, optvals[4 + i], optvals[8 + i]);
                     goto out;
                 }
-                optvals[i][0] = c;
+                optvals[i] = t;
                 break;
+            }
             case 'h': usage();
             case '?': case ':': fputc('\n', stderr); goto out;
             default:  seq.mode |= amopt(c);
         }
     }
-    seq.readlength = optvals[0][0];
-    seq.readlimit = optvals[1][0];
-    seq.blocksize = optvals[2][0];
-    seq.phred_offset = optvals[3][0];
+    seq.maxreads = optvals[0];
+    seq.readlength = optvals[1];
+    seq.blocksize = optvals[2];
+    seq.phred_offset = optvals[3];
     blocksize = (uint64_t)seq.blocksize << 20;
 
     /* options without a flag */

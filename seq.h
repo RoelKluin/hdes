@@ -39,7 +39,7 @@ typedef struct seqb2_t {
         uint8_t *s;
         uint32_t* lookup;
 	uint64_t mode, l, m;
-        uint32_t nr, key_ct, readlimit;
+        uint32_t nr, key_ct, maxreads;
         uint16_t readlength, blocksize;
         uint8_t phred_offset; //XXX: can be less bits
         struct gzfh_t fh[4]; /* reader and writer */
