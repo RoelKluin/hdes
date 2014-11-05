@@ -16,7 +16,6 @@
 
 int fa_ndx2(seqb2_t *fa)
 {
-    uint64_t l = fa->l, m = fa->m;
     uint8_t *s = fa->s;
     uint32_t *const lookup = fa->lookup;
     const unsigned readlength = fa->readlength;
@@ -31,7 +30,7 @@ int fa_ndx2(seqb2_t *fa)
         g = fa->fh[2].fp;
         gc = (int (*)(void*))&fgetc;
     }
-    register uint8_t *b = s + l;
+    register uint8_t *b = s + fa->s_l;
     register int c;
     const unsigned width = readlength - KEY_WIDTH;
     uint64_t rot[width];
@@ -39,8 +38,8 @@ int fa_ndx2(seqb2_t *fa)
     while ((c = gc(g)) != '>')
         if (c == '@' && c == -1) goto out; // skip to first
     do {
-        assert((uint64_t)l + fa_ent_max < (1ul << 32));
-        b = s + l;
+        assert((uint64_t)fa->s_l + fa_ent_max < (1ul << 32));
+        b = s + fa->s_l;
         uint8_t* h = b;
         while (!isspace(c = gc(g)) && (c >= 0)) *b++ = c; // header
         while (c != '\n' && (c >= 0)) c = gc(g);          // comment
@@ -97,18 +96,10 @@ int fa_ndx2(seqb2_t *fa)
 
             while ((c = gc(g)) != '>' && c != -1) {
                 if (isspace(c)) {
-                    l = b - s;
-                    assert((uint64_t)l + fa_ent_max < (1ul << 32));
-                    if (l + fa_ent_max >= m) { // grow buffer if insufficient space for another read
-                        m <<= 1;
-                        fprintf(stderr, "==realloc at %lu to 0x%lx\n", pos + i, m);
-                        if ((s = (uint8_t *)realloc(fa->s, m)) == NULL) {
-                            c = -ENOMEM;
-                            goto out;
-                        }
-                        fa->s = s;
-                        b = s + l;
-                    }
+                    fa->s_l = b - s;
+                    assert((uint64_t)fa->s_l + fa_ent_max < (1ul << 32));
+                    _buf_grow(fa->s, fa_ent_max);
+                    b = s + fa->s_l;
                     continue;
                 }
                 if (i == width) {
@@ -165,7 +156,7 @@ int fa_ndx2(seqb2_t *fa)
 
                 j = *r;
                 if (j == 1u) ++key_ct; // first element
-                *r = l; // exchange by this offset
+                *r = fa->s_l; // exchange by this offset
 
 
                 rot[i] = key | (dna & KEYNT_STRAND);
@@ -174,7 +165,7 @@ int fa_ndx2(seqb2_t *fa)
         } while (c != '>' && c >= 0);
     } while (c >= 0);
     c = 0;
-out: fa->l = l, fa->m = m, fa->key_ct = key_ct;
+out: fa->key_ct = key_ct;
     return c;
 }
 

@@ -20,24 +20,6 @@
 //#include <glib.h>
 #include "fa.h"
 
-/**
- * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
- */
-static int
-init_ndx(seqb2_t *fa)
-{
-    fa->m = sizeof(*fa->s) * KEYNT_BUFSZ;
-    fa->s = (uint8_t*)malloc(fa->m);
-    return fa->s != NULL ? 0 : -ENOMEM;
-}
-
-static void
-free_ndx(seqb2_t *fa)
-{
-    if (fa->s) free(fa->s);
-    fa->s = NULL;
-}
-
 static int
 insert_mmapper(kct_t* kct, unsigned* l, uint64_t key)
 {
@@ -78,8 +60,8 @@ increment_keyct(seqb2_t *seq, kct_t* kct)
     khiter_t k;
 
     int t = (l == _MULTIMAPPER);
-    if (t == NO_MULTIMAPPER_YET) {
-        if (kct->Nmask || ++(seq->s[key]) != _MULTIMAPPER)
+    if (t == NO_MULTIMAPPER_YET) { // XXX
+        if (kct->Nmask || ++(seq->s[key]) != _MULTIMAPPER) // XXX
             return 0; // if key uncertain, don't increment
 
         k = kh_get(UQCT, kct->H, key);
@@ -216,6 +198,7 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
     register int c;
     register uint64_t b, t = KEY_WIDTH + 255;
     kc->dna = kc->rev = 0ul;
+    register uint8_t b2;
 
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first
     c &= -(c != '>');
@@ -240,7 +223,7 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                     kc->pos = -1u; /* later incremented. */
                     t = KEY_WIDTH + 256; /* later decremented: start with header */
                 } else {
-                    kc->Nmask |= 1;
+                    kc->Nmask |= 1u;
                     if (c != 'N') {
                         if (c == -1) break;
                         fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
@@ -249,7 +232,8 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
                 b = c ^= c; // enter twobit 0 (A), and prevent error-out
             }
             /* append the twobit to dna and rev */
-            kc->dna = (kc->dna << 2) | (b >> 1);
+            b2 = (b2 << 2) | (b >> 1);
+            kc->dna = (kc->dna << 2) | (b2 & 3);
             kc->dna &= KEYNT_MASK; // prevent setting carriage bit.
             kc->rev = (b << (KEYNT_TOP - 1)) | (kc->rev >> 2);
             if (t == 0ul) { // is key complete?
@@ -259,7 +243,12 @@ fa_kc(seqb2_t *seq, kct_t* kc, void* g, int (*gc) (void*))
             } else {
                 --t;
             }
-            ++(kc->pos);
+            if ((kc->pos & 3) == !kc->pos) {
+                _buf_grow(kc->seq, 1ul); // XXX
+                kc->seq[kc->seq_l++] = b2;
+                b2 = '\0';
+            }
+            ++kc->pos;
             kc->Nmask = (kc->Nmask << 1) & N_MASK;
         } else {
             if (t > KEY_WIDTH) {
@@ -287,7 +276,7 @@ read_s(struct gzfh_t* fhin, struct seqb2_t* seq, kct_t* kc)
 {
     int c;
     char *s = (char*)seq->s;
-    uint64_t m = seq->m;
+    uint64_t m = seq->s_m;
     fprintf(stderr, "==reading buffer s\n");
     while (m > INT_MAX) {
         c = gzread(fhin->io, s, INT_MAX);
@@ -375,12 +364,6 @@ int fa_index(struct seqb2_t* seq)
     char line[BUF_STACK];
 
     const char* ndxact[4] = {".fa", ".keyct.gz", "_kcpos.wig.gz"};
-    kct_t kc = { .process = &increment_keyct, .header = &no_header};
-    kc.H = kh_init(UQCT);
-
-    kc.mm = _buf_init(kc.mm, 8);
-    kc.at = _buf_init(kc.at, 8);
-
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
         strncpy(file, fhout->name, res);
@@ -388,12 +371,19 @@ int fa_index(struct seqb2_t* seq)
         res = strlen(fhin->name);
         if (strncmp(fhin->name, "stdin", res) == 0) {
             fputs("Cannot index from stdin (seek)\n", stderr);
-            goto out;
+            return -1;
         }
         strcpy(file, fhin->name);
     }
     fhout->name = &file[0];
-    init_ndx(seq);
+
+    kct_t kc = { .process = &increment_keyct, .header = &no_header};
+    kc.H = kh_init(UQCT);
+    kc.mm = _buf_init(kc.mm, 8);
+    kc.at = _buf_init(kc.at, 8);
+    kc.seq = _buf_init(kc.seq, 16);
+    seq->s = _buf_init(seq->s, KEY_LENGTH * 2);
+
 
     if (is_gzfile) {
         g = fhin->io;
@@ -441,7 +431,7 @@ int fa_index(struct seqb2_t* seq)
             continue;
         } else if (i == 0) {
             fprintf(stderr, "== %s does not yet exist\n", fhout->name);
-            memset(seq->s, '\0', seq->m);
+            memset(seq->s, '\0', 1ul << seq->s_m);
         }
 
         res = set_io_fh(fhout, blocksize, 0);
@@ -470,7 +460,7 @@ int fa_index(struct seqb2_t* seq)
             size_t kisz = sizeof(khint_t);
             size_t usz = sizeof(unsigned);
             size_t n_mm = usz * kc.mm_l;
-            size_t new_m = seq->m + 4 * kisz + nf + nk + nv + usz + n_mm;
+            size_t new_m = (1ul << seq->s_m) + 4 * kisz + nf + nk + nv + usz + n_mm;
 
             char* s = (char*)realloc(seq->s, new_m);
             if (s == NULL) {
@@ -478,8 +468,8 @@ int fa_index(struct seqb2_t* seq)
                 goto out;
             }
             seq->s = (uint8_t*)s;
-            s += seq->m;
-            seq->m = new_m;
+            s += 1ul << seq->s_m;
+            seq->s_m = new_m;
 
             fprintf(stderr, "== appending khash (%u)\n", nb);
             memcpy(s, &kc.H->n_buckets, kisz); s += kisz;
@@ -492,10 +482,10 @@ int fa_index(struct seqb2_t* seq)
             fprintf(stderr, "== appending mmap (%lu)\n", n_mm);
             memcpy(s, &kc.mm_l, usz); s += usz;
             memcpy(s, kc.mm, n_mm);
-            assert(seq->m == (uint8_t*)s - seq->s + n_mm);
+            assert(seq->s_m == (uint8_t*)s - seq->s + n_mm);
 
             fprintf(stderr, "== writing to disk\n"); fflush(NULL);
-            res = fhout->write(fhout, (char*)seq->s, seq->m, sizeof(char));
+            res = fhout->write(fhout, (char*)seq->s, 1 << seq->s_m, sizeof(char));
             if (res < 0) { fprintf(stderr, "== ->write failed:%d", res);  break; }
 
             fprintf(stderr, "== closing %s\n", fhout->name); // last before valg
@@ -515,9 +505,11 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
-    free(kc.mm);
+    _buf_free(kc.mm);
+    _buf_free(kc.seq);
+    _buf_free(kc.at);
     kh_destroy(UQCT, kc.H);
-    free_ndx(seq);
+    _buf_free(seq->s);
     return ret;
 
 }

@@ -33,16 +33,28 @@
 #define _buf_init(buf, sz) ({\
     buf##_m = sz;\
     buf##_l = 0;\
-    typeof(buf) __t = (typeof(buf))malloc((1ul << buf##_m) * sizeof(*(buf)));\
-    if (__t == NULL) return -ENOMEM;\
+    fprintf(stderr, #buf " malloc, %lu\n", sizeof(*buf) << buf##_m);\
+    fflush(NULL);\
+    typeof(buf) __t = (typeof(buf))malloc(sizeof(*buf) << buf##_m);\
+    if_ever (__t == NULL) return -ENOMEM;\
     __t;\
 })
 
 #define _buf_grow(buf, step) \
 if (buf##_l + step >= (1ul << buf##_m)) {\
-    typeof(buf) __t = (typeof(buf))realloc(buf, (1ul << ++(buf##_m)) * sizeof(*buf));\
+    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*buf) << (buf##_m + 1));\
+    fflush(NULL);\
+    typeof(buf) __t = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
     if_ever (__t == NULL) return -ENOMEM;\
     buf = __t;\
+    (void) 0;\
+}
+
+#define _buf_free(buf) \
+if (buf != NULL) {\
+    free(buf);\
+    buf = NULL;\
+    (void) 0;\
 }
 
 /* copy buffer and return pointer to one past it

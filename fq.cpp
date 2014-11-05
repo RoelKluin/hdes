@@ -21,15 +21,14 @@
 static inline int
 init_fq(seqb2_t *fq)
 {
-    fq->m = INIT_BUFSIZE;
-    fq->s = (uint8_t*)malloc(INIT_BUFSIZE);
-    if (fq->s == NULL) return -ENOMEM;
+
+    fq->s = _buf_init(fq->s, INIT_BUFSIZEBIT);
     *fq->s = '\0';
 
     size_t i, v = 1, l = sizeof(*fq->lookup) * KEYNT_BUFSZ;
     fq->lookup = (uint32_t*)malloc(l);
     if (fq->lookup == NULL) {
-        free(fq->s);
+        _buf_free(fq->s);
         return -ENOMEM;
     }
     for (i = 0; i != l; i += sizeof(*fq->lookup))
@@ -149,7 +148,7 @@ fq_print(seqb2_t *fq)
     if (c && fh->write(fh, buf, c, sizeof(char)) < 0) ret = -1;
 
     if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
-    if (fq->s != NULL) { free(fq->s); fq->s = NULL; }
+    _buf_free(fq->s);
     return ret;
 }
 
@@ -172,7 +171,7 @@ fq_b2(seqb2_t *fq)
         return -ENOMEM;
     }
 
-    uint64_t l = fq->l, m = fq->m;
+    uint64_t l = fq->s_l, m = fq->s_m;
     uint8_t *s = fq->s;
     uint32_t *const lookup = fq->lookup;
     unsigned nr = fq->nr, key_ct = fq->key_ct;
@@ -198,11 +197,7 @@ fq_b2(seqb2_t *fq)
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
             fprintf(stderr, "==realloc at %u reads to 0x%lx\n", nr, m);
-            if ((s = (uint8_t *)realloc(fq->s, m)) == NULL) {
-                c = -ENOMEM;
-                goto out;
-            }
-            fq->s = s;
+            _buf_grow(fq->s, l);
             b = s + l;
         }
         uint8_t* o = b;
@@ -316,7 +311,7 @@ fq_b2(seqb2_t *fq)
         c = gc(g);
     } while (c >= 0);
     c = 0;
-out: fq->l = l, fq->m = m, fq->nr = nr, fq->key_ct = key_ct;
+out: fq->s_l = l, fq->s_m = m, fq->nr = nr, fq->key_ct = key_ct;
     return c;
 }
 

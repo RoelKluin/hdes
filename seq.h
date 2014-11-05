@@ -33,15 +33,16 @@
 #define BUF_OFFSET_BYTES 5
 #define SEQ_OFFSET_MAX ((1u << (SEQ_OFFSET_BYTES << 3)) - 1u)
 
-#define INIT_BUFSIZE (1u << 23)
+#define INIT_BUFSIZEBIT 23
+#define INIT_BUFSIZE (1u << INIT_BUFSIZEBIT)
 
 typedef struct seqb2_t {
-        uint8_t *s;
+        uint8_t * s;
         uint32_t* lookup;
-	uint64_t mode, l, m;
+	uint64_t mode, s_l;
         uint32_t nr, key_ct, maxreads;
         uint16_t readlength, blocksize;
-        uint8_t phred_offset; //XXX: can be less bits
+        uint8_t phred_offset, s_m; //XXX: bitfields?
         struct gzfh_t fh[4]; /* reader and writer */
 } seqb2;
 

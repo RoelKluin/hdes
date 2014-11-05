@@ -165,7 +165,7 @@ int main(int argc, char* const* argv)
         }
 
         fprintf(stderr, "%s(%u):\t%s\n", dopt[i].name, i, c == 0 ? seq.fh[i].name :
-                (i == fhsz - 1 ? "stdout" : "stdin"));
+                (i >= fhsz - 1 ? "stdout" : "stdin"));
     }
     if (seq.fh[2].name != NULL) {
         if (seq.fh[1].name) {

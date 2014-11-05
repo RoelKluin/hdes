@@ -36,13 +36,16 @@ typedef struct kct {
     int (*process) (struct seqb2_t*, struct kct*);
     int (*header) (struct seqb2_t*, struct kct*);
     char* x;
+    uint8_t *seq;
     khash_t(UQCT) *H;
     unsigned* mm;
     unsigned *at;
     uint64_t dna, rev;
-    unsigned pos, last_mmpos, Nmask;
-    unsigned last, mm_l, mm_m, at_m, at_l; // rep
+    unsigned pos, last_mmpos, seq_l;
+    unsigned last, at_l; // rep
     unsigned l; // length of char* x;
+    uint32_t Nmask, mm_l;
+    uint8_t mm_m, at_m, seq_m; //XXX: bitfields?
     char tid[256];
 } kct_t;
 
