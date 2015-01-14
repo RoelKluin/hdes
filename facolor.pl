@@ -21,11 +21,12 @@ $h{$seq[$_]} = "\e[".(31+$_).";1m".$seq[$_] for 0..$#seq;
 $g{$seq[$_]} = "\e[".(91+$_).";1m".$seq[$_] for 0..$#seq;
 
 while (<>) {
-	chomp;
+        s/^RepBase.*\0+[^>]+>/>/; #repbase meuk
+	s/[\n\r]*$//;
         print "\e[1m$_\e[0m\n" and next if /^(?:==|\s*$|>)/;
 	print join("", map { $_ =~ $re ? "\e[7m".join('',
-                    map { $g{$_} // $_ } split //)."\e[0m" :
-                "\e[1m".join('', map { $h{$_} // $_ } split //)."\e[0m"
+                    map { $g{uc$_} // $_ } split //)."\e[0m" :
+                "\e[1m".join('', map { $h{uc$_} // $_ } split //)."\e[0m"
                 } split $re)."\e[0m\n";
 }
 __END__
