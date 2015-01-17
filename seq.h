@@ -19,14 +19,16 @@
 #define SEQ_MAX_NAME_ETC    (1u << 14)
 
 // KEYNT: 2bits, therefore multiplied by 2.
-#define KEYNT_BUFSZ (1ul << (KEY_LENGTH * 2))
+#define KEYNT_BUFSZ_SHFT ((KEY_LENGTH * 2) - 1)
+#define KEYNT_BUFSZ (1u << KEYNT_BUFSZ_SHFT)
 #define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1u)
 
-#define KEYNT_STRAND (1ul << KEY_WIDTH)
-#define KEYNT_AC (1ul << (KEY_WIDTH - 1))
+#define KEYNT_STRAND (1u << KEY_WIDTH)
+#define KEYNT_AC (1u << (KEY_WIDTH - 1))
 
-#define KEYNT_MASK ((1ul << KEY_WIDTH * 2) - 1ul)
-#define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
+#define KEYNT_MASK ((1u << (KEY_WIDTH << 1)) - 1u)
+#define HALF_KEYNT_MASK (KEYNT_STRAND - 1u)
+#define KEYNT_TRUNC_UPPER (~HALF_KEYNT_MASK & KEYNT_TRUNC_MASK)
 
 #define SEQ_OFFSET_BYTES 2
 #define NS_OFFSET_BYTES 3

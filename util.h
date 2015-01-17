@@ -47,14 +47,12 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     typeof(buf) __t = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
     if_ever (__t == NULL) return -ENOMEM;\
     buf = __t;\
-    (void) 0;\
 }
 
 #define _buf_free(buf) \
 if (buf != NULL) {\
     free(buf);\
-    buf = NULL;\
-    (void) 0;\
+    /*buf = NULL;*/\
 }
 
 /* copy buffer and return pointer to one past it

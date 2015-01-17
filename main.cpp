@@ -218,6 +218,7 @@ int main(int argc, char* const* argv)
             goto out;
         }
     }
+    fputs("Cleanup\n", stderr); fflush(NULL);
 
     ret = EXIT_SUCCESS;
 out: /* cleanup */
