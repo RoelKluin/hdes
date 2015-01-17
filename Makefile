@@ -12,7 +12,7 @@ LIBS=		-lz -L.
 DEBUG=		-g
 OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp fa.cpp fq.cpp main.cpp
-DEFINES=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\"
+DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\"
 PREPROCESSED=	$(SOURCES:.cpp=.i)
 ASSEMBLIES=	$(SOURCES:.cpp=.s)
 OBJECTS=	$(SOURCES:.cpp=.o)

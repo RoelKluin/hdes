@@ -31,8 +31,9 @@
 
 // KEY_WIDTH must be odd - or 2nd bit of central Nt is not always flipped in its
 // complement - the alternative is the twisted halfdev conversion, but this is cheaper
-
-#define KEY_LENGTH 17                       // <= this many Nts are used as key
+#ifndef KEY_LENGTH
+# define KEY_LENGTH 15                      // <= this many Nts are used as key
+#endif
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
@@ -45,7 +46,7 @@
         t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
         t ^= -((c & 0x8e) == 0x4) & B6_RNA;\
         -((t | B6_MASK) == B6_MASK) & (t >> 1);\
-});
+})
 
 #define add_b6N0(t, c, dna, rev) ({\
         t = c;\

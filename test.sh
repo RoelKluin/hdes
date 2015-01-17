@@ -84,3 +84,19 @@ make clean && make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
 zcat hg19_kcpos.wig.gz | ucsc/userApps/bin/wigToBigWig -clip stdin chrom.sizes /tmp/out.bw
 ~/dev/git/IGV/igv.sh /tmp/out.bw
 
+zgrep -P "(0\s+){7}" /tmp/out.bw.gz -c
+#203590084
+echo $((1<<29))
+#536870912
+#=> 0.3792 empty
+
+
+zcat /tmp/out.bw.gz | awk 'BEGIN {
+ for (x = 0; x != 5; ++x) m[x] = 0;
+} {
+    if ($3 != "maxdbit") for (x = 0; x != 5; ++x) if ($(x+3) > m[x]) m[x]=$(x+3);
+} END {
+    for (x = 0; x != 5; ++x) print "column " x + 3 ":\t" m[x];
+}' | tee maxes.txt
+
+
