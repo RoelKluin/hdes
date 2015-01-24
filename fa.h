@@ -35,15 +35,10 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define ULL(x) ((unsigned __int128)(x))
 
-typedef struct Rgn { // Region
-    uint32_t pos;
-    uint32_t nr:30; // unique iteration count, N-stretch or hdr offset (can decrease bits)
-    uint32_t type: 2; // unique pos / N-stretch / Chromo / unique pos already processed
-} rgn;
-
 typedef struct Kcs { // Keycounts
-    uint32_t lastp;
-    uint32_t ct;
+    uint32_t pos;
+    uint32_t ct:30;
+    uint32_t type: 2; // keycount / N-stretch / Chromo / unique pos (already processed)
 } kcs;
 
 typedef struct kct {
@@ -52,10 +47,9 @@ typedef struct kct {
     khash_t(UQCT) *H;
     uint32_t *kpndx;
     kcs *kp;
-    rgn *reg;
     unsigned seq_l, kp_l;
-    uint32_t Nmask, hdr_l, reg_l;
-    uint8_t seq_m, hdr_m, reg_m, kp_m, kpndx_m; //XXX: bitfields?
+    uint32_t Nmask, hdr_l;
+    uint8_t seq_m, hdr_m, kp_m, kpndx_m; //XXX: bitfields?
 } kct_t;
 
 int fa_index(seqb2_t *seq);
