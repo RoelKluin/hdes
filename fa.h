@@ -29,11 +29,19 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define _MULTIMAPPER 0xff // 0xff is max for char
 #define GSZ_MAX 0xff000000
 
+#define N_STRETCH 0xfffe
+#define REF_CHANGE 0xffff
 #define N_MASK ((1u << KEY_WIDTH) - 1u)
 
 #define ULL(x) ((unsigned __int128)(x))
 
-typedef struct Kcs {
+typedef struct Rgn { // Region
+    uint32_t pos;
+    uint32_t nr:30; // could be shorter
+    uint32_t type: 2; // unique pos / N-stretch, Chromo
+} rgn;
+
+typedef struct Kcs { // Keycounts
     uint32_t lastp;
     uint32_t ct;
 } kcs;
@@ -43,13 +51,14 @@ typedef struct kct {
     uint8_t *seq;
     khash_t(UQCT) *H;
     kcs* kp;
-    unsigned* mm, *ho;
+    rgn *reg;
+    unsigned* mm;
     unsigned *at;
     unsigned seq_l, kp_l;
     unsigned at_l; // rep
     unsigned l; // length of char* x;
-    uint32_t Nmask, mm_l, hdr_l, ho_l;
-    uint8_t mm_m, at_m, seq_m, hdr_m, ho_m, kp_m; //XXX: bitfields?
+    uint32_t Nmask, mm_l, hdr_l, reg_l;
+    uint8_t mm_m, at_m, seq_m, hdr_m, reg_m, kp_m; //XXX: bitfields?
 } kct_t;
 
 int fa_index(seqb2_t *seq);

@@ -32,22 +32,22 @@ insert_mmapper(kct_t* kct, unsigned* l, uint64_t key)
     return 0;
 }
 
-
 /*
  * process fasta, store 2bit string and account keys.
+ * store per key the count and the last position.
  */
 static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 {
     uint32_t dna = 0u, rev = 0u, key, pos = 0u;
     int c;
-    uint16_t t = 0xffff, Nmask = 0u;
+    uint16_t t = KEY_WIDTH;
     uint8_t b2, b;
     uint8_t *s = kc->seq;
     *s = '\0';
 
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
-    if (c == '>') c = 0;
+    if_ever(gzungetc(c, (gzFile)g) == -1) return -EINVAL;
 
     while (1) {
         c = gc(g);
@@ -58,26 +58,29 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             b ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);
             b ^= -((c & 0x8e) == 0x4) & B6_RNA;
 
-            Nmask = (Nmask << 1) & N_MASK;
             /* is twobit? => zero c and skip character check branch */
             c &= -((b | B6_MASK) != B6_MASK);
             if (c) { /* the exceptions are: N's or odd Nts, headers and EOF */
                 if (c == '>') {
-                    Nmask = 0u;
-                    t = 0xffff;
-                    _buf_grow(kc->ho, 1ul);
-                    kc->ho[kc->ho_l++] = kc->hdr_l;
+                    t = REF_CHANGE;
+                    _buf_grow(kc->reg, 1ul);
+                    kc->reg[kc->reg_l].pos = pos;
+                    kc->reg[kc->reg_l].nr = kc->hdr_l;
+                    kc->reg[kc->reg_l].type = 2;
                     continue;
                 }
-                if (c == -1) return 0;
-                Nmask |= 1u;
-                if (Nmask == N_MASK) /* only N's? rebuild key */
-                    t = KEY_WIDTH + 2; // 2: + 1 but is decremented later..
+                if (c == -1)
+                    return 0;
+                _buf_grow(kc->reg, 1ul);
+                kc->reg[kc->reg_l].pos = pos;
+                kc->reg[kc->reg_l].type = 1;
+                key = 0;
+                t = N_STRETCH;
 
                 if (c != 'N')
                     fprintf(stderr, "Ignoring strange nucleotide:%c\n", c);
 
-                b = '\0';
+                continue;
             }
             b >>= 1;
             dna = (dna << 2) & KEYNT_MASK; // do not set carriage bit.
@@ -85,46 +88,45 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             rev = (b << KEYNT_TOP) | (rev >> 2);
 
             *s |= b;
-            if ((pos & 3) == 3) {
+            if ((++pos & 3) == 0) {
                 _buf_grow2(kc->seq, 1ul, s);
                 *++s = '\0';
+                kc->seq_l++;
             }
             *s <<= 2;
-            if (t == 0 && Nmask == 0u) {
-                // key is 2nd cNt bit excised, rev or dna
-                key = (dna & KEYNT_STRAND) ? dna : (rev ^ 0xaaaaaaaa);
-                key = (((key >> 1) & KEYNT_TRUNC_UPPER) | (key & HALF_KEYNT_MASK));
-
-                kcs* kcp = &kc->kp[key];
-                kcp->lastp = pos; // replace with new l
-                kcp->ct++;
+            if (t) {
+                --t;
+                continue;
             }
-            t -= (t != 0);
+            // key is 2nd cNt bit excised, rev or dna
+            key = (dna & KEYNT_STRAND) ? dna : (rev ^ 0xaaaaaaaa);
+            key = (((key >> 1) & KEYNT_TRUNC_UPPER) | (key & HALF_KEYNT_MASK));
+
+            kcs* kcp = &kc->kp[key];
+            kcp->lastp = pos; // replace with new l
+            kcp->ct++;
         } else {
-            if (Nmask == N_MASK) {
+            if (t == N_STRETCH) {
                 if (c != 'N') {
                     if (c == '\n') continue;
+                    kc->reg[kc->reg_l].nr = key;
+                    kc->reg_l++;
                     if (c == -1) return 0;
-                    _buf_grow(kc->ho, 1ul);
-                    kc->ho[kc->ho_l++] = pos;
-                    t = KEY_WIDTH;
                     if_ever(gzungetc(c, (gzFile)g) == -1) return -EINVAL;
+                    t = KEY_WIDTH;
                 }
-            } else if (t > KEY_WIDTH) {
+                ++key;
+            } else if (t == REF_CHANGE) {
                 fputc(c, stderr);
                 // '\0' for each space or last
                 _buf_grow(kc->hdr, 1ul);
                 kc->hdr[kc->hdr_l++] = !isspace(c) ? c : '\0';
                 // iterate header up to newline, but fill only until 255th char
                 if (c == '\n') {
-                    if (kc->ho_l && kc->hdr[kc->ho[kc->ho_l - 1]] == 'Y')
+                    if (kc->reg_l && kc->hdr[kc->reg[kc->reg_l].nr] == 'Y')
                         goto out; // FIXME: skip Y for now: it occurs twice.
+                    kc->reg_l++;
                     t = KEY_WIDTH;
-                    dna = 0ul;
-                    rev = 0ul;
-                } else {
-                    --t;
-                    assert(t != KEY_WIDTH);
                 }
             }
         }
@@ -156,7 +158,7 @@ void prepare_keys(kct_t* kc)
         } else {
             c = 1u;
         }
-        fprintf (stdout, "%s\t%u\t0x%x\n", s, kcp->lastp, kcp->ct, k);
+        fprintf (stdout, "%s\t%u\t%u\t0x%x\n", s, kcp->lastp, kcp->ct, k);
         k ^= c;
         c = __builtin_ctz(c);
         c >>= 1;
@@ -209,7 +211,7 @@ int fa_index(struct seqb2_t* seq)
     kc.H = kh_init(UQCT);
     kc.seq = _buf_init(kc.seq, 16);
     kc.hdr = _buf_init(kc.hdr, 8);
-    kc.ho = _buf_init(kc.ho, 2);
+    kc.reg = _buf_init(kc.reg, 8);
     kc.kp = _buf_init(kc.kp, KEYNT_BUFSZ_SHFT);
 
 
@@ -230,7 +232,7 @@ int fa_index(struct seqb2_t* seq)
 
 out:
     _buf_free(kc.kp);
-    _buf_free(kc.ho);
+    _buf_free(kc.reg);
     _buf_free(kc.hdr);
     _buf_free(kc.seq);
     kh_destroy(UQCT, kc.H);
