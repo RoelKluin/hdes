@@ -34,13 +34,8 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define ULL(x) ((unsigned __int128)(x))
 
 typedef struct Kcs {
-    unsigned __int128 lastp: 32;
-    unsigned __int128 dbits: 5;
-    unsigned __int128 res: 3; // reserved (TODO: mode?)
-    unsigned __int128 ct1: 28; // 64
-    unsigned __int128 ct2: 20;
-    unsigned __int128 ct3: 16;
-    unsigned __int128 ct4: 24;
+    uint32_t lastp;
+    uint32_t ct;
 } kcs;
 
 typedef struct kct {

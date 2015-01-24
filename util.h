@@ -49,6 +49,15 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     buf = __t;\
 }
 
+#define _buf_grow2(buf, step, s) \
+if (buf##_l + step >= (1ul << buf##_m)) {\
+    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*buf) << (buf##_m + 1));\
+    fflush(NULL);\
+    s = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
+    if_ever (s == NULL) return -ENOMEM;\
+    buf = s;\
+}
+
 #define _buf_free(buf) \
 if (buf != NULL) {\
     free(buf);\
