@@ -20,18 +20,6 @@
 //#include <glib.h>
 #include "fa.h"
 
-static int
-insert_mmapper(kct_t* kct, unsigned* l, uint64_t key)
-{
-    int t;
-    khiter_t k = kh_put(UQCT, kct->H, key, &t);
-    if_ever (t < 0) return t;
-    kh_val(kct->H, k) = *l = kct->mm_l;
-    _buf_grow(kct->mm, 1);
-    kct->mm_l ++;
-    return 0;
-}
-
 /*
  * process fasta, store 2bit string and account keys.
  * store per key the count and the last position.
@@ -42,7 +30,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     uint32_t dna = 0u, rev = 0u, key, pos = 0u;
     int c;
     uint16_t t = KEY_WIDTH;
-    uint8_t b2, b;
+    uint8_t b;
     uint8_t *s = kc->seq;
     *s = '\0';
 
@@ -102,7 +90,15 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             key = (dna & KEYNT_STRAND) ? dna : (rev ^ 0xaaaaaaaa);
             key = (((key >> 1) & KEYNT_TRUNC_UPPER) | (key & HALF_KEYNT_MASK));
 
-            kcs* kcp = &kc->kp[key];
+            assert(key < KEYNT_BUFSZ);
+            if (kc->kpndx[key] == ~0u) {
+                //fprintf(stderr, "%x\n", key);
+                _buf_grow(kc->kp, 1ul);
+                kc->kp[kc->kp_l].ct = 0;
+                kc->kpndx[key] = kc->kp_l++;
+            }
+            kcs *kcp = kc->kp + kc->kpndx[key];
+
             kcp->lastp = pos; // replace with new l
             kcp->ct++;
         } else {
@@ -124,7 +120,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 // iterate header up to newline, but fill only until 255th char
                 if (c == '\n') {
                     if (kc->reg_l && kc->hdr[kc->reg[kc->reg_l].nr] == 'Y')
-                        goto out; // FIXME: skip Y for now: it occurs twice.
+                        goto out; // FIXME: skip Y for now: it occurs twice. (will be overwritten)
                     kc->reg_l++;
                     t = KEY_WIDTH;
                 }
@@ -139,31 +135,24 @@ out:
 
 // process keys and occurance in each range
 // FIXME: currently only prints each
-void prepare_keys(kct_t* kc)
+int prepare_keys(kct_t* kc, unsigned readlength)
 {
-    unsigned k;
-    char s[KEY_LENGTH+1];
-    for (k=0; k != KEY_LENGTH; ++k) s[k] = 'A';
-    s[k] = '\0';
-    k = 0;
-    fprintf (stdout, "kseq\t\tlastpos\t\tcount\tkeynr\n");
-    while (1) {
+    unsigned k, itnr = 0;
+    unsigned uq = kc->reg_l, tot = 0;
+    for (k = 0; k != kc->kp_l; ++k) {
         kcs* kcp = &kc->kp[k];
-
-        // next key: 1. calculate parity
-        unsigned c;
-        if (__builtin_parity(k) & 1) {
-            c = (k & -k) << 1;
-            if (c >= KEYNT_BUFSZ) break; // wrap
-        } else {
-            c = 1u;
+        if (kcp->ct == 1) {
+            _buf_grow(kc->reg, 1ul);
+            kc->reg[kc->reg_l].pos = kcp->lastp;
+            kc->reg[kc->reg_l].nr = itnr;
+            kc->reg[kc->reg_l].type = 0;
+            kc->reg_l++;
         }
-        fprintf (stdout, "%s\t%u\t%u\t0x%x\n", s, kcp->lastp, kcp->ct, k);
-        k ^= c;
-        c = __builtin_ctz(c);
-        c >>= 1;
-        s[c] = b6(((k >> (c << 1)) & 3) << 1);
+        tot++;
     }
+    uq = kc->reg_l - uq;
+    fprintf (stdout, "%u / %u unique keys\n", uq, tot);
+    return 0;
 }
 
 int
@@ -212,8 +201,10 @@ int fa_index(struct seqb2_t* seq)
     kc.seq = _buf_init(kc.seq, 16);
     kc.hdr = _buf_init(kc.hdr, 8);
     kc.reg = _buf_init(kc.reg, 8);
-    kc.kp = _buf_init(kc.kp, KEYNT_BUFSZ_SHFT);
-
+    kc.kp = _buf_init(kc.kp, 16);
+    kc.kpndx = _buf_init_arr(kc.kpndx, KEYNT_BUFSZ_SHFT);
+    for (i = 0; i != KEYNT_BUFSZ; ++i)
+        kc.kpndx[i] = ~0u;
 
     if (is_gzfile) {
         g = fhin->io;
@@ -222,16 +213,17 @@ int fa_index(struct seqb2_t* seq)
         g = fhin->fp;
         gc = (int (*)(void*))&fgetc;
     }
-    memset(kc.kp, 0, sizeof(kc.kp[0]) << kc.kp_m);
 
     res = fa_kc(&kc, g, gc);
     if (res < 0) { fprintf(stderr, "== index failed:%d", res);  goto out; }
-    prepare_keys(&kc);
+    res = prepare_keys(&kc, seq->readlength);
+    if (res < 0) { fprintf(stderr, "== counting failed:%d", res);  goto out; }
 
     ret = res != 0;
 
 out:
     _buf_free(kc.kp);
+    _buf_free(kc.kpndx);
     _buf_free(kc.reg);
     _buf_free(kc.hdr);
     _buf_free(kc.seq);

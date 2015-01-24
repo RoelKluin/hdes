@@ -40,6 +40,15 @@
     __t;\
 })
 
+#define _buf_init_arr(buf, sz) ({\
+    buf##_m = sz;\
+    fprintf(stderr, #buf " malloc, %lu\n", sizeof(*buf) << buf##_m);\
+    fflush(NULL);\
+    typeof(buf) __t = (typeof(buf))malloc(sizeof(*buf) << buf##_m);\
+    if_ever (__t == NULL) return -ENOMEM;\
+    __t;\
+})
+
 #define _buf_grow(buf, step) \
 if (buf##_l + step >= (1ul << buf##_m)) {\
     fprintf(stderr, #buf " realloc, %lu\n", sizeof(*buf) << (buf##_m + 1));\
@@ -56,6 +65,7 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     s = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
     if_ever (s == NULL) return -ENOMEM;\
     buf = s;\
+    s += buf##_l;\
 }
 
 #define _buf_free(buf) \

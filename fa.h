@@ -37,8 +37,8 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 typedef struct Rgn { // Region
     uint32_t pos;
-    uint32_t nr:30; // could be shorter
-    uint32_t type: 2; // unique pos / N-stretch, Chromo
+    uint32_t nr:30; // unique iteration count, N-stretch or hdr offset (can decrease bits)
+    uint32_t type: 2; // unique pos / N-stretch / Chromo / unique pos already processed
 } rgn;
 
 typedef struct Kcs { // Keycounts
@@ -47,18 +47,15 @@ typedef struct Kcs { // Keycounts
 } kcs;
 
 typedef struct kct {
-    char* x, *hdr;
+    char *hdr;
     uint8_t *seq;
     khash_t(UQCT) *H;
-    kcs* kp;
+    uint32_t *kpndx;
+    kcs *kp;
     rgn *reg;
-    unsigned* mm;
-    unsigned *at;
     unsigned seq_l, kp_l;
-    unsigned at_l; // rep
-    unsigned l; // length of char* x;
-    uint32_t Nmask, mm_l, hdr_l, reg_l;
-    uint8_t mm_m, at_m, seq_m, hdr_m, reg_m, kp_m; //XXX: bitfields?
+    uint32_t Nmask, hdr_l, reg_l;
+    uint8_t seq_m, hdr_m, reg_m, kp_m, kpndx_m; //XXX: bitfields?
 } kct_t;
 
 int fa_index(seqb2_t *seq);
