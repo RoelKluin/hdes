@@ -22,6 +22,13 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define STR(s) #s
 
+#define ASSERT(cond, action) \
+if (!(cond)) { \
+    fputs("ERROR: assertion '" #cond "' failed!\n", stderr);\
+    action;\
+}
+
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define if_ever(err)    if (unlikely(err))

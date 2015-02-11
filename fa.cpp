@@ -85,6 +85,7 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
     // x - 2 is length, beide 1-based.
     pcre_get_substring(&kc->hdr[start], subStrVec, x, 1, &str);
     Bnd bd = { .b2pos = b2pos, .len = (atoi(str) - 1) | REF_CHANGE };
+    //fprintf(stderr, "%s, %u stored\n", str, bd.len & NR_MASK);
     kc->bnd.push_back(bd);
     kc->hdr[end] = '\0'; // store just ID.
     kc->hdr_l = end + 1;
@@ -226,7 +227,7 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
         }
 
         // all should not yet be handled as unique
-        assert((z->ct & INFERIORITY_BIT) == 0);
+        ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1u);
 
         if (--z->ct == 0) { // extend if another key hence has come unique
             z->b2pos = b2pos;
@@ -262,7 +263,7 @@ uint32_t handle_after_unique(kct_t* kc, uint32_t ubound, unsigned ext,
     while (++b2pos < ub) {
         uint32_t ndx = __next_ndx_with_b2(b, s, b2pos, dna, rc);
         Kcs *z = &kc->kcs[ndx];
-        assert(z->ct != 0 && (z->ct & INFERIORITY_BIT) == 0);
+        ASSERT(z->ct != 0 && (z->ct & INFERIORITY_BIT) == 0, return -1u);
         if (b2pos >= inf_range) {
             ++inferiority;
             inf_range = ub;
@@ -278,6 +279,10 @@ uint32_t handle_after_unique(kct_t* kc, uint32_t ubound, unsigned ext,
     return b2pos != ub ? b2pos : ubound;
 }
 
+#define BOO(x) ({\
+    fprintf(stderr, "%s: 0x%x\n", #x, x);\
+    -1;\
+})
 /*
  * A short sequence that occurs only at one position on the genome is a `unique key'.
  * Such unique keys relate only to single positions and therefore provide a primary
@@ -298,6 +303,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
     char* hdr = kc->hdr; // TODO
     std::list<Bnd>::iterator it = kc->bnd.begin();
     uint32_t addpos = it->len & NR_MASK; // TODO: b2pos + addpos = real genomic coordinate (per chromo)
+    fprintf(stderr, "%s:%u\tstart\n", hdr, b2pos + addpos);
 
     if (gi == 0)
         fk = _buf_init(fk, 16); //init former_keys on first iteration
@@ -314,6 +320,9 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
 
             do {
                 uint32_t ndx = __next_ndx_with_b2(b, s, b2pos, dna, rc);
+                fprintf(stderr, "%s:%u\t0x%x => 0x%x?\n", hdr, b2pos + addpos, dna, dna << 2);
+                ASSERT(ndx < (1 << kc->kcsndx_m), return -1);
+                ASSERT(kc->kcsndx[ndx] < (1 << kc->kcs_m), return BOO(kc->kcsndx[ndx]));
                 Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
 
                 if (z->ct <= 1) {
@@ -324,19 +333,22 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                      * but then a boundary should have been inserted to skip that
                      * region.
                      */
-                    assert ((z->ct & INFERIORITY_BIT) == 0);
+                    ASSERT ((z->ct & INFERIORITY_BIT) == 0, return -1);
                     z->ct = gi | INFERIORITY_BIT; // set handled.
 
                     // add a new range.
                     uint32_t start = handle_before_unique(kc, b2pos, z->ct + 1, fk, fk_l, ext);
+                    ASSERT(start != -1u, return -1);
 
                     uint32_t ubound = it != kc->bnd.end() ? it->b2pos : kc->seq_l;
                     uint32_t end = handle_after_unique(kc, ubound, ext, b2pos, z->ct + 1, dna, rc);
+                    ASSERT(end != -1u, return -1);
 
                     if (end != ubound) {
                         if (start != 0 || (--it)++->len >= RESERVED) { //begin is chromo
                             //not joining either: insert (is before current it)
-                            it = kc->bnd.insert(it, {.b2pos = start, .len = end - start});
+                            Bnd bd = {.b2pos = start, .len = end - start};
+                            it = kc->bnd.insert(it, bd);
                         } else {
                             //only left joining: update b2pos and len
                             --it->len = end - it->b2pos;
@@ -445,9 +457,9 @@ int fa_index(struct seqb2_t* seq)
     }
     /* TODO: load dbSNP and known sites, and mark them. */
     res = fa_kc(&kc, g, gc);
-    if (res < 0) { fprintf(stderr, "== index failed:%d", res);  goto out; }
+    if (res < 0) { fprintf(stderr, "== index failed: %d", res);  goto out; }
     res = get_all_unique(&kc, seq->readlength);
-    if (res < 0) { fprintf(stderr, "== counting failed:%d", res);  goto out; }
+    if (res < 0) { fprintf(stderr, "== counting failed: %d", res);  goto out; }
 
     ret = res != 0;
 
