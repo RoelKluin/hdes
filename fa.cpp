@@ -101,7 +101,7 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
 static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 {
-    uint32_t dna = 0u, rev = 0u, ndx, b2pos = 0u;
+    uint32_t dna = 0u, rc = 0u, ndx, b2pos = 0u;
     int c;
     uint16_t t = KEY_WIDTH;
     uint8_t b = 0;
@@ -120,22 +120,20 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
         case 'A':
             dna = (dna << 2) & KEYNT_MASK; // do not set carriage bit.
             dna |= b;
-            rev = (b << KEYNT_TOP) | (rev >> 2);
+            rc = ((b ^ 2)<< KEYNT_TOP) | (rc >> 2);
 
-            *s |= b;
+            *s |= b << ((b2pos & 3) << 1);
             if ((++b2pos & 3) == 0) {
                 _buf_grow2(kc->seq, 1ul, s);
                 *++s = '\0';
                 kc->seq_l++;
             }
-            *s <<= 2;
             if (t) {
                 --t;
                 break;
             }
-            // ndx (key) is 2nd cNt bit excised, rev or dna
-            ndx = (dna & KEYNT_STRAND) ? dna : (rev ^ 0xaaaaaaaa);
-            ndx = (((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK));
+            // ndx (key) is 2nd cNt bit excised, rc or dna
+            ndx = __get_next_ndx(ndx, dna, rc);
 
             if (kc->kcsndx[ndx] == ~0u) {
                 //fprintf(stderr, "%x\n", ndx);
@@ -176,30 +174,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     /* TODO: fix last (what?) */
     return kc->hdr[kc->hdr_l - 1] == '\0'; // make sure last header is complete
 }
-
-#define __append_next_b2(b, s, b2pos, dna, rc) ({\
-    b = b2pos;\
-    b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
-    rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
-    ((dna << 2) & KEYNT_MASK) | b;\
-})
-
-#define __get_next_ndx(ndx, dna, rc) ({\
-        ndx = (dna & KEYNT_STRAND) ? dna : rc;\
-        ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
-})
-
-#define __next_ndx_with_b2(b, s, b2pos, dna, rc) ({\
-    dna = __append_next_b2(b, s, b2pos, dna, rc);\
-    __get_next_ndx(b, dna, rc);\
-})
-
-#define __init_key(i, b, s, b2pos, dna, rc) ({\
-    dna = rc = 0; \
-    for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos) {\
-        dna = __append_next_b2(b, s, b2pos, dna, rc);\
-    }\
-})
 
 /*
  * Decrement counts for keys that occur within range before a unique sequence key.
@@ -311,16 +285,16 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
     while (++it != kc->bnd.end()) { // look ahead to next mark
 
         if (b2pos + KEY_WIDTH < it->b2pos) { // rebuild key if we can
-
+            fprintf(stderr, "Next boundary at %u, 0x%x\n", it->b2pos, it->len);
 
             uint32_t i, b, dna, rc;
             fk_l = 0; // flush buffer
             __init_key(i, b, s, b2pos, dna, rc);
-            addpos += KEY_WIDTH; // construction moved us.
+            fputc('\n', stderr);
 
             do {
                 uint32_t ndx = __next_ndx_with_b2(b, s, b2pos, dna, rc);
-                fprintf(stderr, "%s:%u\t0x%x => 0x%x?\n", hdr, b2pos + addpos, dna, dna << 2);
+                fprintf(stderr, "%s:%u\t0x%x => ?0x%x?\n", hdr, b2pos + addpos, dna, dna << 2);
                 ASSERT(ndx < (1 << kc->kcsndx_m), return -1);
                 ASSERT(kc->kcsndx[ndx] < (1 << kc->kcs_m), return BOO(kc->kcsndx[ndx]));
                 Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
@@ -328,6 +302,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                 if (z->ct <= 1) {
                     // we encounter a unique key
                     ++uq;
+                    // FIXME/TODO: set central Nt state for each unique key
 
                     /* if zero, the key was already handled in a previous iteration,
                      * but then a boundary should have been inserted to skip that

@@ -23,6 +23,36 @@
         (((t >> 1) & ~HALF_KEYNT_MASK) | (t & HALF_KEYNT_MASK)) & KEYNT_TRUNC_MASK;\
 })
 
+#define __append_next_b2(b, s, b2pos, dna, rc) ({\
+    b = b2pos;\
+    b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
+    rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
+    ((dna << 2) & KEYNT_MASK) | b;\
+})
+
+#define __append_next_b2_print(b, s, b2pos, dna, rc) ({\
+    b = b2pos;\
+    b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
+    fputc(b6(b << 1), stderr);\
+    rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
+    ((dna << 2) & KEYNT_MASK) | b;\
+})
+
+#define __get_next_ndx(ndx, dna, rc) ({\
+        ndx = (dna & KEYNT_STRAND) ? dna : rc;\
+        ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+})
+
+#define __next_ndx_with_b2(b, s, b2pos, dna, rc) ({\
+    dna = __append_next_b2(b, s, b2pos, dna, rc);\
+    __get_next_ndx(b, dna, rc);\
+})
+
+#define __init_key(i, b, s, b2pos, dna, rc) ({\
+    dna = rc = 0; \
+    for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos)\
+        dna = __append_next_b2_print(b, s, b2pos, dna, rc);\
+})
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define NO_MULTIMAPPER_YET 0
