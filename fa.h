@@ -11,6 +11,7 @@
 
 #ifndef RK_FA_H
 #define RK_FA_H
+#include <list>
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
@@ -29,27 +30,43 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define _MULTIMAPPER 0xff // 0xff is max for char
 #define GSZ_MAX 0xff000000
 
-#define N_STRETCH 0xfffe
-#define REF_CHANGE 0xffff
+#define INFERIORITY_BIT (1u<<31)
+
 #define N_MASK ((1u << KEY_WIDTH) - 1u)
 
 #define ULL(x) ((unsigned __int128)(x))
 
-typedef struct Kcs { // Keycounts
-    uint32_t pos;
-    uint32_t ct:30;
-    uint32_t type: 2; // keycount / N-stretch / Chromo / unique pos (already processed)
-} kcs;
+#define REF_CHANGE (3u<<30)
+#define N_STRETCH (2u<<30)
+// ... room for more; KNOWN_POS (dbSNP/cosmic)?
+#define RESERVED (1u<<30)
+
+#define NR_MASK 0x3fffffff
+#undef max
+#define max(a,b) ((a) >= (b) ? (a) : (b))
+#undef min
+#define min(a,b) ((a) <= (b) ? (a) : (b))
+typedef struct kcs_t { // Keycounts
+    uint32_t b2pos;
+    uint32_t ct;
+} Kcs;
+
+// Either chromosome boundaries, stretches of N's or regions covered by unique keys.
+typedef struct bnd_t {
+    uint32_t b2pos;
+    uint32_t len;
+} Bnd;
 
 typedef struct kct {
     char *hdr;
     uint8_t *seq;
     khash_t(UQCT) *H;
-    uint32_t *kpndx;
-    kcs *kp;
-    unsigned seq_l, kp_l;
+    uint32_t *kcsndx;
+    Kcs *kcs;
+    std::list<Bnd> bnd;
+    unsigned seq_l, kcs_l, bnd_l;
     uint32_t Nmask, hdr_l;
-    uint8_t seq_m, hdr_m, kp_m, kpndx_m; //XXX: bitfields?
+    uint8_t seq_m, hdr_m, kcs_m, kcsndx_m, bnd_m; //XXX: bitfields?
 } kct_t;
 
 int fa_index(seqb2_t *seq);

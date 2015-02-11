@@ -1,6 +1,6 @@
 CC=		g++
 #CC=		clang --analyze
-CFLAGS=		-c -Wall -Wno-unused-function -O3
+CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11
 AR=		ar
 VERSION=	0.005
 LOBJS=
@@ -8,7 +8,7 @@ PROG=		uqct
 INCLUDES=	
 SUBDIRS=	.
 OBJS=		b6.o
-LIBS=		-lz -L.
+LIBS=		-lz -lpcre -L.
 DEBUG=		-g
 OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp fa.cpp fq.cpp main.cpp

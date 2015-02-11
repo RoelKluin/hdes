@@ -38,6 +38,15 @@
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
 
+// set b to 2bit for c, returns true if twobit
+#define B6(b, c) ({\
+    b = c ^ ((c | B6_UC) & B6_LC); /* flip case bits */\
+    b ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
+    b ^= -((c & 0x8e) == 0x4) & B6_RNA; /* b is now converted to or from 2bit */\
+    (b | B6_MASK) == B6_MASK;/*test whether the result is a twobit*/\
+})
+
+
 // zero [min] for N - but also for A.
 //
 #define b6N0(t, c) ({\
