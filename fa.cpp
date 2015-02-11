@@ -47,17 +47,18 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
     pcre *reCompiled;
     pcre_extra *pcreExtra;
     const char *str;
-    char *s = kc->hdr;
-    const char *aStrRegex = "^([^ ]+) dna:[^ :]+ [^ :]+:[^:]+:[^:]+:(\\d+):(\\d+):(\\d+)( .*)?$";
+    unsigned start = kc->hdr_l;
+    const char *aStrRegex = "^(?:[^ ]+) dna:[^ :]+ [^ :]+:[^:]+:[^:]+:(\\d+):(?:\\d+):(?:\\d+)(?: .*)?$";
     int x, end = 0, subStrVec[6];
     do {
         x = gc(g);
         if (x == -1) return -2;
         _buf_grow(kc->hdr, 1ul);
-        if (end == 0 && isspace(x)) end = kc->hdr_l;
         kc->hdr[kc->hdr_l++] = x;
+        if (end == 0 && isspace(x)) end = kc->hdr_l;
         fputc(x, stderr);
     } while (x != '\n');
+    kc->hdr[kc->hdr_l - 1] = '\0';
 
     reCompiled = pcre_compile(aStrRegex, 0, &str, &x, NULL);
     if(reCompiled == NULL) {
@@ -70,10 +71,11 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
         printf("ERROR: Could not study '%s': %s\n", aStrRegex, str);
         return -4;
     }
-    x = pcre_exec(reCompiled, pcreExtra, s, kc->hdr - s, 0, 0, subStrVec, 6);
+    x = pcre_exec(reCompiled, pcreExtra, &kc->hdr[start], kc->hdr_l - start - 1, 0, 0, subStrVec, 6);
     if(x < 0) {
         if(x != PCRE_ERROR_NOMATCH) return -5; // something bad happened
         printf("Cannot extract start from fasta header\n");
+        fprintf(stderr, "matching '%s' to /%s/\n", &kc->hdr[start], aStrRegex);
         return -6;
     }
     if(x == 0) {
@@ -81,11 +83,11 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
         return -7;
     }
     // x - 2 is length, beide 1-based.
-    pcre_get_substring(s, subStrVec, x, x - 3, &str);
+    pcre_get_substring(&kc->hdr[start], subStrVec, x, 1, &str);
     Bnd bd = { .b2pos = b2pos, .len = (atoi(str) - 1) | REF_CHANGE };
     kc->bnd.push_back(bd);
-    kc->hdr[end] = '\0';
-    kc->hdr_l = ++end;
+    kc->hdr[end] = '\0'; // store just ID.
+    kc->hdr_l = end + 1;
 
     pcre_free_substring(str);
     return 0;
