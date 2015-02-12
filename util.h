@@ -22,12 +22,17 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define STR(s) #s
 
-#define ASSERT(cond, action) \
+#define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
+#define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
+
+// the comma before the ## is deleted in absense of an argument
+#define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
+
+#define ASSERT(cond, action, ...) \
 if (!(cond)) { \
-    fputs("ERROR: assertion '" #cond "' failed!\n", stderr);\
+    WARN("assertion '" #cond "' failed" __VA_ARGS__);\
     action;\
 }
-
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
