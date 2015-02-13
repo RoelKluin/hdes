@@ -25,7 +25,7 @@
 
 #define __append_next_b2(b, s, b2pos, dna, rc) ({\
     b = b2pos;\
-    ASSERT((b>>2) < s ## _l, return -1u);\
+    ASSERT(b < s ## _l, return -1u);\
     b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
     rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
     ((dna << 2) & KEYNT_MASK) | b;\
@@ -33,7 +33,7 @@
 
 #define __append_next_b2_print(b, s, b2pos, dna, rc) ({\
     b = b2pos;\
-    ASSERT((b>>2) < s ## _l, return -1u);\
+    ASSERT(b < s ## _l, return -1u);\
     b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
     fputc(b6(b << 1), stderr);\
     rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
