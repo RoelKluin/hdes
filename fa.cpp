@@ -177,7 +177,7 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
         ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1u, ":Already handled");
 
         if (--z->ct != 0u) { // extend if another key hence has come unique
-            EPR("%u\tndx:0x%x\tct:%u (decrementing)", b2pos, ndx, z->ct);
+            //EPR("%u\tndx:0x%x\tct:%u (decrementing)", b2pos, ndx, z->ct);
         } else {
             // extend if another key hence has come unique
             z->b2pos = b2pos;
@@ -222,7 +222,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
 
         uint32_t ubound = it != kc->bnd.end() ? it->b2pos : kc->seq_l;
         if (b2pos + KEY_WIDTH < ubound) { // rebuild key if we can
-            EPR("Next boundary at %u, 0x%x", ubound, it->len);
+            EPR("%s Next boundary at %u, 0x%x", hdr, ubound, it->len);
 
             uint32_t i, b, dna, rc;
             fk_l = 0; // flush buffer
@@ -233,7 +233,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             uint32_t start = ~0u;
             while (b2pos != ubound) {
                 uint32_t ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
-                EPR("%s:%u\t0x%x => ?0x%x?", hdr, b2pos + addpos, dna, dna << 2);
+                //EPR("%s:%u\t0x%x => ?0x%x?", hdr, b2pos + addpos, dna, dna << 2);
 
                 ASSERT(ndx < (1u << kc->kcsndx_m), return -1);
                 ndx = kc->kcsndx[ndx];
@@ -253,7 +253,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                     continue;
                 }
                 ASSERT(z->ct != 0, return -1, ":Unencountered key 0x%x\n", ndx);
-                EPR("%s:%u\tUnique dna:0x%x", hdr, b2pos + addpos, dna);
+                EPR("%s:%u\tUnique region", hdr, b2pos + addpos);
                 // we encounter a unique key
                 ++uq;
                 // FIXME/TODO: set central Nt state for each unique key
@@ -261,7 +261,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                 z->ct = gi | INFERIORITY_BIT; // set handled.
 
                 // add a new range.
-                EPR("Unique at %u\t0x%x", b2pos, ndx);
+                //EPR("Unique at %u\t0x%x", b2pos, ndx);
                 unsigned inferiority = z->ct + 1u;
                 start = handle_before_unique(kc, b2pos, inferiority, fk, fk_l, ext);
                 fk_l = 0;
@@ -289,27 +289,27 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                     }
 
                     if (--z->ct != 0u) { // extend
-                        EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u", b2pos, dna, ndx, z->ct);
+                        //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u", b2pos, dna, ndx, z->ct);
                     } else {
                         z->b2pos = b2pos;
                         ub = min(b2pos + ext, ubound);
-                        EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
-                                b2pos, dna, ndx, z->ct, ub);
+                        //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
+                        //        b2pos, dna, ndx, z->ct, ub);
                         z->ct = inferiority | INFERIORITY_BIT;
                     }
                 }
                 if (b2pos != ub || ub == ubound) {
                     if (start != 0 || (--it)++->len >= RESERVED) { //begin is chromo
-                        EPR("not joining either: insert (is before current it)");
+                        //EPR("not joining either: insert (is before current it)");
                         Bnd bd = {.b2pos = start, .len = b2pos - start};
                         it = kc->bnd.insert(it, bd);
                         ++it;
                     } else {
-                        EPR("only left joining: update b2pos and len");
+                        //EPR("only left joining: update b2pos and len");
                         (--it)->len = b2pos - ub;
                     }
                 } else {
-                    EPR("right joining");
+                    //EPR("right joining");
                     if (start == 0 && (--it)++->len < RESERVED) {
                         // joining both: remove one and update other
                         start = (--it)->b2pos;
@@ -321,7 +321,8 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             }
             EPR("ubound reached: b2pos:%u", b2pos + addpos);
             ASSERT(start != ~0u, return -1, "missing sequence for %s?", hdr);
-            addpos -= b2pos;
+            if ((it->len & ~NR_MASK) == REF_CHANGE)
+                addpos -= b2pos;
         } else {
             // skip
             EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
