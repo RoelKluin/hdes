@@ -160,7 +160,7 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
     unsigned lb = rest > ext ? rest - ext : 0;
     unsigned inf_range = lb;
 
-    do {
+    while (rest > lb) {
         --rest;
         --b2pos;
         EPR("decrementing at %u", b2pos);
@@ -172,11 +172,9 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
             inf_range = lb;
         }
         ASSERT(z->ct > 1, return -1u, ":Already decremented");
+        ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1u, ":Already handled");
 
-        // all should not yet be handled as unique
-        ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1u);
-
-        if (--z->ct == 0) { // extend if another key hence has come unique
+        if (--z->ct == 0u) { // extend if another key hence has come unique
             z->b2pos = b2pos;
             z->ct = inferiority;
             // alternatively increment inferiority for each extension; then also remove
@@ -184,52 +182,10 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
 
             lb = rest > ext ? rest - ext : 0;
         }
-    } while (rest > lb);
+    }
     return rest != 0 ? b2pos : 0u;
 }
 
-// decrement within range after unique
-/*
- * Decrement counts for keys that occur within range after a unique sequence key.
- * If another key hence has become unique, the range is extended.
- * Positions of keys with lower inferiority are to be considered before keys with higher
- * inferiority, when trying to find a position for the keys in a read.
- *
- * Returned kc->seq_l if the range adjoins the upstream boundary, otherwise the end
- * position of the range.
- */
-uint32_t handle_after_unique(kct_t* kc, uint32_t ubound, unsigned ext,
-        uint32_t b2pos, uint32_t inferiority, uint32_t dna, uint32_t rc)
-{
-    unsigned ub = min(b2pos + ext, ubound);
-    unsigned inf_range = ub;
-
-    EPR("%u\t0x%x\t<start %s, til %u>", b2pos, dna, __func__, ub);
-    unsigned b;
-    do {
-        ++b2pos;
-        uint32_t ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
-
-        ASSERT(ndx < kc->kcs_l, return -1u);
-        Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
-        //XXX: valgrind
-        ASSERT(z->b2pos != 0u, return -1u, ": 0x%x", dna);
-        ASSERT(z->ct != 0, return -1u);
-        if (b2pos >= inf_range) {
-            ++inferiority;
-            inf_range = ub;
-        }
-
-        if (--z->ct <= 1u) { // extend
-            z->b2pos = b2pos;
-            ub = min(b2pos + ext, ubound);
-            EPR("%u\t0x%x (%u)\t<extending til %u>", b2pos, dna, z->ct, ub);
-            z->ct = inferiority;
-        } else { EPR("%u\t0x%x\t (%u)", b2pos, dna, z->ct); }
-    } while (b2pos < ub);
-
-    return b2pos != ub ? b2pos : ubound;
-}
 /*
  * A short sequence that occurs only at one position on the genome is a `unique key'.
  * Such unique keys relate only to single positions and therefore provide a primary
@@ -248,7 +204,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
     uint32_t b2pos = 0u; // twobit nr
     char* hdr = kc->hdr; // TODO
     std::list<Bnd>::iterator it = kc->bnd.begin();
-    uint32_t addpos = it->len & NR_MASK; // TODO: b2pos + addpos = real genomic coordinate (per chromo)
+    int32_t addpos = it->len & NR_MASK; // TODO: b2pos + addpos = real genomic coordinate (per chromo)
     EPR("%s:%u\tstart", hdr, b2pos + addpos);
 
     if (gi == 0)
@@ -267,6 +223,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             do {
                 uint32_t ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
                 EPR("%s:%u\t0x%x => ?0x%x?", hdr, b2pos + addpos, dna, dna << 2);
+
                 ASSERT(ndx < (1u << kc->kcsndx_m), return -1);
                 ASSERT(kc->kcsndx[ndx] < kc->kcs_l, return -1,
                         " kc->kcsndx[0x%x]: 0x%x", ndx, kc->kcsndx[ndx]);
@@ -288,22 +245,55 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                     z->ct = gi | INFERIORITY_BIT; // set handled.
 
                     // add a new range.
-                    uint32_t start = handle_before_unique(kc, b2pos, z->ct + 1, fk, fk_l, ext);
+                    EPR("Unique at %u\t0x%x", b2pos, ndx);
+                    unsigned inferiority = z->ct + 1u;
+                    uint32_t start = handle_before_unique(kc, b2pos,
+                            inferiority, fk, fk_l, ext);
+                    fk_l = 0;
                     ASSERT(start != -1u, return -1, "...");
 
+                    // handle after unique
                     uint32_t ubound = it != kc->bnd.end() ? it->b2pos : kc->seq_l;
-                    uint32_t end = handle_after_unique(kc, ubound, ext, b2pos, z->ct + 1, dna, rc);
-                    ASSERT(end != -1u, return -1, "...");
+                    unsigned ub = min(b2pos + ext, ubound);
+                    unsigned inf_range = ub;
+                    while (b2pos < ub) {
+                        ++b2pos;
+                        ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
 
-                    if (end != ubound) {
+                        ASSERT(ndx < (1u << kc->kcsndx_m), return -1);
+                        ASSERT(kc->kcsndx[ndx] < kc->kcs_l, return -1,
+                                " kc->kcsndx[0x%x]: 0x%x", ndx, kc->kcsndx[ndx]);
+                        Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
+
+                        ASSERT(z->ct != 0, return -1, ":Already decremented");
+                        ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1,
+                                ":Already handled %u\tdna:0x%x\tndx:0x%x\tct:%u",
+                                b2pos, dna, ndx, z->ct);
+
+                        if (b2pos >= inf_range) {
+                            ++inferiority;
+                            inf_range = ub;
+                        }
+
+                        if (--z->ct == 0u) { // extend
+                            z->b2pos = b2pos;
+                            ub = min(b2pos + ext, ubound);
+                            EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
+                                    b2pos, dna, ndx, z->ct, ub);
+                            z->ct = inferiority | INFERIORITY_BIT;
+                        } else { EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u", b2pos, dna, ndx, z->ct); }
+                    }
+
+                    if (b2pos != ubound) {
                         if (start != 0 || (--it)++->len >= RESERVED) { //begin is chromo
                             //not joining either: insert (is before current it)
-                            Bnd bd = {.b2pos = start, .len = end - start};
+                            Bnd bd = {.b2pos = start, .len = b2pos - start};
                             it = kc->bnd.insert(it, bd);
                         } else {
                             //only left joining: update b2pos and len
-                            --it->len = end - it->b2pos;
+                            --it->len = b2pos - it->b2pos;
                         }
+                        continue;
                     } else {
                         if (start == 0 && (--it)++->len < RESERVED) {
                             // joining both: remove one and update other
@@ -312,9 +302,8 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                         } // else only right joining: update b2pos and len
                         it->len = it->b2pos + it->len - start;
                         it->b2pos = start;
+                        break; // need to rebuild key
                     }
-                    EPR("Unique at %u\t0x%x", b2pos, ndx);
-                    break;
                 }
 
                 _buf_grow(fk, 1ul);
@@ -327,7 +316,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             // TODO: also ensure none of the key buffer is used
         }
         if ((it->len & ~NR_MASK) == REF_CHANGE) {
-            addpos = 0u;
+            addpos = -b2pos;
             while (*hdr++ != '\0') {} // next chromo
         }
         addpos += it->len & NR_MASK;
