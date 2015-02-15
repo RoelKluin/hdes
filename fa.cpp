@@ -21,7 +21,7 @@
 #include <pcre.h>
 #include "fa.h"
 
-//>ID SEQTYPE:IDTYPE LOCATION [META]
+//required format: >ID SEQTYPE:IDTYPE LOCATION [META] (TODO: use .fai istead)
 static int
 parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
 {
@@ -136,12 +136,13 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 continue; /* reprocess c */
             }
             c = parse_header(kc, g, gc, b2pos);
-            if (c < 0) continue; // causes break out of loop
+            if (c < 0) continue; /* reprocess c - break out of loop */
         }
         c = gc(g);
     }
+    /* After this function kc->seq_l has a different function: tot no 2bits instead
+     * of characters in seq, which can be derived from it: it is (kc->seq_l >> 2). */
     kc->seq_l = b2pos;
-    /* TODO: fix last (what?) */
     return kc->hdr[kc->hdr_l - 1] == '\0'; // make sure last header is complete
 }
 
@@ -207,9 +208,9 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
     unsigned uq = 0, fk_m, fk_l;
 
     uint32_t b2pos = 0u; // twobit nr
-    char* hdr = kc->hdr; // TODO
+    char* hdr = kc->hdr;
     std::list<Bnd>::iterator it = kc->bnd.begin();
-    int32_t addpos = 0u; // TODO: b2pos + addpos = real genomic coordinate (per chromo)
+    int32_t addpos = 0u; // b2pos + addpos = real genomic coordinate (per chromo)
 
     if (gi == 0)
         fk = _buf_init(fk, 16); //init former_keys on first iteration
@@ -261,7 +262,6 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                 z->ct = gi | INFERIORITY_BIT; // set handled.
 
                 // add a new range.
-                //EPR("Unique at %u\t0x%x", b2pos, ndx);
                 unsigned inferiority = z->ct + 1u;
                 start = handle_before_unique(kc, b2pos, inferiority, fk, fk_l, ext);
                 fk_l = 0;
@@ -288,9 +288,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                         inf_range = ub;
                     }
 
-                    if (--z->ct != 0u) { // extend
-                        //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u", b2pos, dna, ndx, z->ct);
-                    } else {
+                    if (--z->ct == 0u) { // extend
                         z->b2pos = b2pos;
                         ub = min(b2pos + ext, ubound);
                         //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
@@ -321,10 +319,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             }
             ASSERT(start != ~0u, return -1, "missing sequence for %s?", hdr);
         } else {
-            // skip
             EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
-            // b2pos = it->b2pos;
-            // TODO: also ensure none of the key buffer is used
         }
         EPR("%s:%u,%u, <end>", hdr, b2pos + addpos, it->b2pos);
         if ((it->len & ~NR_MASK) == REF_CHANGE) {
@@ -333,7 +328,6 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             while (*hdr++ != '\0') {} // next chromo
         }
     }
-    // TODO: handle last keys
     return uq;
 }
 
