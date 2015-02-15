@@ -82,6 +82,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
 
     while (c >= 0) {
+        b ^= b;
         switch(c) {
         case '\n': break;
         case 'C': b = 2;
@@ -138,7 +139,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             if (c < 0) continue; // causes break out of loop
         }
         c = gc(g);
-        b ^= b;
     }
     kc->seq_l = b2pos;
     /* TODO: fix last (what?) */
