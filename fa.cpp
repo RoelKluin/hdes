@@ -65,7 +65,7 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
 }
 
 /*
- * process fasta, store 2bit string and count occurances and first locations of keys.
+ * process fasta, store 2bit string and count occurances and locations of keys.
  * store per key the count and the last position.
  */
 static int
@@ -109,13 +109,13 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             if (kc->kcsndx[ndx] == ~0u) {
                 //EPR("%x", ndx);
                 _buf_grow(kc->kcs, 1ul);
-                kc->kcs[kc->kcs_l].ct = 0;
+                kc->kcs[kc->kcs_l].infior = 0;
                 kc->kcsndx[ndx] = kc->kcs_l++;
             }
             kcp = kc->kcs + kc->kcsndx[ndx];
 
             kcp->b2pos = b2pos; // replace with last position OR could keep it at first
-            kcp->ct++;
+            kcp->infior++;
             break;
         default:
             t = KEY_WIDTH; // need to rebuild key
@@ -149,13 +149,13 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 /*
  * Decrement counts for keys that occur within range before a unique sequence key.
  * If another key hence has become unique, the range is extended.
- * Positions of keys with lower inferiority are to be considered before keys with higher
- * inferiority, when trying to find a position for the keys in a read.
+ * Positions of keys with lower infior are to be considered before keys with higher
+ * infior, when trying to find a position for the keys in a read.
  *
  * Returned zero if the range adjoins the downstream boundary, otherwise the start
  * position of the range.
  */
-uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
+uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t infior,
         uint32_t* fk, unsigned rest, unsigned ext)
 {
     unsigned lb = rest > ext ? rest - ext : 0;
@@ -169,22 +169,22 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
 
         Kcs *z = &kc->kcs[ndx];
 
-        // when the original boundary is reached increase the inferiority
+        // when the original boundary is reached increase the infior
         if (rest < inf_range) {
-            ++inferiority;
+            ++infior;
             inf_range = lb;
         }
-        ASSERT(z->ct != 0u, return -1u, ":Unencountered key: 0x%x", ndx);
-        ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1u, ":Already handled");
+        ASSERT(z->infior != 0u, return -1u, ":Unencountered key: 0x%x", ndx);
+        ASSERT((z->infior & INFERIORITY_BIT) == 0, return -1u, ":Already handled");
 
-        if (--z->ct != 0u) { // extend if another key hence has come unique
-            //EPR("%u\tndx:0x%x\tct:%u (decrementing)", b2pos, ndx, z->ct);
+        if (--z->infior != 0u) { // extend if another key hence has come unique
+            //EPR("%u\tndx:0x%x\tct:%u (decrementing)", b2pos, ndx, z->infior);
         } else {
             // extend if another key hence has come unique
             z->b2pos = b2pos;
-            z->ct = inferiority;
-            // alternatively increment inferiority for each extension; then also remove
-            // z->ct = ++inferiority | INFERIORITY_BIT; // the rest < inf_range branch.
+            z->infior = infior;
+            // alternatively increment infior for each extension; then also remove
+            // z->infior = ++infior | INFERIORITY_BIT; // the rest < inf_range branch.
 
             lb = rest > ext ? rest - ext : 0;
         }
@@ -195,10 +195,13 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t inferiority,
 /*
  * A short sequence that occurs only at one position on the genome is a `unique key'.
  * Such unique keys relate only to single positions and therefore provide a primary
- * sequence to position translation. For other keys within readlength-range of such
- * hallmark sequences, their locations therefore no longer have to be considered.
- * The hallmark should already be enough to identify reads containing this key.
- * This can lead to keys that are secondarily unique, and so on.
+ * sequence to position translation. For other keys within read- minus keylength range
+ * of such hallmark sequences, it is not strictly necessary to consider this location.
+ * The primary unique key should suffice to identify reads containing these keys.
+ * This can lead to keys within range to become secondarily unique for positions
+ * elsewhere on the genome, and so on. As long as we keep track of which key is primary
+ * unique, and which secondary, or the inferiority per key, it is possible to
+ * map the reads within reach of such keys.
  *
  * In this function we iterate over a genome to extend the range of unique positions
  * while keeping track of the priecedence.
@@ -244,26 +247,27 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                  * but then a boundary should have been inserted to skip that
                  * region.
                  */
-                ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1,
-                        "key 0x%x already handled in a previous iteration\n", ndx);
+                ASSERT((z->infior & TYPE_MASK) == 0, return -1,
+                        "key 0x%x already handled in a previous iteration", ndx);
 
-                if (z->ct > 1) {
+                if (z->infior > 1) {
                     _buf_grow(fk, 1ul);
                     fk[fk_l++] = ndx;
                     ++b2pos;
                     continue;
                 }
-                ASSERT(z->ct != 0, return -1, ":Unencountered key 0x%x\n", ndx);
                 EPR("%s:%u\tUnique region", hdr, b2pos + addpos);
                 // we encounter a unique key
                 ++uq;
-                // FIXME/TODO: set central Nt state for each unique key
 
-                z->ct = gi | INFERIORITY_BIT; // set handled.
+                z->infior = gi | INFERIORITY_BIT | // set handled, and
+                    (-(dna & KEYNT_STRAND) & ORIENTATION); // central Nt state
 
-                // add a new range.
-                unsigned inferiority = z->ct + 1u;
-                start = handle_before_unique(kc, b2pos, inferiority, fk, fk_l, ext);
+                /* Add a new range. FIXME: if we're extending a range in a subsequent
+                 * iteration the inferiority should be derived form the extended region
+                 */
+                unsigned infior = gi + 1u;
+                start = handle_before_unique(kc, b2pos, infior, fk, fk_l, ext);
                 fk_l = 0;
                 ASSERT(start != -1u, return -1, "...");
 
@@ -278,22 +282,22 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                             " kc->kcsndx[0x%x]: 0x%x", ndx, kc->kcsndx[ndx]);
                     Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
 
-                    ASSERT(z->ct != 0u, return -1, ":Already decremented");
-                    ASSERT((z->ct & INFERIORITY_BIT) == 0, return -1,
+                    ASSERT(z->infior != 0u, return -1, ":Already decremented");
+                    ASSERT((z->infior & INFERIORITY_BIT) == 0, return -1,
                             ":Already handled %u\tdna:0x%x\tndx:0x%x\tct:%u",
-                            b2pos, dna, ndx, z->ct);
+                            b2pos, dna, ndx, z->infior);
 
                     if (b2pos >= inf_range) {
-                        ++inferiority;
+                        ++infior;
                         inf_range = ub;
                     }
 
-                    if (--z->ct == 0u) { // extend
+                    if (--z->infior == 0u) { // extend
                         z->b2pos = b2pos;
                         ub = min(b2pos + ext, ubound);
                         //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
-                        //        b2pos, dna, ndx, z->ct, ub);
-                        z->ct = inferiority | INFERIORITY_BIT;
+                        //        b2pos, dna, ndx, z->infior, ub);
+                        z->infior = infior | INFERIORITY_BIT;
                     }
                 }
                 if (b2pos != ub || ub == ubound) {
@@ -322,7 +326,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
         }
         EPR("%s:%u,%u, <end>", hdr, b2pos + addpos, it->b2pos);
-        if ((it->len & ~NR_MASK) == REF_CHANGE) {
+        if ((it->len & TYPE_MASK) == REF_CHANGE) {
             EPR("ubound reached(2): b2pos:%u, %d, %u", b2pos, addpos, ubound);
             addpos = -b2pos;
             while (*hdr++ != '\0') {} // next chromo

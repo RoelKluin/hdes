@@ -63,6 +63,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define GSZ_MAX 0xff000000
 
 #define INFERIORITY_BIT (1u<<31)
+#define ORIENTATION (1u<<30)
 
 #define N_MASK ((1u << KEY_WIDTH) - 1u)
 
@@ -74,13 +75,14 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define RESERVED (1u<<30)
 
 #define NR_MASK 0x3fffffff
+#define TYPE_MASK 0xc0000000
 #undef max
 #define max(a,b) ((a) >= (b) ? (a) : (b))
 #undef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
 typedef struct kcs_t { // Keycounts
     uint32_t b2pos;
-    uint32_t ct;
+    uint32_t infior;
 } Kcs;
 
 // Either chromosome boundaries, stretches of N's or regions covered by unique keys.
