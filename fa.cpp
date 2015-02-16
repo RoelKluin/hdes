@@ -221,7 +221,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
     while (b2pos != kc->seq_l) {
         EPR("%s:%u,%u, <start>", hdr, b2pos + addpos, it->b2pos);
         addpos += it->len & NR_MASK;
-        ++it;
+        ++it; // consider next
 
         uint32_t ubound = it != kc->bnd.end() ? it->b2pos : kc->seq_l;
         if (b2pos + KEY_WIDTH < ubound) { // rebuild key if we can
@@ -230,7 +230,6 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             uint32_t i, b, dna, rc;
             fk_l = 0; // flush buffer
             __init_key(i, b, kc->seq, b2pos, dna, rc);
-            fputc('\n', stderr);
 
             // next start processing keys
             uint32_t start = ~0u;
@@ -256,7 +255,6 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                     ++b2pos;
                     continue;
                 }
-                EPR("%s:%u\tUnique region", hdr, b2pos + addpos);
                 // we encounter a unique key
                 ++uq;
 
@@ -300,37 +298,51 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                         z->infior = infior | INFERIORITY_BIT;
                     }
                 }
-                if (b2pos != ub || ub == ubound) {
+                if (b2pos != ubound || (it->len >= RESERVED)) {
+                    //EPR("%u\t0x%x", start, (--it)++->len);
                     if (start != 0 || (--it)++->len >= RESERVED) { //decr safe: begin is chromo
-                        //EPR("not joining either: insert (is before current it)");
+                            //EPR("not joining either: insert (is before current it)");
                         Bnd bd = {.b2pos = start, .len = b2pos - start};
-                        it = kc->bnd.insert(it, bd);
-                        ++it;
+                        //EPR("%s\t%u\t%u\t(ins)", hdr, start + addpos, b2pos + addpos);
+                        kc->bnd.insert(it, bd); // insert before, it stays at next
                     } else {
+                        //EPR("%s\t%u\t%u\t(extd)", hdr, start + addpos, b2pos + addpos);
                         //EPR("only left joining: update b2pos and len");
-                        (--it)->len = b2pos - ub;
+                        (--it)++->len = b2pos - ub;
+                        ASSERT(it != kc->bnd.begin(), return -1);
                     }
                 } else {
-                    //EPR("right joining");
+                    EPR("right joining");
                     if (start == 0 && (--it)++->len < RESERVED) {
-                        // joining both: remove one and update other
+                        //EPR("joining both: remove one and update other");
                         start = (--it)->b2pos;
                         it = kc->bnd.erase(it); // also shifts right
                     } // else only right joining: update b2pos and len
+                    ASSERT(it != kc->bnd.begin(), return -1);
                     it->len = it->b2pos + it->len - start;
                     it->b2pos = start;
                 }
+                //EPR("b2pos:%u\tub:%u\tubound:%u", b2pos, ub, ubound);
             }
             ASSERT(start != ~0u, return -1, "missing sequence for %s?", hdr);
         } else {
             EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
         }
-        EPR("%s:%u,%u, <end>", hdr, b2pos + addpos, it->b2pos);
+        if (b2pos == kc->seq_l) {
+            EPR("== %u uq regions in iteration ==", uq);
+            if (uq == 0u)
+                break;
+            b2pos = addpos = 0u;
+            hdr = kc->hdr;
+            it = kc->bnd.begin();
+            continue;
+        }
         if ((it->len & TYPE_MASK) == REF_CHANGE) {
-            EPR("ubound reached(2): b2pos:%u, %d, %u", b2pos, addpos, ubound);
+            EPR("ubound reached(2): b2pos:%u, %u, %d, %u", b2pos, kc->seq_l, addpos, ubound);
             addpos = -b2pos;
             while (*hdr++ != '\0') {} // next chromo
         }
+        EPR("%s:%u,%u, <end>", hdr, b2pos + addpos, it->b2pos);
     }
     return uq;
 }

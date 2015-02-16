@@ -25,17 +25,8 @@
 
 #define __append_next_b2(b, s, b2pos, dna, rc) ({\
     b = b2pos;\
-    ASSERT(b < s ## _l, return -1u);\
-    b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
-    rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
-    ((dna << 2) & KEYNT_MASK) | b;\
-})
-
-#define __append_next_b2_print(b, s, b2pos, dna, rc) ({\
-    b = b2pos;\
     ASSERT(b < s ## _l, return -1u, ":%u", b);\
     b = (s[b>>2] >> ((b & 3) << 1)) & 3;\
-    fputc(b6(b << 1), stderr);\
     rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
     ((dna << 2) & KEYNT_MASK) | b;\
 })
@@ -52,9 +43,13 @@
 
 #define __init_key(i, b, s, b2pos, dna, rc) ({\
     dna = rc = 0; \
-    for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos)\
-        dna = __append_next_b2_print(b, s, b2pos, dna, rc);\
+    for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos){\
+        dna = __append_next_b2(b, s, b2pos, dna, rc);\
+        /*fputc(b6(b << 1), stderr);*/\
+    }\
+    /*fputc('\n', stderr);*/\
 })
+
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define NO_MULTIMAPPER_YET 0

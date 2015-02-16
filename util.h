@@ -23,7 +23,9 @@
 #define STR(s) #s
 
 #define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
+#define EPR0(...) fprintf (stderr, __VA_ARGS__)
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
+#define OPR0(...) fprintf (stdout, __VA_ARGS__)
 
 // the comma before the ## is deleted in absense of an argument
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
