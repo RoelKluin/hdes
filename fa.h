@@ -45,9 +45,9 @@
     dna = rc = 0; \
     for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos){\
         dna = __append_next_b2(b, s, b2pos, dna, rc);\
-        /*fputc(b6(b << 1), stderr);*/\
+        /**/if (dbg) { fputc(b6(b << 1), stderr); }/**/\
     }\
-    /*fputc('\n', stderr);*/\
+    /**/if (dbg) { fputc('\n', stderr); }/**/\
 })
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)

@@ -22,6 +22,7 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define STR(s) #s
 
+#define EPQ(d, msg, ...) if (d) { fprintf (stderr, msg "\n", ##__VA_ARGS__); }
 #define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
 #define EPR0(...) fprintf (stderr, __VA_ARGS__)
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)

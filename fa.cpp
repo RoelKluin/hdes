@@ -143,6 +143,9 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     /* After this function kc->seq_l has a different function: tot no 2bits instead
      * of characters in seq, which can be derived from it: it is (kc->seq_l >> 2). */
     kc->seq_l = b2pos;
+    Bnd bd = { .b2pos = b2pos, .len = -1u };
+    //EPR("%s, %u stored", str, bd.len & NR_MASK);
+    kc->bnd.push_back(bd);
     return kc->hdr[kc->hdr_l - 1] == '\0'; // make sure last header is complete
 }
 
@@ -158,7 +161,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t infior,
         uint32_t* fk, unsigned rest, unsigned ext)
 {
-    unsigned lb = rest > ext ? rest - ext : 0;
+    unsigned lb = rest > ext ? rest - ext: 0;
     unsigned inf_range = lb;
 
     while (rest != lb) {
@@ -208,7 +211,7 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t infior,
  */
 int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
 {
-    unsigned uq = 0, fk_m, fk_l;
+    unsigned uq = 0, fk_m, fk_l, dbg = 0;
 
     uint32_t b2pos = 0u; // twobit nr
     char* hdr = kc->hdr;
@@ -219,13 +222,18 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
         fk = _buf_init(fk, 16); //init former_keys on first iteration
 
     while (b2pos != kc->seq_l) {
-        EPR("%s:%u,%u, <start>", hdr, b2pos + addpos, it->b2pos);
         addpos += it->len & NR_MASK;
         ++it; // consider next
+        EPR("%s:%u\t%u\t<start>", hdr, b2pos + addpos, it->b2pos - b2pos);
+        if (b2pos == it->b2pos && (it->len & TYPE_MASK) == 0u) {
+            b2pos += it->len - KEY_WIDTH + 1;
+            EPR("Skip %u already processed and (rebuild at %u)", it->len, b2pos + addpos);
+            ++it;
+            continue;
+        }
 
-        uint32_t ubound = it != kc->bnd.end() ? it->b2pos : kc->seq_l;
-        if (b2pos + KEY_WIDTH < ubound) { // rebuild key if we can
-            EPR("%s:%u Next boundary at %u, 0x%x", hdr, b2pos + addpos, ubound, it->len);
+        if (b2pos + KEY_WIDTH < it->b2pos) { // rebuild key if we can
+            EPQ(dbg,"%s:%u Next boundary at %u, 0x%x", hdr, b2pos + addpos, it->b2pos, it->len);
 
             uint32_t i, b, dna, rc;
             fk_l = 0; // flush buffer
@@ -233,8 +241,8 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
 
             // next start processing keys
             uint32_t start = ~0u;
-            while (b2pos != ubound) {
-                ASSERT(b2pos < ubound, return -1, "beyond ubound");
+            while (b2pos != it->b2pos) {
+                ASSERT(b2pos < it->b2pos, return -1, "beyond ubound");
                 uint32_t ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
                 //EPR("%s:%u\t0x%x => ?0x%x?", hdr, b2pos + addpos, dna, dna << 2);
 
@@ -247,7 +255,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                  * region.
                  */
                 ASSERT((z->infior & TYPE_MASK) == 0, return -1,
-                        "key 0x%x already handled in a previous iteration", ndx);
+                        ": key 0x%x already handled in a previous iteration", ndx);
 
                 if (z->infior > 1) {
                     _buf_grow(fk, 1ul);
@@ -270,7 +278,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                 ASSERT(start != -1u, return -1, "...");
 
                 // handle after unique
-                unsigned ub = min(b2pos + ext, ubound);
+                unsigned ub = min(b2pos + ext, it->b2pos);
                 unsigned inf_range = ub;
                 while (++b2pos != ub) {
                     ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
@@ -292,29 +300,31 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
 
                     if (--z->infior == 0u) { // extend
                         z->b2pos = b2pos;
-                        ub = min(b2pos + ext, ubound);
+                        ub = min(b2pos + ext, it->b2pos);
                         //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
                         //        b2pos, dna, ndx, z->infior, ub);
                         z->infior = infior | INFERIORITY_BIT;
                     }
                 }
-                if (b2pos != ubound || (it->len >= RESERVED)) {
+                if (b2pos != it->b2pos || (it->len >= RESERVED)) {
                     //EPR("%u\t0x%x", start, (--it)++->len);
                     if (start != 0 || (--it)++->len >= RESERVED) { //decr safe: begin is chromo
-                            //EPR("not joining either: insert (is before current it)");
+                        //EPR("not joining either: insert (is before current it)");
                         Bnd bd = {.b2pos = start, .len = b2pos - start};
-                        //EPR("%s\t%u\t%u\t(ins)", hdr, start + addpos, b2pos + addpos);
+                        EPQ(dbg,"%s\t%u\t%u\t%u\t(ins)", hdr, start + addpos, b2pos + addpos, bd.len);
                         kc->bnd.insert(it, bd); // insert before, it stays at next
                     } else {
-                        //EPR("%s\t%u\t%u\t(extd)", hdr, start + addpos, b2pos + addpos);
+                        --it;
+                        it->len = ub - it->b2pos;
+                        EPQ(dbg,"%s\t%u\t%u\t%u\t(extd)", hdr, start + addpos, b2pos + addpos, it->len);
+                        ++it;
                         //EPR("only left joining: update b2pos and len");
-                        (--it)++->len = b2pos - ub;
                         ASSERT(it != kc->bnd.begin(), return -1);
                     }
                 } else {
-                    EPR("right joining");
+                    EPQ(dbg,"right joining");
                     if (start == 0 && (--it)++->len < RESERVED) {
-                        //EPR("joining both: remove one and update other");
+                        EPQ(dbg,"joining both: remove one and update other");
                         start = (--it)->b2pos;
                         it = kc->bnd.erase(it); // also shifts right
                     } // else only right joining: update b2pos and len
@@ -322,14 +332,15 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
                     it->len = it->b2pos + it->len - start;
                     it->b2pos = start;
                 }
-                //EPR("b2pos:%u\tub:%u\tubound:%u", b2pos, ub, ubound);
+                //EPR("b2pos:%u\tub:%u\tubound:%u", b2pos, ub, it->b2pos);
             }
-            ASSERT(start != ~0u, return -1, "missing sequence for %s?", hdr);
+            ASSERT(start != ~0u, return -1, ":missing sequence for %s?", hdr);
         } else {
             EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
+            b2pos = it->b2pos;
         }
-        if (b2pos == kc->seq_l) {
-            EPR("== %u uq regions in iteration ==", uq);
+        if (it->len == -1u) {
+            EPR("-- %u uq regions in iteration --", uq);
             if (uq == 0u)
                 break;
             b2pos = addpos = 0u;
@@ -338,11 +349,10 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
             continue;
         }
         if ((it->len & TYPE_MASK) == REF_CHANGE) {
-            EPR("ubound reached(2): b2pos:%u, %u, %d, %u", b2pos, kc->seq_l, addpos, ubound);
+            EPQ(dbg,"ubound reached(2): b2pos:%u, %u, %d, %u", b2pos, kc->seq_l, addpos, it->b2pos);
             addpos = -b2pos;
             while (*hdr++ != '\0') {} // next chromo
         }
-        EPR("%s:%u,%u, <end>", hdr, b2pos + addpos, it->b2pos);
     }
     return uq;
 }
