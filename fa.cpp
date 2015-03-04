@@ -71,10 +71,10 @@ parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
 static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 {
-    uint32_t dna = 0u, rc = 0u, ndx, b2pos = 0u;
+    uint32_t dna = 0u, rc = 0u;
+    uint32_t ndx, b2pos = 0u, b = 0ul;
     int c;
     uint16_t t = KEY_WIDTH;
-    uint8_t b = 0;
     uint8_t *s = kc->seq;
     Kcs *kcp;
     *s = '\0';
@@ -89,11 +89,9 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
         case 'G': b ^= 1;
         case 'T': b ^= 2;
         case 'A':
-            dna = (dna << 2) & KEYNT_MASK; // do not set carriage bit.
-            dna |= b;
-            rc = ((b ^ 2)<< KEYNT_TOP) | (rc >> 2);
 
             *s |= b << ((b2pos & 3) << 1);
+            dna = _seq_next(b, dna, rc);
             if ((++b2pos & 3) == 0) {
                 _buf_grow2(kc->seq, 1ul, s);
                 *++s = '\0';
@@ -104,17 +102,19 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 break;
             }
             // ndx (key) is 2nd cNt bit excised, rc or dna
-            ndx = __get_next_ndx(ndx, dna, rc);
+            ndx = _get_ndx(ndx, dna, rc);
 
-            if (kc->kcsndx[ndx] == ~0u) {
+            if (kc->kcsndx[ndx] == UNINITIALIZED) {
                 //EPR("%x", ndx);
                 _buf_grow(kc->kcs, 1ul);
                 kc->kcs[kc->kcs_l].infior = 0;
+                kc->kcs[kc->kcs_l].ct = 0;
                 kc->kcsndx[ndx] = kc->kcs_l++;
             }
             kcp = kc->kcs + kc->kcsndx[ndx];
 
             kcp->b2pos = b2pos; // replace with last position OR could keep it at first
+            kcp->ct++;
             kcp->infior++;
             break;
         default:
@@ -149,6 +149,48 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     return kc->hdr[kc->hdr_l - 1] == '\0'; // make sure last header is complete
 }
 
+// XXX: problem if w->ct != 1: w->b2pos may refer to later
+// b2pos, with a different 'Next b2', solutions:
+// look to next seq, look further previous, untill we can confirm it?
+// walk all sequences again?
+uint32_t last_b2pos_for_ndx(kct_t* kc, uint32_t odna, uint32_t orc, uint32_t oct,
+        uint32_t b)
+{
+    uint32_t dna, rc, i, Nt, b2pos = 0, ct = oct;
+    for (Nt = 0; Nt != 4; ++Nt) {
+        dna = odna;
+        rc = orc;
+        dna = _seq_prev(Nt, dna, rc);
+        i = _get_ndx(i, dna, rc);
+        if (kc->kcsndx[i] == UNINITIALIZED) continue;
+
+        Kcs* w = &kc->kcs[kc->kcsndx[i]];
+        if (w->ct != 1u) break;
+        i = w->b2pos + 1;
+        if (read_b2(kc->seq, i) == b) {
+            if (i > b2pos) b2pos = i;
+            if (--ct == 0) return b2pos;
+        }
+    }
+    ct = oct;
+    for (Nt = 0; Nt != 4; ++Nt) {
+        dna = odna;
+        rc = orc;
+        dna = _seq_next(Nt, dna, rc);
+        i = _get_ndx(i, dna, rc);
+        if (kc->kcsndx[i] == UNINITIALIZED) continue;
+
+        Kcs* w = &kc->kcs[kc->kcsndx[i]];
+        if (w->ct != 1u) break;
+        i = w->b2pos - 1;
+        if (read_b2(kc->seq, i) == b) {
+            if (i > b2pos) b2pos = i;
+            if (--ct == 0) return b2pos;
+        }
+    }
+    return UNINITIALIZED;
+}
+
 /*
  * Decrement counts for keys that occur within range before a unique sequence key.
  * If another key hence has become unique, the range is extended.
@@ -158,42 +200,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
  * Returned zero if the range adjoins the downstream boundary, otherwise the start
  * position of the range.
  */
-uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t infior,
-        uint32_t* fk, unsigned rest, unsigned ext)
-{
-    unsigned lb = rest > ext ? rest - ext: 0;
-    unsigned inf_range = lb;
-
-    while (rest != lb) {
-        --rest;
-        --b2pos;
-        uint32_t ndx = fk[rest];
-        ASSERT(ndx < kc->kcs_l, return -1u, " 0x%x", ndx);
-
-        Kcs *z = &kc->kcs[ndx];
-
-        // when the original boundary is reached increase the infior
-        if (rest < inf_range) {
-            ++infior;
-            inf_range = lb;
-        }
-        ASSERT(z->infior != 0u, return -1u, ":Unencountered key: 0x%x", ndx);
-        ASSERT((z->infior & INFERIORITY_BIT) == 0, return -1u, ":Already handled");
-
-        if (--z->infior != 0u) { // extend if another key hence has come unique
-            //EPR("%u\tndx:0x%x\tct:%u (decrementing)", b2pos, ndx, z->infior);
-        } else {
-            // extend if another key hence has come unique
-            z->b2pos = b2pos;
-            z->infior = infior;
-            // alternatively increment infior for each extension; then also remove
-            // z->infior = ++infior | INFERIORITY_BIT; // the rest < inf_range branch.
-
-            lb = rest > ext ? rest - ext : 0;
-        }
-    }
-    return rest != 0 ? b2pos : 0u;
-}
 
 /*
  * A short sequence that occurs only at one position on the genome is a `unique key'.
@@ -207,154 +213,64 @@ uint32_t handle_before_unique(kct_t* kc, uint32_t b2pos, uint32_t infior,
  * map the reads within reach of such keys.
  *
  * In this function we iterate over a genome to extend the range of unique positions
- * while keeping track of the priecedence.
+ * while keeping track of the precedence. it returns the number of keys that have now
+ * become unique.
  */
-int extd_uniq(kct_t* kc, uint32_t* fk, unsigned gi, unsigned ext)
+
+
+int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
 {
-    unsigned uq = 0, fk_m, fk_l, dbg = 0;
+    unsigned i, ct = 0, dbg = 0;
+    Kcs *x = NULL, *y;
+    const Kcs *kcs_end = &kc->kcs[kc->kcs_l];
+    std::queue<uint32_t> updatepos;
 
-    uint32_t b2pos = 0u; // twobit nr
-    char* hdr = kc->hdr;
-    std::list<Bnd>::iterator it = kc->bnd.begin();
-    int32_t addpos = 0u; // b2pos + addpos = real genomic coordinate (per chromo)
-
-    if (gi == 0)
-        fk = _buf_init(fk, 16); //init former_keys on first iteration
-
-    while (b2pos != kc->seq_l) {
-        addpos += it->len & NR_MASK;
-        ++it; // consider next
-        EPR("%s:%u\t%u\t<start>", hdr, b2pos + addpos, it->b2pos - b2pos);
-        if (b2pos == it->b2pos && (it->len & TYPE_MASK) == 0u) {
-            b2pos += it->len - KEY_WIDTH + 1;
-            EPR("Skip %u already processed and (rebuild at %u)", it->len, b2pos + addpos);
-            ++it;
+    for (y = kc->kcs; y != kcs_end; ++y) {
+        if (y->ct != 1u)
+            continue;
+        if (x == NULL) { // first
+            x = y;
             continue;
         }
+        // for unique positions, the b2pos must be correct. This is true in the
+        // first iteration
+        if ((y->b2pos - x->b2pos) < ext) {
+            uint32_t dna = 0u, rc = 0u;
+            uint32_t b2pos = x->b2pos - KEY_WIDTH, b = 0u;
+            _init_key(i, b, kc->seq, b2pos, dna, rc);
+            uint32_t end = y->b2pos - 1;
 
-        if (b2pos + KEY_WIDTH < it->b2pos) { // rebuild key if we can
-            EPQ(dbg,"%s:%u Next boundary at %u, 0x%x", hdr, b2pos + addpos, it->b2pos, it->len);
-
-            uint32_t i, b, dna, rc;
-            fk_l = 0; // flush buffer
-            __init_key(i, b, kc->seq, b2pos, dna, rc);
-
-            // next start processing keys
-            uint32_t start = ~0u;
-            while (b2pos != it->b2pos) {
-                ASSERT(b2pos < it->b2pos, return -1, "beyond ubound");
-                uint32_t ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
-                //EPR("%s:%u\t0x%x => ?0x%x?", hdr, b2pos + addpos, dna, dna << 2);
-
-                ASSERT(ndx < (1u << kc->kcsndx_m), return -1);
-                ndx = kc->kcsndx[ndx];
-                ASSERT(ndx < kc->kcs_l, return -1, " 0x%x", ndx);
-                Kcs *z = &kc->kcs[ndx];
-                /* if zero, the key was already handled in a previous iteration,
-                 * but then a boundary should have been inserted to skip that
-                 * region.
-                 */
-                ASSERT((z->infior & TYPE_MASK) == 0, return -1,
-                        ": key 0x%x already handled in a previous iteration", ndx);
-
-                if (z->infior > 1) {
-                    _buf_grow(fk, 1ul);
-                    fk[fk_l++] = ndx;
-                    ++b2pos;
+            while (b2pos++ != end) {
+                uint32_t ndx = _read_next_ndx(b, kc->seq, b2pos, dna, rc);
+                Kcs* z = &kc->kcs[kc->kcsndx[ndx]];
+                if (--(z->ct) == 1u)
+                    ++ct;
+                if (b2pos != z->b2pos)
+                    continue;
+                // the last b2pos (registered for ndx) was removed. Search next last
+                // b2pos for ndx
+                i = last_b2pos_for_ndx(kc, dna, rc, z->ct, b);
+                if (i != UNINITIALIZED) {
+                    z->b2pos = i;
                     continue;
                 }
-                // we encounter a unique key
-                ++uq;
-
-                z->infior = gi | INFERIORITY_BIT | // set handled, and
-                    (-(dna & KEYNT_STRAND) & ORIENTATION); // central Nt state
-
-                /* Add a new range. FIXME: if we're extending a range in a subsequent
-                 * iteration the inferiority should be derived form the extended region
-                 */
-                unsigned infior = gi + 1u;
-                start = handle_before_unique(kc, b2pos, infior, fk, fk_l, ext);
-                fk_l = 0;
-                ASSERT(start != -1u, return -1, "...");
-
-                // handle after unique
-                unsigned ub = min(b2pos + ext, it->b2pos);
-                unsigned inf_range = ub;
-                while (++b2pos != ub) {
-                    ndx = __next_ndx_with_b2(b, kc->seq, b2pos, dna, rc);
-
-                    ASSERT(ndx < (1u << kc->kcsndx_m), return -1);
-                    ASSERT(kc->kcsndx[ndx] < kc->kcs_l, return -1,
-                            " kc->kcsndx[0x%x]: 0x%x", ndx, kc->kcsndx[ndx]);
-                    Kcs *z = &kc->kcs[kc->kcsndx[ndx]];
-
-                    ASSERT(z->infior != 0u, return -1, ":Already decremented");
-                    ASSERT((z->infior & INFERIORITY_BIT) == 0, return -1,
-                            ":Already handled %u\tdna:0x%x\tndx:0x%x\tct:%u",
-                            b2pos, dna, ndx, z->infior);
-
-                    if (b2pos >= inf_range) {
-                        ++infior;
-                        inf_range = ub;
-                    }
-
-                    if (--z->infior == 0u) { // extend
-                        z->b2pos = b2pos;
-                        ub = min(b2pos + ext, it->b2pos);
-                        //EPR("%u\tdna:0x%x\tndx:0x%x\tct:%u\t<extending til %u>",
-                        //        b2pos, dna, ndx, z->infior, ub);
-                        z->infior = infior | INFERIORITY_BIT;
-                    }
-                }
-                if (b2pos != it->b2pos || (it->len >= RESERVED)) {
-                    //EPR("%u\t0x%x", start, (--it)++->len);
-                    if (start != 0 || (--it)++->len >= RESERVED) { //decr safe: begin is chromo
-                        //EPR("not joining either: insert (is before current it)");
-                        Bnd bd = {.b2pos = start, .len = b2pos - start};
-                        EPQ(dbg,"%s\t%u\t%u\t%u\t(ins)", hdr, start + addpos, b2pos + addpos, bd.len);
-                        kc->bnd.insert(it, bd); // insert before, it stays at next
-                    } else {
-                        --it;
-                        it->len = ub - it->b2pos;
-                        EPQ(dbg,"%s\t%u\t%u\t%u\t(extd)", hdr, start + addpos, b2pos + addpos, it->len);
-                        ++it;
-                        //EPR("only left joining: update b2pos and len");
-                        ASSERT(it != kc->bnd.begin(), return -1);
-                    }
-                } else {
-                    EPQ(dbg,"right joining");
-                    if (start == 0 && (--it)++->len < RESERVED) {
-                        EPQ(dbg,"joining both: remove one and update other");
-                        start = (--it)->b2pos;
-                        it = kc->bnd.erase(it); // also shifts right
-                    } // else only right joining: update b2pos and len
-                    ASSERT(it != kc->bnd.begin(), return -1);
-                    it->len = it->b2pos + it->len - start;
-                    it->b2pos = start;
-                }
-                //EPR("b2pos:%u\tub:%u\tubound:%u", b2pos, ub, it->b2pos);
             }
-            ASSERT(start != ~0u, return -1, ":missing sequence for %s?", hdr);
         } else {
-            EPR("Skipping %u\tat %u", it->b2pos, b2pos + addpos);
-            b2pos = it->b2pos;
-        }
-        if (it->len == -1u) {
-            EPR("-- %u uq regions in iteration --", uq);
-            if (uq == 0u)
-                break;
-            b2pos = addpos = 0u;
-            hdr = kc->hdr;
-            it = kc->bnd.begin();
-            continue;
-        }
-        if ((it->len & TYPE_MASK) == REF_CHANGE) {
-            EPQ(dbg,"ubound reached(2): b2pos:%u, %u, %d, %u", b2pos, kc->seq_l, addpos, it->b2pos);
-            addpos = -b2pos;
-            while (*hdr++ != '\0') {} // next chromo
+            // insert range
+            Rng rg = { .s = x->b2pos, .e = y->b2pos };
+            kc->rng.push_back(rg);
+            x = NULL;
         }
     }
-    return uq;
+    // push last range
+
+    // next iterate back
+    i = (x->b2pos - KEY_WIDTH - 1) ^ NEEDS_UPDATE;
+    while(ct) {
+    }
+    
+    // second iteration: walk all sequences, except already processed ranges
+    // and restore positions.
 }
 
 // process keys and occurance in each range
@@ -364,7 +280,7 @@ int get_all_unique(kct_t* kc, unsigned readlength)
     int uq, gi = 0;
     uint32_t* fk = NULL; // former_keys alloc on first iteration in extd_uniq();
     do {
-        uq = extd_uniq(kc, fk, gi, readlength - KEY_WIDTH);
+        uq = extd_uniq(kc, fk, readlength - KEY_WIDTH);
         EPR("%i unique regions extended in genome iteration %u", uq, ++gi);
     } while (uq > 0);
     free(fk);
@@ -415,7 +331,7 @@ int fa_index(struct seqb2_t* seq)
     kc.kcs = _buf_init(kc.kcs, 16);
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
     // the first entry (0) is for a reference ID always.
-    memset(kc.kcsndx, ~0u, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
+    memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
 
     if (is_gzfile) {
         g = fhin->io;
