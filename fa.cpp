@@ -42,6 +42,8 @@ Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
         switch (c) {
             case '\n': break;
             case ' ':
+                _buf_grow_err(h->id, 1ul, return NULL);
+                h->id[h->id_l++] = '\0';
                 if (p == IDTYPE) {
                     char* q = h->part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -51,33 +53,33 @@ Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
                 } else if (p != ID) {
                     h->hdr_type = UNKNOWN_HDR;
                 }
-                h->id[h->id_l++] = '\0';
                 if (p < ARRAY_SIZE(h->part))
                     h->part[++p] = h->id;
                 continue;
             case ':': 
+                _buf_grow_err(h->id, 1ul, return NULL);
+                h->id[h->id_l++] = '\0';
                 if (p == ID || p == IDTYPE)
                     h->hdr_type = UNKNOWN_HDR;
                 else if (p == SEQTYPE) {
                     char* q = h->part[p];
                     if (strncmp(q, "dna", strlen(q)) != 0) {
-                        if (strncmp(q, "dna_rm", strlen(q)) != 0) {
-                            fprintf(stderr, "\nWARNING: reference isrepeatmasked.\n");
-                        } else if (strncmp(q, "cdna", strlen(q)) != 0) {
-                            fprintf(stderr, "\nWARNING: aligning against cDNA.\n");
-                        } else if (strncmp(q, "pep", strlen(q)) != 0) {
-                            fprintf(stderr, "\nERROR: peptide alignment?\n");
+                        if (strncmp(q, "dna_rm", strlen(q)) == 0) {
+                            EPR("\nWARNING: reference is repeatmasked");
+                        } else if (strncmp(q, "cdna", strlen(q)) == 0) {
+                            EPR("\nWARNING: aligning against cDNA");
+                        } else if (strncmp(q, "pep", strlen(q)) == 0) {
+                            EPR("\nERROR: peptide alignment?");
                             delete h;
                             return NULL;
-                        } else if (strncmp(q, "rna", strlen(q)) != 0) {
-                            fprintf(stderr, "\nWARNING: aligning against rna.\n");
+                        } else if (strncmp(q, "rna", strlen(q)) == 0) {
+                            EPR("\nWARNING: aligning against rna");
                         } else { // could still be ok.
+                            EPR("\nWARNING: non-ensembl ref");
                             h->hdr_type = UNKNOWN_HDR;
                         }
                     }
                 }
-                _buf_grow_err(h->id, 1ul, return NULL);
-                h->id[h->id_l++] = '\0';
                 if (p < ARRAY_SIZE(h->part))
                     h->part[++p] = h->id;
                 continue;
@@ -107,7 +109,7 @@ Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
         bd->l = atoi(h->part[END]);
     } else {
         h->p_l = 1;
-        fprintf(stderr, "\nWARNING: non-ensembl reference.\n");
+        EPR("\nWARNING: non-ensembl reference.");
     }
     kc->hdr.insert(Map::value_type(h->id, h));
     return h;
@@ -281,58 +283,107 @@ static inline uint64_t revcmp(uint64_t dna)
 int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
 {
     uint64_t t = kc->kct_l * sizeof(Walker), dna = 0ul;
-    Walker* w = (Walker*)malloc(t);
-    memset(w, 0ul, t);
+    Walker* wlkr = (Walker*)malloc(t);
+    memset(wlkr, 0ul, t);
     uint32_t uqct, iter = 0;
+    uint32_t* wbuf = (uint32_t*)malloc(ext * sizeof(uint32_t));
+    uint32_t* wat;
 
-    do {
+    do { // untile no no more new uniques
         uqct = 0;
-        for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h) {
+        for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h) { // over ref headers
             std::list<Bnd*>::iterator bd = h->bnd.begin();
 
 
             uint32_t pos = (*bd)->s, endpos = (*bd)->l;
-            do {
+            do { // over events (stretches and maybe later, snvs)
                 ASSERT(pos < endpos, return -EINVAL);
                 dna = (*bd)->dna;
                 uint64_t rc = revcmp(dna);
-                uint32_t remain = ext;
+                wat = &wbuf[ext];
                 uint32_t infior = 1;
-                Kct *x;
+                Bnd* B = NULL;
 
-                for (;pos != (*bd)->s; ++pos) {
+                for (;pos != (*bd)->s; ++pos) { // until next event
                     uint64_t ndx = _get_ndx(ndx, t, dna, rc);
 
                     Kct *y = kc->kct + kc->kcsndx[ndx];
-                    if (remain) {
-                        if (--remain) {
-                            if (infior > w[ndx].infior)
-                                w[ndx].infior = infior;
+                    Walker* w = &wlkr[ndx];
+                    if (wat != wbuf) {
+                        if (--wat) {
+                            if (wat == &wbuf[ndx-1]) {
+                                B->dna = dna;
+                                B->l = pos - B->s;
+                            }
+                            *wat = ndx;
+                            if (infior > w->infior)
+                                w->infior = infior;
                         } else {
                             infior = 0;
+                            if (B != NULL)
+                                h->bnd.insert(bd,B);
+                            B = NULL;
+                            // add tmp_count for each
+                            for (wat = &wbuf[ext - 1]; wat != wbuf; --wat) {
+                                wlkr[*wat].count += wlkr[*wat].tmp_count;
+                                wlkr[*wat].tmp_count = 0;
+                            }
                         }
                     }
-                    t = w[ndx].count;
+                    t = w->count;
                     if (y->seq.m > 3) {
                         ASSERT(t < y->p.l, return -EINVAL);
                         t = y->p.b2[t >> 2] >> (t << 1);
-                        w[ndx].count++;
+                        if (wat == wbuf) ++w->count;
+                        else ++w->tmp_count;
                         continue;
                     }
                     ASSERT(t < y->seq.l, return -EINVAL);
                     t = y->seq.b2[t >> 2] >> (t << 1);
                     if (y->seq.l > 1) {
-                        w[ndx].count++;
+                        if (wat == wbuf) ++w->count;
+                        else ++w->tmp_count;
                         continue;
                     }
                     // found unique
-                    if (remain == 0) {
+                    if (wat == wbuf) {
                         // found first unique
-                        x = y;
-                        remain = ext;
+                        wat = &wbuf[ext];
                         infior = w[ndx].infior + 1;
                         continue;
                     }
+                    // insert range
+                    if (B == NULL) {
+                        _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+                        B = &kc->bd[kc->bd_l++];
+                        ASSIGN_BD(B, UQ_REGION, ~0u, pos, 0u, infior, dna);
+                    }
+
+                    for (uint32_t* z = &wbuf[ext - 1]; z != wat; --z) {
+                        ndx = *z;
+                        Kct *x = kc->kct + kc->kcsndx[ndx];
+                        // excise out twobits, i.e. shift 2bits
+                        uint8_t* q, *qe;
+                        if (x->seq.m == 3) {
+                            q = &x->seq.b2[wlkr[ndx].count >> 2];
+                            qe = &x->seq.b2[x->seq.l >> 2];
+                            if (--x->seq.l == 0)
+                                EPR("two successive decrements on same key\n");
+                        } else {
+                            q = &x->p.b2[wlkr[ndx].count >> 2];
+                            qe = &x->seq.b2[x->p.l >> 2];
+                            // could convert to Kct.seq, but why bother?
+                            if (--x->seq.l == 0)
+                                EPR("two successive decrements on same key\n");
+                        }
+                        *q >>= 2;
+                        while (q != qe) {
+                            *q |= (q[1] & 3) << 6;
+                            *++q >>= 2;
+                        }
+                        wlkr[ndx].tmp_count = 0;
+                    }
+                    wat =  &wbuf[ext];
                     ++uqct;
                     // found second unique
                 }
@@ -344,7 +395,8 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
             EPR("extended %u uinique ranges in iteration %u", uqct, ++iter);
         }
     } while (uqct != 0);
-    free(w);
+    free(wlkr);
+    free(wbuf);
 }
 
 // process keys and occurance in each range

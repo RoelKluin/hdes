@@ -131,7 +131,9 @@ typedef union {
 } Kct;
 
 typedef packed_struct rng_t {
-    uint32_t count, infior; //b2pos start and end of range
+    uint32_t count;
+    uint32_t infior: 22; //b2pos start and end of range
+    uint32_t tmp_count: 10;
 } Walker;
 
 typedef struct {
