@@ -13,6 +13,7 @@
 #define RK_FA_H
 #include <list>
 #include <stack>
+#include <map>
 #include <queue>
 #include "seq.h"
 #include "klib/khash.h"
@@ -38,18 +39,19 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_ndx(ndx, dna, rc) ({\
-    ndx = (dna & KEYNT_STRAND) ? dna : rc;\
+#define _get_ndx(ndx, b, dna, rc) ({\
+    b = (dna & KEYNT_STRAND);\
+    ndx = b ? dna : rc;\
     ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
 })
 
-#define __rdndx(direction, b, s, b2pos, dna, rc) ({\
+#define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
     dna = __rdsq(direction, b, s, b2pos, dna, rc);\
-    _get_ndx(b, dna, rc);\
+    _get_ndx(ndx, b, dna, rc);\
 })
 
-#define _read_next_ndx(b, s, p, d, r) __rdndx(next, b, s, p, d, r)
-#define _read_prev_ndx(b, s, p, d, r) __rdndx(prev, b, s, p - KEY_WIDTH, d, r)
+#define _read_next_ndx(ndx, b, s, p, d, r) __rdndx(next, ndx, b, s, p, d, r)
+#define _read_prev_ndx(ndx, b, s, p, d, r) __rdndx(prev, ndx, b, s, p - KEY_WIDTH, d, r)
 
 #define _init_key(i, b, s, b2pos, dna, rc) ({\
     dna = rc = 0u; \
@@ -78,46 +80,87 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define ULL(x) ((unsigned __int128)(x))
 
-#define REF_CHANGE (3u<<30)
-#define N_STRETCH (2u<<30)
-// ... room for more; KNOWN_POS (dbSNP/cosmic)?
-#define RESERVED (1u<<30)
-
 #define NR_MASK 0x3fffffff
 #define TYPE_MASK 0xc0000000
 #undef max
 #define max(a,b) ((a) >= (b) ? (a) : (b))
 #undef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
-typedef struct kcs_t { // Keycounts
-    uint32_t b2pos;
-    uint16_t infior;
-    uint16_t ct;
-} Kcs;
 
+#define UNKNOWN_HDR 0
+#define ENSEMBL_HDR 1
 
+#define TEST_BND 1
+#ifdef TEST_BND
+# define DEBUG_ASSIGN_ENDDNA(bd, dna) \
+        if (bd != NULL) {\
+            bd->end_dna = dna;\
+        }
+#define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
+        *_bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .end_dna = _e};
+#else
+# define DEBUG_ASSIGN_ENDDNA(bd, dna)
+#define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
+        *_bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
+#endif
 
-typedef struct rng_t {
-    uint32_t s, e; //b2pos start and end of range
-} Rng;
-
-// Either chromosome boundaries, stretches of N's or regions covered by unique keys.
-typedef struct bnd_t {
-    uint32_t b2pos;
-    uint32_t len;
+typedef packed_struct bnd_t {
+    uint64_t t: 8; // type
+    uint64_t dna: 56;
+    uint32_t s; // start
+    uint32_t l; // length
+    uint32_t i; // inferiority
+#ifdef TEST_BND
+    uint64_t end_dna;
+#endif
 } Bnd;
 
+typedef union {
+    packed_struct {
+        uint8_t m;
+        uint8_t l;
+        uint8_t b2[14]; // first 2bits, if exceeding 14*4 2bits, use p below instead.
+    } seq;
+    packed_struct {
+        uint64_t m: 8;
+        uint64_t l: 40;
+        uint64_t etc: 16;
+        uint8_t* b2; // next_b2_0|next_b2_1|next_b2_2|next_b2_3|... 
+    } p;
+    Bnd rng;
+} Kct;
+
+typedef packed_struct rng_t {
+    uint32_t count, infior; //b2pos start and end of range
+} Walker;
+
+typedef struct {
+    char* id;
+    char* part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+    uint32_t end_b2pos;
+    uint16_t id_l;
+    uint8_t hdr_type;
+    uint8_t id_m: 4;
+    uint8_t p_l: 4;
+    std::list<Bnd*> bnd;
+} Hdr;
+
+struct char_cmp { 
+    bool operator () (const char *a,const char *b) const 
+    {
+        return strcmp(a,b) == 0;
+    } 
+};
+typedef std::map<char*, Hdr*, char_cmp> Map;
+
 typedef struct kct {
-    char *hdr;
-    uint8_t *seq;
-    khash_t(UQCT) *H;
     uint32_t *kcsndx;
-    Kcs *kcs;
-    std::list<Bnd> bnd;
-    std::list<Rng> rng;
-    unsigned seq_l, kcs_l, bnd_l;
-    uint32_t Nmask, hdr_l;
-    uint8_t seq_m, hdr_m, kcs_m, kcsndx_m, bnd_m; //XXX: bitfields?
+    Kct *kct;
+    Bnd *bd;
+    Hdr *h;
+    uint32_t kct_l, bd_l, h_l;
+    uint8_t kct_m, kcsndx_m, bd_m, h_m;
+    Map hdr;
 } kct_t;
 
 int fa_index(seqb2_t *seq);

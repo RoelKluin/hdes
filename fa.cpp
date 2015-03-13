@@ -21,256 +21,330 @@
 #include <pcre.h>
 #include "fa.h"
 
-//required format: >ID SEQTYPE:IDTYPE LOCATION [META] (TODO: use .fai istead)
-static int
-parse_header(kct_t* kc, void* g, int (*gc) (void*), uint32_t b2pos)
+enum ensembl_parts {ID,  SEQTYPE, IDTYPE,
+        IDTYPE2, BUILD, ID2, START, END, NR, META};
+
+enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, END_REF, DBSNP, KNOWN_SITE};
+
+//ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+// fai does not handle chromosomes with offset.
+Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
 {
-    pcre *reCompiled;
-    pcre_extra *pcreExtra;
-    const char *str;
-    unsigned start = kc->hdr_l;
-    const char *re = "^(?:[^ ]+) dna:[^ :]+ [^ :]+:[^:]+:[^:]+:(\\d+):(?:\\d+):(?:\\d+)(?: .*)?$";
-    int x, end = 0, subStrVec[6];
-    do {
-        x = gc(g);
-        if (x == -1) return -2;
-        _buf_grow(kc->hdr, 1ul);
-        if (end == 0 && isspace(x)) end = kc->hdr_l;
-        kc->hdr[kc->hdr_l++] = x;
-        fputc(x, stderr);
-    } while (x != '\n');
-    kc->hdr[kc->hdr_l - 1] = '\0';
+    int c;
+    Hdr* h = new Hdr;
+    h->hdr_type = ENSEMBL_HDR;
 
-    reCompiled = pcre_compile(re, 0, &str, &x, NULL);
-    ASSERT(reCompiled != NULL, return -3, " during Compile '%s': %s\n", re, str);
+    h->id = _buf_init_err(h->id, 2, return NULL);
+    unsigned p = ID;
+    h->part[p] = h->id;
+    while ((c = gc(g)) != -1) {
+        fputc(c, stderr);
+        switch (c) {
+            case '\n': break;
+            case ' ':
+                if (p == IDTYPE) {
+                    char* q = h->part[p];
+                    if (strncmp(q, "chromosome", strlen(q)) != 0 &&
+                            strncmp(q, "supercontig", strlen(q)) != 0 &&
+                            strncmp(q, "nonchromosomal", strlen(q)) != 0)
+                        h->hdr_type = UNKNOWN_HDR;
+                } else if (p != ID) {
+                    h->hdr_type = UNKNOWN_HDR;
+                }
+                h->id[h->id_l++] = '\0';
+                if (p < ARRAY_SIZE(h->part))
+                    h->part[++p] = h->id;
+                continue;
+            case ':': 
+                if (p == ID || p == IDTYPE)
+                    h->hdr_type = UNKNOWN_HDR;
+                else if (p == SEQTYPE) {
+                    char* q = h->part[p];
+                    if (strncmp(q, "dna", strlen(q)) != 0) {
+                        if (strncmp(q, "dna_rm", strlen(q)) != 0) {
+                            fprintf(stderr, "\nWARNING: reference isrepeatmasked.\n");
+                        } else if (strncmp(q, "cdna", strlen(q)) != 0) {
+                            fprintf(stderr, "\nWARNING: aligning against cDNA.\n");
+                        } else if (strncmp(q, "pep", strlen(q)) != 0) {
+                            fprintf(stderr, "\nERROR: peptide alignment?\n");
+                            delete h;
+                            return NULL;
+                        } else if (strncmp(q, "rna", strlen(q)) != 0) {
+                            fprintf(stderr, "\nWARNING: aligning against rna.\n");
+                        } else { // could still be ok.
+                            h->hdr_type = UNKNOWN_HDR;
+                        }
+                    }
+                }
+                _buf_grow_err(h->id, 1ul, return NULL);
+                h->id[h->id_l++] = '\0';
+                if (p < ARRAY_SIZE(h->part))
+                    h->part[++p] = h->id;
+                continue;
+            default:
+                if (isspace(c)) {
+                    c = '\0';
+                    h->hdr_type = UNKNOWN_HDR;
+                }
+                _buf_grow_err(h->id, 1ul, return NULL);
+                h->id[h->id_l++] = c;
+                continue;
+        }
+        break;
+    }
+    if (p < NR) 
+        h->hdr_type = UNKNOWN_HDR;
 
-    // Optimize the regex, optional, otherwise use pcreExtra = NULL in place
-    pcreExtra = pcre_study(reCompiled, 0, &str); // str is NULL unless error
-    ASSERT(str == NULL, return -4, " during Study '%s': %s\n", re, str);
+    _buf_grow_err(kc->bd, 1ul, return NULL);
+    bd = &kc->bd[kc->bd_l++];
+    ASSIGN_BD(bd, NEW_REF_ID, ~0u, 0, ~0u, 0, 0);
 
-    x = pcre_exec(reCompiled, pcreExtra, &kc->hdr[start], kc->hdr_l - start - 1, 0, 0, subStrVec, 6);
-    // x is zero on too many substrings, PCRE_ERROR_NOMATCH means no match, else error
-    ASSERT(x > 0, return -5, "%d: during Extract '%s' in /%s/\n", x, &kc->hdr[start], re);
+    if (h->hdr_type == ENSEMBL_HDR) {
+        h->p_l = p;
+        p = atoi(h->part[START]);
+        if (p != 1)
+            bd->s = p;
+        bd->l = atoi(h->part[END]);
+    } else {
+        h->p_l = 1;
+        fprintf(stderr, "\nWARNING: non-ensembl reference.\n");
+    }
+    kc->hdr.insert(Map::value_type(h->id, h));
+    return h;
+}
 
-    // x - 2 is length, beide 1-based.
-    pcre_get_substring(&kc->hdr[start], subStrVec, x, 1, &str);
-    Bnd bd = { .b2pos = b2pos, .len = (atoi(str) - 1) | REF_CHANGE };
-    //EPR("%s, %u stored", str, bd.len & NR_MASK);
-    kc->bnd.push_back(bd);
-    kc->hdr[end] = '\0'; // store just ID.
-    kc->hdr_l = end + 1;
+void free_kc(kct_t* kc)
+{
+    for (Kct* k = kc->kct; k != &kc->kct[kc->kct_l]; ++k)
+        if (k->seq.m > 3)
+            free(k->p.b2);
 
-    pcre_free_substring(str);
-    return 0;
+    for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h)
+        free(h->id);
+
+    _buf_free(kc->h);
+    _buf_free(kc->bd);
+    _buf_free(kc->kct);
+    _buf_free(kc->kcsndx);
 }
 
 /*
- * process fasta, store 2bit string and count occurances and locations of keys.
+ * proh.p_lcess fasta, store 2bit string and count occurances and locations of keys.
  * store per key the count and the last position.
  */
 static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*))
 {
-    uint32_t dna = 0u, rc = 0u;
-    uint32_t ndx, b2pos = 0u, b = 0ul;
+    uint64_t dna = 0, rc = 0, ndx, b = 0;
+    uint32_t b2pos = 0u, addpos = 0u, endpos = 0u;
     int c;
     uint16_t t = KEY_WIDTH;
-    uint8_t *s = kc->seq;
-    Kcs *kcp;
-    *s = '\0';
+    Kct *ct = NULL;
+    uint8_t *q = NULL;
+    Hdr* h = NULL;
+    Bnd* bd = NULL;
 
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
 
+    // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
-        b ^= b;
-        switch(c) {
-        case '\n': break;
-        case 'C': b = 2;
-        case 'G': b ^= 1;
-        case 'T': b ^= 2;
-        case 'A':
-
-            *s |= b << ((b2pos & 3) << 1);
-            dna = _seq_next(b, dna, rc);
-            if ((++b2pos & 3) == 0) {
-                _buf_grow2(kc->seq, 1ul, s);
-                *++s = '\0';
-                kc->seq_l++;
-            }
-            if (t) {
-                --t;
-                break;
-            }
-            // ndx (key) is 2nd cNt bit excised, rc or dna
-            ndx = _get_ndx(ndx, dna, rc);
-
-            if (kc->kcsndx[ndx] == UNINITIALIZED) {
-                //EPR("%x", ndx);
-                _buf_grow(kc->kcs, 1ul);
-                kc->kcs[kc->kcs_l].infior = 0;
-                kc->kcs[kc->kcs_l].ct = 0;
-                kc->kcsndx[ndx] = kc->kcs_l++;
-            }
-            kcp = kc->kcs + kc->kcsndx[ndx];
-
-            kcp->b2pos = b2pos; // replace with last position OR could keep it at first
-            kcp->ct++;
-            kcp->infior++;
-            break;
-        default:
-            t = KEY_WIDTH; // need to rebuild key
-            if (c != '>') {
-                ndx = 0; // use ndx to count stretch (key is rebuilt later)
-                do {
-                    if (c != '\n') {
-                        if (c != 'N') {
-                            if (B6(b, c) || c == '>') break;
-                            EPR("Ignoring strange nucleotide:%c\n", c);
-                        }
-                        ++ndx;
+        DEBUG_ASSIGN_ENDDNA(bd, dna);
+        if (c != '>') { // N-stretch
+            t = 0; // use  to count stretch (key is rebuilt later)
+            do {
+                if (c != '\n') {
+                    if (c != 'N') {
+                        if (B6(b, c) || c == '>') break;
+                        EPR("Ignoring strange nucleotide:%c\n", c);
                     }
-                    c = gc(g);
-                } while(c != -1);
-                Bnd bd = { .b2pos = b2pos, .len = ndx | N_STRETCH };
-                kc->bnd.push_back(bd);
-                continue; /* reprocess c */
+                    ++t;
+                }
+                c = gc(g);
+            } while(c != -1);
+            _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+            bd = &kc->bd[kc->bd_l++];
+            ASSIGN_BD(bd, N_STRETCH, ~0u, b2pos + addpos, t, 0, dna);
+            addpos += t;
+        } else { // header
+            if (h != NULL) {
+                _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+                bd = &kc->bd[kc->bd_l++];
+                ASSIGN_BD(bd, END_REF, ~0u, b2pos + addpos, 0, 0, dna);
+                h->bnd.push_back(bd);
             }
-            c = parse_header(kc, g, gc, b2pos);
-            if (c < 0) continue; /* reprocess c - break out of loop */
+            b2pos = 0u;
+            Hdr* h = new_header(kc, g, gc, bd);
+            if (h == NULL) return -ENOMEM;
+            addpos = bd->s;
+            endpos = bd->l;
+            c = gc(g);
         }
-        c = gc(g);
+        for (t = b2pos + KEY_WIDTH; b2pos != t; ++b2pos) {
+            b ^= b;
+            switch(c) {
+                case 'C': case 'c': b = 2;
+                case 'G': case 'g': b ^= 1;
+                case 'U': case 'u': case 'T': case 't': b ^= 2;
+                case 'A': case 'a': dna = _seq_next(b, dna, rc);
+                case '\n':
+                    c = gc(g);
+                    continue;
+            }
+            break;
+        }
+        if_ever (b2pos != t) // c == -1, 'N' or '>'
+            continue;
+        // ndx (key) is 2nd cNt bit excised, rc or dna
+        bd->dna = dna;
+        h->bnd.push_back(bd);
+        ndx = _get_ndx(ndx, b, dna, rc);
+        do {
+            if (kc->kcsndx[ndx] != UNINITIALIZED) {
+                ct = kc->kct + kc->kcsndx[ndx];
+                if (ct->seq.m == 3) { // Kct has seq format;
+                    q = &ct->seq.b2[ct->seq.l >> 2];
+                    if ((ct->seq.l++ & 3) != 0) {
+                        *q <<= 2;
+                    } else {
+                        b = ARRAY_SIZE(ct->seq.b2);
+                        if (ct->seq.l == (b << 2)) { // convert to p (pointer) format
+                            q = (uint8_t *)malloc(16);
+                            memcpy(q, ct->seq.b2, b); 
+                            ASSERT(ct->seq.m == ct->p.m, return -EINVAL,
+                                    "struct not aligned as expected\n");
+                            ++ct->p.m;
+                            ASSERT(ct->seq.l == (ct->p.l & 0xff), return -EINVAL,
+                                    "redundant endian test failed\n");
+                            ct->p.l = b << 2;
+                            ct->p.b2 = q;
+                            q += b;
+                        }
+                        *q = '\0';
+                    }
+                } else { // Kct in p format;
+                    q = ct->p.b2 + (ct->p.l >> 2);
+                    if ((ct->p.l++ & 3) != 0) {
+                        *q <<= 2;
+                    } else {
+                        if (ct->p.l == (1u << ct->p.m)) {
+                            q = (uint8_t *)realloc(ct->p.b2, 1 << ++ct->p.m);
+                            if_ever (q == NULL) return -ENOMEM;
+                            ct->p.b2 = q;
+                        }
+                        *q = '\0';
+                    }
+                }
+            } else { // new key
+                //EPR("%x", ndx);
+                _buf_grow(kc->kct, 1ul);
+                kc->kcsndx[ndx] = kc->kct_l;
+                ct = kc->kct + kc->kct_l++;
+                ct->seq = {.m = 3, .l = 1, 0}; // init remaining to zero
+            }
+            // next iteration ...
+            while (isspace(c = gc(g)));
+            b ^= b;
+            switch(c) {
+                case 'C': case 'c': b = 2;
+                case 'G': case 'g': b ^= 1;
+                case 'T': case 'U': case 't': case 'u': b ^= 2;
+                    *q |= b; // append next 2bit to last ndx
+                case 'A': case 'a': dna = _seq_next(b, dna, rc);
+            }
+        } while (c >= 0);
+        ASSERT(b2pos + addpos < endpos, return -ERANGE);
     }
-    /* After this function kc->seq_l has a different function: tot no 2bits instead
-     * of characters in seq, which can be derived from it: it is (kc->seq_l >> 2). */
-    kc->seq_l = b2pos;
-    Bnd bd = { .b2pos = b2pos, .len = -1u };
+    if (h != NULL) {
+        DEBUG_ASSIGN_ENDDNA(bd, dna);
+        _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+        bd = &kc->bd[kc->bd_l++];
+        ASSIGN_BD(bd, END_REF, ~0u, b2pos + addpos, 0, 0, dna);
+        h->bnd.push_back(bd);
+    }
     //EPR("%s, %u stored", str, bd.len & NR_MASK);
-    kc->bnd.push_back(bd);
-    return kc->hdr[kc->hdr_l - 1] == '\0'; // make sure last header is complete
+    return 0;
 }
 
-// XXX: problem if w->ct != 1: w->b2pos may refer to later
-// b2pos, with a different 'Next b2', solutions:
-// look to next seq, look further previous, untill we can confirm it?
-// walk all sequences again?
-uint32_t last_b2pos_for_ndx(kct_t* kc, uint32_t odna, uint32_t orc, uint32_t oct,
-        uint32_t b)
+/* Reverse Complement */
+static inline uint64_t revcmp(uint64_t dna)
 {
-    uint32_t dna, rc, i, Nt, b2pos = 0, ct = oct;
-    for (Nt = 0; Nt != 4; ++Nt) {
-        dna = odna;
-        rc = orc;
-        dna = _seq_prev(Nt, dna, rc);
-        i = _get_ndx(i, dna, rc);
-        if (kc->kcsndx[i] == UNINITIALIZED) continue;
-
-        Kcs* w = &kc->kcs[kc->kcsndx[i]];
-        if (w->ct != 1u) break;
-        i = w->b2pos + 1;
-        if (read_b2(kc->seq, i) == b) {
-            if (i > b2pos) b2pos = i;
-            if (--ct == 0) return b2pos;
-        }
-    }
-    ct = oct;
-    for (Nt = 0; Nt != 4; ++Nt) {
-        dna = odna;
-        rc = orc;
-        dna = _seq_next(Nt, dna, rc);
-        i = _get_ndx(i, dna, rc);
-        if (kc->kcsndx[i] == UNINITIALIZED) continue;
-
-        Kcs* w = &kc->kcs[kc->kcsndx[i]];
-        if (w->ct != 1u) break;
-        i = w->b2pos - 1;
-        if (read_b2(kc->seq, i) == b) {
-            if (i > b2pos) b2pos = i;
-            if (--ct == 0) return b2pos;
-        }
-    }
-    return UNINITIALIZED;
+    uint64_t m = 0x3333333333333333UL;
+    dna = ((dna & m) << 2) | ((dna & (~m)) >> 2);
+    m = 0x0f0f0f0f0f0f0f0fUL;
+    dna = ((dna & m) << 4) | ((dna & (~m)) >> 4);
+    asm ("bswap %0" : "=r" (dna) : "0" (dna));
+    dna ^= 0xaaaaaaaaaaaaaaaa;
+    return dna >> (64 - (KEY_WIDTH << 1));
 }
-
-/*
- * Decrement counts for keys that occur within range before a unique sequence key.
- * If another key hence has become unique, the range is extended.
- * Positions of keys with lower infior are to be considered before keys with higher
- * infior, when trying to find a position for the keys in a read.
- *
- * Returned zero if the range adjoins the downstream boundary, otherwise the start
- * position of the range.
- */
-
-/*
- * A short sequence that occurs only at one position on the genome is a `unique key'.
- * Such unique keys relate only to single positions and therefore provide a primary
- * sequence to position translation. For other keys within read- minus keylength range
- * of such hallmark sequences, it is not strictly necessary to consider this location.
- * The primary unique key should suffice to identify reads containing these keys.
- * This can lead to keys within range to become secondarily unique for positions
- * elsewhere on the genome, and so on. As long as we keep track of which key is primary
- * unique, and which secondary, or the inferiority per key, it is possible to
- * map the reads within reach of such keys.
- *
- * In this function we iterate over a genome to extend the range of unique positions
- * while keeping track of the precedence. it returns the number of keys that have now
- * become unique.
- */
 
 
 int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
 {
-    unsigned i, ct = 0, dbg = 0;
-    Kcs *x = NULL, *y;
-    const Kcs *kcs_end = &kc->kcs[kc->kcs_l];
-    std::queue<uint32_t> updatepos;
+    uint64_t t = kc->kct_l * sizeof(Walker), dna = 0ul;
+    Walker* w = (Walker*)malloc(t);
+    memset(w, 0ul, t);
+    uint32_t uqct, iter = 0;
 
-    for (y = kc->kcs; y != kcs_end; ++y) {
-        if (y->ct != 1u)
-            continue;
-        if (x == NULL) { // first
-            x = y;
-            continue;
-        }
-        // for unique positions, the b2pos must be correct. This is true in the
-        // first iteration
-        if ((y->b2pos - x->b2pos) < ext) {
-            uint32_t dna = 0u, rc = 0u;
-            uint32_t b2pos = x->b2pos - KEY_WIDTH, b = 0u;
-            _init_key(i, b, kc->seq, b2pos, dna, rc);
-            uint32_t end = y->b2pos - 1;
+    do {
+        uqct = 0;
+        for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h) {
+            std::list<Bnd*>::iterator bd = h->bnd.begin();
 
-            while (b2pos++ != end) {
-                uint32_t ndx = _read_next_ndx(b, kc->seq, b2pos, dna, rc);
-                Kcs* z = &kc->kcs[kc->kcsndx[ndx]];
-                if (--(z->ct) == 1u)
-                    ++ct;
-                if (b2pos != z->b2pos)
-                    continue;
-                // the last b2pos (registered for ndx) was removed. Search next last
-                // b2pos for ndx
-                i = last_b2pos_for_ndx(kc, dna, rc, z->ct, b);
-                if (i != UNINITIALIZED) {
-                    z->b2pos = i;
-                    continue;
+
+            uint32_t pos = (*bd)->s, endpos = (*bd)->l;
+            do {
+                ASSERT(pos < endpos, return -EINVAL);
+                dna = (*bd)->dna;
+                uint64_t rc = revcmp(dna);
+                uint32_t remain = ext;
+                uint32_t infior = 1;
+                Kct *x;
+
+                for (;pos != (*bd)->s; ++pos) {
+                    uint64_t ndx = _get_ndx(ndx, t, dna, rc);
+
+                    Kct *y = kc->kct + kc->kcsndx[ndx];
+                    if (remain) {
+                        if (--remain) {
+                            if (infior > w[ndx].infior)
+                                w[ndx].infior = infior;
+                        } else {
+                            infior = 0;
+                        }
+                    }
+                    t = w[ndx].count;
+                    if (y->seq.m > 3) {
+                        ASSERT(t < y->p.l, return -EINVAL);
+                        t = y->p.b2[t >> 2] >> (t << 1);
+                        w[ndx].count++;
+                        continue;
+                    }
+                    ASSERT(t < y->seq.l, return -EINVAL);
+                    t = y->seq.b2[t >> 2] >> (t << 1);
+                    if (y->seq.l > 1) {
+                        w[ndx].count++;
+                        continue;
+                    }
+                    // found unique
+                    if (remain == 0) {
+                        // found first unique
+                        x = y;
+                        remain = ext;
+                        infior = w[ndx].infior + 1;
+                        continue;
+                    }
+                    ++uqct;
+                    // found second unique
                 }
-            }
-        } else {
-            // insert range
-            Rng rg = { .s = x->b2pos, .e = y->b2pos };
-            kc->rng.push_back(rg);
-            x = NULL;
+#ifdef TEST_BND
+                ASSERT((*bd)->end_dna = dna, return -EFAULT);
+#endif
+                pos += (*bd)->l;
+            } while (++bd != h->bnd.end());
+            EPR("extended %u uinique ranges in iteration %u", uqct, ++iter);
         }
-    }
-    // push last range
-
-    // next iterate back
-    i = (x->b2pos - KEY_WIDTH - 1) ^ NEEDS_UPDATE;
-    while(ct) {
-    }
-    
-    // second iteration: walk all sequences, except already processed ranges
-    // and restore positions.
+    } while (uqct != 0);
+    free(w);
 }
 
 // process keys and occurance in each range
@@ -325,10 +399,9 @@ int fa_index(struct seqb2_t* seq)
     fhout->name = &file[0];
 
     kct_t kc;
-    kc.H = kh_init(UQCT);
-    kc.seq = _buf_init(kc.seq, 16);
-    kc.hdr = _buf_init(kc.hdr, 8);
-    kc.kcs = _buf_init(kc.kcs, 16);
+    kc.kct = _buf_init(kc.kct, 16);
+    kc.h = _buf_init(kc.h, 0);
+    kc.bd = _buf_init(kc.bd, 0);
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
     // the first entry (0) is for a reference ID always.
     memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
@@ -349,11 +422,7 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
-    _buf_free(kc.kcs);
-    _buf_free(kc.kcsndx);
-    _buf_free(kc.hdr);
-    _buf_free(kc.seq);
-    kh_destroy(UQCT, kc.H);
+    free_kc(&kc);
     return ret;
 
 }

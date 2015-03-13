@@ -42,42 +42,42 @@ if (!(cond)) { \
 #define if_ever(err)    if (unlikely(err))
 #define expect(T)       if (likely(T))
 
+#define packed_struct struct __attribute__ ((__packed__))
+
 // get bit for alpha char, regardless of case [command line options]
 #define amopt(r)        (1ul << ((r+7) & 0x1f))
-
-#define _buf_init(buf, sz) ({\
+#define _buf_init_err(buf, sz, error_action) ({\
     buf##_m = sz;\
     buf##_l = 0;\
-    fprintf(stderr, #buf " malloc, %lu\n", sizeof(*buf) << buf##_m);\
-    fflush(NULL);\
-    typeof(buf) __t = (typeof(buf))malloc(sizeof(*buf) << buf##_m);\
-    if_ever (__t == NULL) return -ENOMEM;\
+    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
+    decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
+    if_ever (__t == NULL) error_action;\
     __t;\
 })
+#define _buf_init(buf, sz) _buf_init_err(buf, sz, return -ENOMEM)
 
 #define _buf_init_arr(buf, sz) ({\
     buf##_m = sz;\
-    fprintf(stderr, #buf " malloc, %lu\n", sizeof(*buf) << buf##_m);\
-    fflush(NULL);\
-    typeof(buf) __t = (typeof(buf))malloc(sizeof(*buf) << buf##_m);\
+    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
+    decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
     if_ever (__t == NULL) return -ENOMEM;\
     __t;\
 })
 
-#define _buf_grow(buf, step) \
+#define _buf_grow_err(buf, step, error_action) \
 if (buf##_l + step >= (1ul << buf##_m)) {\
-    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*buf) << (buf##_m + 1));\
-    fflush(NULL);\
-    typeof(buf) __t = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
-    if_ever (__t == NULL) return -ENOMEM;\
+    /*fprintf(stderr, #buf " realloc, %lu\n", sizeof(*(buf)) << (buf##_m + 1));fflush(NULL);*/\
+    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++(buf##_m));\
+    if_ever (__t == NULL) error_action;\
     buf = __t;\
 }
+#define _buf_grow(buf, step) _buf_grow_err(buf, step, return -ENOMEM)
+
 
 #define _buf_grow2(buf, step, s) \
 if (buf##_l + step >= (1ul << buf##_m)) {\
-    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*buf) << (buf##_m + 1));\
-    fflush(NULL);\
-    s = (typeof(buf))realloc(buf, sizeof(*buf) << ++buf##_m);\
+    /*fprintf(stderr, #buf " realloc, %lu\n", sizeof((*buf)) << (buf##_m + 1));fflush(NULL);*/\
+    s = (decltype(buf))realloc(buf, sizeof((*buf)) << ++(buf##_m));\
     if_ever (s == NULL) return -ENOMEM;\
     buf = s;\
     s += buf##_l;\
@@ -88,7 +88,6 @@ if (buf != NULL) {\
     free(buf);\
     /*buf = NULL;*/\
 }
-
 /* copy buffer and return pointer to one past it
  * s must be zero terminated, and out have sufficient size always.
  */
