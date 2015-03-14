@@ -66,17 +66,8 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define UNINITIALIZED (~0u)
 
-#define NO_MULTIMAPPER_YET 0
-#define NEW_MULTIMAPPER 2
-#define _MULTIMAPPER 0xff // 0xff is max for char
-#define GSZ_MAX 0xff000000
-
 #define INFERIORITY_BIT (1u<<31)
 #define ORIENTATION (1u<<30)
-
-#define NEEDS_UPDATE 0x8000000
-
-#define N_MASK ((1u << KEY_WIDTH) - 1u)
 
 #define ULL(x) ((unsigned __int128)(x))
 
@@ -141,34 +132,34 @@ struct Hdr {
     std::list<uint32_t> bnd; //
 };
 
-struct kct_t {
-    struct Tid {
-        Tid() { id = _buf_init_err(id, 0, id_m = 0x1f); }
-        ~Tid() { free(id); }
-        int add(char c) {
-            _buf_grow_err(id, 1ul, return -ENOMEM);
-            id[id_l++] = c;
-            return 0;
-        }
-        char* at(uint32_t l) const { return l < id_l ? id + l : NULL; }
-        unsigned l() const { return id_l; }
-        unsigned m() const { return id_m; }
-        bool operator () (uint32_t a, uint32_t b) const 
-        {
-            return strcmp(&id[a], &id[b]) == 0;
-        }
-    private:
-        char* id;
-        unsigned id_l: 27;
-        unsigned id_m: 5;
-    } tid;
+struct Tid {
+    Tid() { id = _buf_init_err(id, 0, id_m = 0x1f); }
+    ~Tid() { free(id); }
+    int add(char c) {
+        _buf_grow_err(id, 1ul, return -ENOMEM);
+        id[id_l++] = c;
+        return 0;
+    }
+    char* at(uint32_t l) const { return l < id_l ? id + l : NULL; }
+    unsigned l() const { return id_l; }
+    unsigned m() const { return id_m; }
+    bool operator () (uint32_t a, uint32_t b) const 
+    {
+        return strcmp(&id[a], &id[b]) == 0;
+    }
+private:
+    char* id;
+    unsigned id_l: 27;
+    unsigned id_m: 5;
+} tid;
 
+struct kct_t {
     uint32_t *kcsndx;
     Kct *kct;
     Bnd *bd;
-    std::list<Hdr*> h;
     uint32_t kct_l, bd_l;
     uint8_t kct_m, kcsndx_m, bd_m;
+    Tid tid;
     std::map<uint32_t, Hdr*, Tid> hdr;
 };
 

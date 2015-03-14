@@ -33,12 +33,13 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
 {
     int c;
     Hdr* h = new Hdr;
-    kc->h.push_back(h);
     h->hdr_type = ENSEMBL_HDR;
 
     uint32_t p = ID;
     h->part[p] = kc->tid.l();
+    EPR("HERE1, %u", kc->tid.l()); fflush(NULL);
     kc->hdr.insert(std::pair<uint32_t, Hdr*>(kc->tid.l(), h));
+    EPR("HERE2"); fflush(NULL);
     while ((c = gc(g)) != -1) {
         fputc(c, stderr);
         switch (c) {
@@ -94,7 +95,6 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
     }
     if (p < NR) 
         h->hdr_type = UNKNOWN_HDR;
-    EPR("list size:%lu", h->bnd.size());
 
     _buf_grow_err(kc->bd, 1ul, return NULL);
     ASSIGN_BD(kc->bd[kc->bd_l], NEW_REF_ID, ~0u, 0, ~0u, 0, 0);
@@ -118,9 +118,9 @@ void free_kc(kct_t* kc)
         if (k->seq.m > 3)
             free(k->p.b2);
 
-    std::list<Hdr*>::iterator it;
-    for (it = kc->h.begin(); it != kc->h.end(); ++it)
-        delete *it;
+    std::map<uint32_t, Hdr*, Tid>::iterator it;
+    for (it = kc->hdr.begin(); it != kc->hdr.end(); ++it)
+        delete it->second;
 
     _buf_free(kc->bd);
     _buf_free(kc->kct);
@@ -195,19 +195,17 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             continue;
         }
         // ndx (key) is 2nd cNt bit excised, rc or dna
-        EPR("first index: %u", kc->bd_l);
         _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
         kc->bd[kc->bd_l].dna = dna;
-        EPR("header type: %lu", h->bnd.size());
-        h->bnd.push_back(kc->bd_l++);
-        ndx = _get_ndx(ndx, b, dna, rc);
-        EPR("first index: 0x%lx", ndx);
+        h->bnd.push_back(kc->bd_l);
         do {
+            ndx = _get_ndx(ndx, b, dna, rc);
+            ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL)
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
                 ct = kc->kct + kc->kcsndx[ndx];
-                if (ct->seq.m == 3) { // Kct has seq format;
+                if (ct->seq.m == 3) { //EPR("Kct has seq format");
                     q = &ct->seq.b2[ct->seq.l >> 2];
-                    if ((ct->seq.l++ & 3) != 0) {
+                    if (ct->seq.l & 3) {
                         *q <<= 2;
                     } else {
                         b = ARRAY_SIZE(ct->seq.b2);
@@ -223,9 +221,10 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                             ct->p.b2 = q;
                             q += b;
                         }
+                        ++ct->seq.l;
                         *q = '\0';
                     }
-                } else { // Kct in p format;
+                } else { //EPR("Kct in p format");
                     q = ct->p.b2 + (ct->p.l >> 2);
                     if ((ct->p.l++ & 3) != 0) {
                         *q <<= 2;
@@ -238,15 +237,16 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                         *q = '\0';
                     }
                 }
-            } else { // new key
-                //EPR("%x", ndx);
+            } else { //EPR("new key 0x%lx at %u", ndx, b2pos);
                 _buf_grow(kc->kct, 1ul);
                 kc->kcsndx[ndx] = kc->kct_l;
                 ct = kc->kct + kc->kct_l++;
                 ct->seq = {.m = 3, .l = 1, 0}; // init remaining to zero
+                q = ct->seq.b2;
             }
             // next iteration ...
-            while (isspace(c = gc(g)));
+            int boo = 0;
+            while (++boo, isspace(c = gc(g)));
             b ^= b;
             switch(c) {
                 case 'C': case 'c': b = 2;
@@ -254,10 +254,17 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 case 'T': case 'U': case 't': case 'u': b ^= 2;
                     *q |= b; // append next 2bit to last ndx
                 case 'A': case 'a': dna = _seq_next(b, dna, rc);
+                    ++b2pos;
+                continue;
             }
+            EPR("%c", c);
+            break;
         } while (c >= 0);
+        --b2pos;
+        EPR("processed %u Nts for %s", b2pos, kc->tid.at(h->part[0]));
         ASSERT(b2pos + addpos < endpos, return -ERANGE);
         DEBUG_ASSIGN_ENDDNA(kc->bd[kc->bd_l].end_dna, dna);
+        ++kc->bd_l;
     }
     if (h == NULL)
         return -EFAULT;
@@ -283,7 +290,7 @@ static inline uint64_t revcmp(uint64_t dna)
 }
 
 
-int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
+int extend_uniq(kct_t* kc, unsigned ext)
 {
     uint64_t t = kc->kct_l * sizeof(Walker), dna = 0ul;
     Walker* wlkr = (Walker*)malloc(t);
@@ -294,16 +301,23 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
 
     do { // until no no more new uniques
         uqct = 0;
-        std::list<Hdr*>::iterator h;
-        for (h = kc->h.begin(); h != kc->h.end(); ++h) { // over ref headers
-            std::list<uint32_t>::iterator bdit = (*h)->bnd.begin();
-            Bnd* bd = &kc->bd[*bdit];
+        std::map<uint32_t, Hdr*, Tid>::iterator h;
+        for (h = kc->hdr.begin(); h != kc->hdr.end(); ++h) { // over ref headers
 
+            std::list<uint32_t>::iterator bdit = h->second->bnd.begin();
+
+            // first is special: chromo, which marks start and end of chromosome
+            Bnd* bd = &kc->bd[*bdit];
             uint32_t pos = bd->s, endpos = bd->l;
-            do { // over events (stretches and maybe later, SNVs, splice sites)
-                ASSERT(pos < endpos, return -EINVAL);
+
+            for (++bdit; bdit != h->second->bnd.end(); ++bdit) {
+                // loop over events (stretches and maybe later, SNVs, splice sites)
+
                 dna = bd->dna;
                 uint64_t rc = revcmp(dna);
+                bd = &kc->bd[*bdit];
+
+                ASSERT(pos < endpos, return -EINVAL, ":%u < %u", pos, endpos);
                 wAt = &wbuf[ext];
                 uint32_t infior = 1;
                 uint32_t bd_i = kc->bd_l;
@@ -325,7 +339,7 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
                         } else { // actually buf just became full, without extension or already handled..
                             infior = 0;
 
-                            if (bd_i != kc->bd_l) (*h)->bnd.insert(bdit, bd_i++);
+                            if (bd_i != kc->bd_l) h->second->bnd.insert(bdit, bd_i++);
                             // add tmp_count for each - we cannot extend it in this iteration
                             for (wAt = &wbuf[ext - 1]; wAt != wbuf; --wAt) {
                                 wlkr[*wAt].count += wlkr[*wAt].tmp_count;
@@ -341,8 +355,8 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
                         else ++w->tmp_count;
                         continue;
                     }
-                    ASSERT(t < y->seq.l, return -EINVAL);
-                    t = y->seq.b2[t >> 2] >> (t << 1);
+                    ASSERT(t < y->seq.l, return -EINVAL, ":\t%s\t%u", kc->tid.at(h->second->part[0]), pos);
+                    t = y->seq.b2[t >> 2] >> (t << 1); // XXX
                     if (y->seq.l > 1) {
                         if (wAt == wbuf) ++w->count;
                         else ++w->tmp_count;
@@ -394,26 +408,12 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
                 ASSERT(kc->bd[*bdit].end_dna = dna, return -EFAULT);
 #endif
                 pos += kc->bd[*bdit].l;
-            } while (++bdit != (*h)->bnd.end());
+            }
             EPR("extended %u uinique ranges in iteration %u", uqct, ++iter);
         }
     } while (uqct != 0);
     free(wlkr);
     free(wbuf);
-}
-
-// process keys and occurance in each range
-// returns zero on success, negative on error
-int get_all_unique(kct_t* kc, unsigned readlength)
-{
-    int uq, gi = 0;
-    uint32_t* fk = NULL; // former_keys alloc on first iteration in extd_uniq();
-    do {
-        uq = extd_uniq(kc, fk, readlength - KEY_WIDTH);
-        EPR("%i unique regions extended in genome iteration %u", uq, ++gi);
-    } while (uq > 0);
-    free(fk);
-    return uq;
 }
 
 int
@@ -469,8 +469,9 @@ int fa_index(struct seqb2_t* seq)
     }
     /* TODO: load dbSNP and known sites, and mark them. */
     res = fa_kc(&kc, g, gc);
+    EPR("left fa_kc");fflush(NULL);
     ASSERT(res >= 0, goto out);
-    res = get_all_unique(&kc, seq->readlength);
+    res = extend_uniq(&kc, seq->readlength - KEY_WIDTH);
     ASSERT(res >= 0, goto out);
 
     ret = res != 0;
