@@ -21,6 +21,7 @@
 #include <pcre.h>
 #include "fa.h"
 
+
 enum ensembl_parts {ID,  SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META};
 
@@ -28,24 +29,24 @@ enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, END_REF, DBSNP, KNOWN_SITE};
 
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
-Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
+Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
 {
     int c;
     Hdr* h = new Hdr;
+    kc->h.push_back(h);
     h->hdr_type = ENSEMBL_HDR;
 
-    h->id = _buf_init_err(h->id, 2, return NULL);
-    unsigned p = ID;
-    h->part[p] = h->id;
+    uint32_t p = ID;
+    h->part[p] = kc->tid.l();
+    kc->hdr.insert(std::pair<uint32_t, Hdr*>(kc->tid.l(), h));
     while ((c = gc(g)) != -1) {
         fputc(c, stderr);
         switch (c) {
             case '\n': break;
             case ' ':
-                _buf_grow_err(h->id, 1ul, return NULL);
-                h->id[h->id_l++] = '\0';
+                if (kc->tid.add('\0')) return NULL;
                 if (p == IDTYPE) {
-                    char* q = h->part[p];
+                    char* q = kc->tid.at(h->part[p]);
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
                             strncmp(q, "supercontig", strlen(q)) != 0 &&
                             strncmp(q, "nonchromosomal", strlen(q)) != 0)
@@ -54,15 +55,14 @@ Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
                     h->hdr_type = UNKNOWN_HDR;
                 }
                 if (p < ARRAY_SIZE(h->part))
-                    h->part[++p] = h->id;
+                    h->part[++p] = kc->tid.l();
                 continue;
             case ':': 
-                _buf_grow_err(h->id, 1ul, return NULL);
-                h->id[h->id_l++] = '\0';
+                if (kc->tid.add('\0')) return NULL;
                 if (p == ID || p == IDTYPE)
                     h->hdr_type = UNKNOWN_HDR;
                 else if (p == SEQTYPE) {
-                    char* q = h->part[p];
+                    char* q = kc->tid.at(h->part[p]);
                     if (strncmp(q, "dna", strlen(q)) != 0) {
                         if (strncmp(q, "dna_rm", strlen(q)) == 0) {
                             EPR("\nWARNING: reference is repeatmasked");
@@ -75,43 +75,40 @@ Hdr *new_header(kct_t* kc, void* g, int (*gc) (void*), Bnd *bd)
                         } else if (strncmp(q, "rna", strlen(q)) == 0) {
                             EPR("\nWARNING: aligning against rna");
                         } else { // could still be ok.
-                            EPR("\nWARNING: non-ensembl ref");
                             h->hdr_type = UNKNOWN_HDR;
                         }
                     }
                 }
                 if (p < ARRAY_SIZE(h->part))
-                    h->part[++p] = h->id;
+                    h->part[++p] = kc->tid.l();
                 continue;
             default:
                 if (isspace(c)) {
                     c = '\0';
                     h->hdr_type = UNKNOWN_HDR;
                 }
-                _buf_grow_err(h->id, 1ul, return NULL);
-                h->id[h->id_l++] = c;
+                if (kc->tid.add(c)) return NULL;
                 continue;
         }
         break;
     }
     if (p < NR) 
         h->hdr_type = UNKNOWN_HDR;
+    EPR("list size:%lu", h->bnd.size());
 
     _buf_grow_err(kc->bd, 1ul, return NULL);
-    bd = &kc->bd[kc->bd_l++];
-    ASSIGN_BD(bd, NEW_REF_ID, ~0u, 0, ~0u, 0, 0);
+    ASSIGN_BD(kc->bd[kc->bd_l], NEW_REF_ID, ~0u, 0, ~0u, 0, 0);
 
     if (h->hdr_type == ENSEMBL_HDR) {
         h->p_l = p;
-        p = atoi(h->part[START]);
+        p = atoi(kc->tid.at(h->part[START]));
         if (p != 1)
-            bd->s = p;
-        bd->l = atoi(h->part[END]);
+            kc->bd[kc->bd_l].s = p;
+        kc->bd[kc->bd_l].l = atoi(kc->tid.at(h->part[END]));
     } else {
         h->p_l = 1;
         EPR("\nWARNING: non-ensembl reference.");
     }
-    kc->hdr.insert(Map::value_type(h->id, h));
     return h;
 }
 
@@ -121,10 +118,10 @@ void free_kc(kct_t* kc)
         if (k->seq.m > 3)
             free(k->p.b2);
 
-    for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h)
-        free(h->id);
+    std::list<Hdr*>::iterator it;
+    for (it = kc->h.begin(); it != kc->h.end(); ++it)
+        delete *it;
 
-    _buf_free(kc->h);
     _buf_free(kc->bd);
     _buf_free(kc->kct);
     _buf_free(kc->kcsndx);
@@ -144,13 +141,11 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
     Kct *ct = NULL;
     uint8_t *q = NULL;
     Hdr* h = NULL;
-    Bnd* bd = NULL;
 
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
-        DEBUG_ASSIGN_ENDDNA(bd, dna);
         if (c != '>') { // N-stretch
             t = 0; // use  to count stretch (key is rebuilt later)
             do {
@@ -164,21 +159,21 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 c = gc(g);
             } while(c != -1);
             _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-            bd = &kc->bd[kc->bd_l++];
-            ASSIGN_BD(bd, N_STRETCH, ~0u, b2pos + addpos, t, 0, dna);
+            ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t, 0, dna);
             addpos += t;
         } else { // header
             if (h != NULL) {
+                // add enddna as length to first element, the chromome boundary.
+                DEBUG_ASSIGN_ENDDNA(kc->bd[*(h->bnd.begin())].end_dna, dna);
                 _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-                bd = &kc->bd[kc->bd_l++];
-                ASSIGN_BD(bd, END_REF, ~0u, b2pos + addpos, 0, 0, dna);
-                h->bnd.push_back(bd);
+                ASSIGN_BD(kc->bd[kc->bd_l], END_REF, ~0u, b2pos + addpos, 0, 0, dna);
+                h->bnd.push_back(kc->bd_l++);
             }
             b2pos = 0u;
-            Hdr* h = new_header(kc, g, gc, bd);
-            if (h == NULL) return -ENOMEM;
-            addpos = bd->s;
-            endpos = bd->l;
+            h = new_header(kc, g, gc);
+            if (h == NULL) return -EFAULT;
+            addpos = kc->bd[kc->bd_l].s;
+            endpos = kc->bd[kc->bd_l].l;
             c = gc(g);
         }
         for (t = b2pos + KEY_WIDTH; b2pos != t; ++b2pos) {
@@ -194,12 +189,19 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             }
             break;
         }
-        if_ever (b2pos != t) // c == -1, 'N' or '>'
+        if_ever (b2pos != t) {// c == -1, 'N' or '>'
+            EPR("key incomplete before next boundary - "
+                    "may cause enddna assertion failure");
             continue;
+        }
         // ndx (key) is 2nd cNt bit excised, rc or dna
-        bd->dna = dna;
-        h->bnd.push_back(bd);
+        EPR("first index: %u", kc->bd_l);
+        _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+        kc->bd[kc->bd_l].dna = dna;
+        EPR("header type: %lu", h->bnd.size());
+        h->bnd.push_back(kc->bd_l++);
         ndx = _get_ndx(ndx, b, dna, rc);
+        EPR("first index: 0x%lx", ndx);
         do {
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
                 ct = kc->kct + kc->kcsndx[ndx];
@@ -255,14 +257,15 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             }
         } while (c >= 0);
         ASSERT(b2pos + addpos < endpos, return -ERANGE);
+        DEBUG_ASSIGN_ENDDNA(kc->bd[kc->bd_l].end_dna, dna);
     }
-    if (h != NULL) {
-        DEBUG_ASSIGN_ENDDNA(bd, dna);
-        _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-        bd = &kc->bd[kc->bd_l++];
-        ASSIGN_BD(bd, END_REF, ~0u, b2pos + addpos, 0, 0, dna);
-        h->bnd.push_back(bd);
-    }
+    if (h == NULL)
+        return -EFAULT;
+    // add enddna as length to first element, the chromome boundary.
+    DEBUG_ASSIGN_ENDDNA(kc->bd[*(h->bnd.begin())].end_dna, dna);
+    _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+    ASSIGN_BD(kc->bd[kc->bd_l], END_REF, ~0u, b2pos + addpos, 0, 0, dna);
+    h->bnd.push_back(kc->bd_l++);
     //EPR("%s, %u stored", str, bd.len & NR_MASK);
     return 0;
 }
@@ -287,46 +290,46 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
     memset(wlkr, 0ul, t);
     uint32_t uqct, iter = 0;
     uint32_t* wbuf = (uint32_t*)malloc(ext * sizeof(uint32_t));
-    uint32_t* wat;
+    uint32_t* wAt;
 
-    do { // untile no no more new uniques
+    do { // until no no more new uniques
         uqct = 0;
-        for (Hdr* h = kc->h; h != &kc->h[kc->h_l]; ++h) { // over ref headers
-            std::list<Bnd*>::iterator bd = h->bnd.begin();
+        std::list<Hdr*>::iterator h;
+        for (h = kc->h.begin(); h != kc->h.end(); ++h) { // over ref headers
+            std::list<uint32_t>::iterator bdit = (*h)->bnd.begin();
+            Bnd* bd = &kc->bd[*bdit];
 
-
-            uint32_t pos = (*bd)->s, endpos = (*bd)->l;
-            do { // over events (stretches and maybe later, snvs)
+            uint32_t pos = bd->s, endpos = bd->l;
+            do { // over events (stretches and maybe later, SNVs, splice sites)
                 ASSERT(pos < endpos, return -EINVAL);
-                dna = (*bd)->dna;
+                dna = bd->dna;
                 uint64_t rc = revcmp(dna);
-                wat = &wbuf[ext];
+                wAt = &wbuf[ext];
                 uint32_t infior = 1;
-                Bnd* B = NULL;
+                uint32_t bd_i = kc->bd_l;
 
-                for (;pos != (*bd)->s; ++pos) { // until next event
+                for (;pos != bd->s; ++pos) { // until next event
                     uint64_t ndx = _get_ndx(ndx, t, dna, rc);
 
                     Kct *y = kc->kct + kc->kcsndx[ndx];
                     Walker* w = &wlkr[ndx];
-                    if (wat != wbuf) {
-                        if (--wat) {
-                            if (wat == &wbuf[ndx-1]) {
-                                B->dna = dna;
-                                B->l = pos - B->s;
+                    if (wAt != wbuf) { // keep filling the buffer
+                        if (--wAt) {
+                            if (wAt == &wbuf[ndx-1]) {
+                                kc->bd[bd_i].dna = dna;
+                                kc->bd[bd_i].l = pos - kc->bd[bd_i].s;
                             }
-                            *wat = ndx;
+                            *wAt = ndx;
                             if (infior > w->infior)
                                 w->infior = infior;
-                        } else {
+                        } else { // actually buf just became full, without extension or already handled..
                             infior = 0;
-                            if (B != NULL)
-                                h->bnd.insert(bd,B);
-                            B = NULL;
-                            // add tmp_count for each
-                            for (wat = &wbuf[ext - 1]; wat != wbuf; --wat) {
-                                wlkr[*wat].count += wlkr[*wat].tmp_count;
-                                wlkr[*wat].tmp_count = 0;
+
+                            if (bd_i != kc->bd_l) (*h)->bnd.insert(bdit, bd_i++);
+                            // add tmp_count for each - we cannot extend it in this iteration
+                            for (wAt = &wbuf[ext - 1]; wAt != wbuf; --wAt) {
+                                wlkr[*wAt].count += wlkr[*wAt].tmp_count;
+                                wlkr[*wAt].tmp_count = 0;
                             }
                         }
                     }
@@ -334,32 +337,32 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
                     if (y->seq.m > 3) {
                         ASSERT(t < y->p.l, return -EINVAL);
                         t = y->p.b2[t >> 2] >> (t << 1);
-                        if (wat == wbuf) ++w->count;
+                        if (wAt == wbuf) ++w->count;
                         else ++w->tmp_count;
                         continue;
                     }
                     ASSERT(t < y->seq.l, return -EINVAL);
                     t = y->seq.b2[t >> 2] >> (t << 1);
                     if (y->seq.l > 1) {
-                        if (wat == wbuf) ++w->count;
+                        if (wAt == wbuf) ++w->count;
                         else ++w->tmp_count;
                         continue;
                     }
                     // found unique
-                    if (wat == wbuf) {
+                    if (wAt == wbuf) {
                         // found first unique
-                        wat = &wbuf[ext];
+                        wAt = &wbuf[ext];
                         infior = w[ndx].infior + 1;
                         continue;
                     }
                     // insert range
-                    if (B == NULL) {
+                    if (bd_i == kc->bd_l) {
                         _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-                        B = &kc->bd[kc->bd_l++];
-                        ASSIGN_BD(B, UQ_REGION, ~0u, pos, 0u, infior, dna);
+                        ASSIGN_BD(kc->bd[kc->bd_l], UQ_REGION, ~0u, pos, 0u, infior, dna);
+                        ++kc->bd_l;
                     }
 
-                    for (uint32_t* z = &wbuf[ext - 1]; z != wat; --z) {
+                    for (uint32_t* z = &wbuf[ext - 1]; z != wAt; --z) {
                         ndx = *z;
                         Kct *x = kc->kct + kc->kcsndx[ndx];
                         // excise out twobits, i.e. shift 2bits
@@ -383,15 +386,15 @@ int extd_uniq(kct_t* kc, uint32_t* fk, unsigned ext)
                         }
                         wlkr[ndx].tmp_count = 0;
                     }
-                    wat =  &wbuf[ext];
+                    wAt =  &wbuf[ext];
                     ++uqct;
                     // found second unique
                 }
 #ifdef TEST_BND
-                ASSERT((*bd)->end_dna = dna, return -EFAULT);
+                ASSERT(kc->bd[*bdit].end_dna = dna, return -EFAULT);
 #endif
-                pos += (*bd)->l;
-            } while (++bd != h->bnd.end());
+                pos += kc->bd[*bdit].l;
+            } while (++bdit != (*h)->bnd.end());
             EPR("extended %u uinique ranges in iteration %u", uqct, ++iter);
         }
     } while (uqct != 0);
@@ -451,10 +454,9 @@ int fa_index(struct seqb2_t* seq)
     fhout->name = &file[0];
 
     kct_t kc;
-    kc.kct = _buf_init(kc.kct, 16);
-    kc.h = _buf_init(kc.h, 0);
-    kc.bd = _buf_init(kc.bd, 0);
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
+    kc.kct = _buf_init(kc.kct, 16);
+    kc.bd = _buf_init(kc.bd, 0);
     // the first entry (0) is for a reference ID always.
     memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
 

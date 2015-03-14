@@ -16,6 +16,13 @@
 #include "fa.h"
 #include "fq.h"
 
+#ifndef PROGRAM_NAME
+# define PROGRAM_NAME "uqct"
+#endif
+#ifndef PROGRAM_VERSION
+# define PROGRAM_VERSION "0.006"
+#endif
+
 static int
 b2_write(const gzfh_t *fh, const char *s, uint64_t l,
         const size_t sz)

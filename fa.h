@@ -92,16 +92,13 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define TEST_BND 1
 #ifdef TEST_BND
-# define DEBUG_ASSIGN_ENDDNA(bd, dna) \
-        if (bd != NULL) {\
-            bd->end_dna = dna;\
-        }
+# define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) (end_dna_ref) = (dna)
 #define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        *_bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .end_dna = _e};
+        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .end_dna = _e};
 #else
-# define DEBUG_ASSIGN_ENDDNA(bd, dna)
+# define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) //nothing
 #define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        *_bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
+        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
 #endif
 
 typedef packed_struct bnd_t {
@@ -115,7 +112,7 @@ typedef packed_struct bnd_t {
 #endif
 } Bnd;
 
-typedef union {
+union Kct {
     packed_struct {
         uint8_t m;
         uint8_t l;
@@ -128,42 +125,52 @@ typedef union {
         uint8_t* b2; // next_b2_0|next_b2_1|next_b2_2|next_b2_3|... 
     } p;
     Bnd rng;
-} Kct;
+};
 
-typedef packed_struct rng_t {
+packed_struct Walker {
     uint32_t count;
     uint32_t infior: 22; //b2pos start and end of range
     uint32_t tmp_count: 10;
-} Walker;
-
-typedef struct {
-    char* id;
-    char* part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    uint32_t end_b2pos;
-    uint16_t id_l;
-    uint8_t hdr_type;
-    uint8_t id_m: 4;
-    uint8_t p_l: 4;
-    std::list<Bnd*> bnd;
-} Hdr;
-
-struct char_cmp { 
-    bool operator () (const char *a,const char *b) const 
-    {
-        return strcmp(a,b) == 0;
-    } 
 };
-typedef std::map<char*, Hdr*, char_cmp> Map;
 
-typedef struct kct {
+struct Hdr {
+    uint32_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+    uint32_t end_b2pos;
+    uint8_t hdr_type;
+    uint8_t p_l;
+    std::list<uint32_t> bnd; //
+};
+
+struct kct_t {
+    struct Tid {
+        Tid() { id = _buf_init_err(id, 0, id_m = 0x1f); }
+        ~Tid() { free(id); }
+        int add(char c) {
+            _buf_grow_err(id, 1ul, return -ENOMEM);
+            id[id_l++] = c;
+            return 0;
+        }
+        char* at(uint32_t l) const { return l < id_l ? id + l : NULL; }
+        unsigned l() const { return id_l; }
+        unsigned m() const { return id_m; }
+        bool operator () (uint32_t a, uint32_t b) const 
+        {
+            return strcmp(&id[a], &id[b]) == 0;
+        }
+    private:
+        char* id;
+        unsigned id_l: 27;
+        unsigned id_m: 5;
+    } tid;
+
     uint32_t *kcsndx;
     Kct *kct;
     Bnd *bd;
-    Hdr *h;
-    uint32_t kct_l, bd_l, h_l;
-    uint8_t kct_m, kcsndx_m, bd_m, h_m;
-    Map hdr;
-} kct_t;
+    std::list<Hdr*> h;
+    uint32_t kct_l, bd_l;
+    uint8_t kct_m, kcsndx_m, bd_m;
+    std::map<uint32_t, Hdr*, Tid> hdr;
+};
 
 int fa_index(seqb2_t *seq);
 int fa_print(seqb2_t *fa);
