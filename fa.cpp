@@ -323,8 +323,9 @@ int extend_uniq(kct_t* kc, unsigned ext)
 
                 for (;pos != bd->s; ++pos) { // until next event
                     uint64_t ndx = _get_ndx(ndx, t, dna, rc);
+                    ndx = kc->kcsndx[ndx];
 
-                    Kct *y = kc->kct + kc->kcsndx[ndx];
+                    Kct *y = kc->kct + ndx;
                     Walker* w = &wlkr[ndx];
                     if (wAt != wbuf) { // keep filling the buffer
                         if (--wAt) {
@@ -372,12 +373,13 @@ int extend_uniq(kct_t* kc, unsigned ext)
                     if (bd_i == kc->bd_l) {
                         _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
                         ASSIGN_BD(kc->bd[kc->bd_l], UQ_REGION, ~0u, pos, 0u, infior, dna);
+                        bd = &kc->bd[*bdit];
                         ++kc->bd_l;
                     }
 
                     for (uint32_t* z = &wbuf[ext - 1]; z != wAt; --z) {
                         ndx = *z;
-                        Kct *x = kc->kct + kc->kcsndx[ndx];
+                        Kct *x = kc->kct + ndx;
                         // excise out twobits, i.e. shift 2bits
                         uint8_t* q, *qe;
                         if (x->seq.m == 3) {
