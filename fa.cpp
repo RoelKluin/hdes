@@ -137,7 +137,7 @@ void free_kc(kct_t* kc)
  * store per key the count and the last position.
  */
 static int
-fa_kc(kct_t* kc, void* g, int (*gc) (void*))
+fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 {
     uint64_t dna = 0, rc = 0, ndx, b = 0;
     uint32_t b2pos = 0u, addpos = 0u, endpos = 0u;
@@ -163,6 +163,8 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                 }
                 c = gc(g);
             } while(c != -1);
+            if (c == -1) break;
+            ungc(c, g);
             _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
             ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t, 0, dna);
             addpos += t;
@@ -179,18 +181,15 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
             if (h == NULL) return -EFAULT;
             addpos = kc->bd[kc->bd_l].s;
             endpos = kc->bd[kc->bd_l].l;
-            c = gc(g);
         }
         for (t = b2pos + KEY_WIDTH; b2pos != t; ++b2pos) {
             b ^= b;
-            switch(c) {
+            switch(c = gc(g)) {
                 case 'C': case 'c': b = 2;
                 case 'G': case 'g': b ^= 1;
                 case 'U': case 'u': case 'T': case 't': b ^= 2;
                 case 'A': case 'a': dna = _seq_next(b, dna, rc);
-                case '\n':
-                    c = gc(g);
-                    continue;
+                case '\n': continue;
             }
             break;
         }
@@ -470,6 +469,7 @@ int fa_index(struct seqb2_t* seq)
     int res, ret = -1;
     void* g;
     int (*gc) (void*);
+    int (*ungc) (int, void*);
     int is_gzfile = fhin->io != NULL;
     char file[256];
 
@@ -499,12 +499,14 @@ int fa_index(struct seqb2_t* seq)
     if (is_gzfile) {
         g = fhin->io;
         gc = (int (*)(void*))&gzgetc;
+        ungc = (int (*)(int, void*))&gzungetc;
     } else {
         g = fhin->fp;
         gc = (int (*)(void*))&fgetc;
+        ungc = (int (*)(int, void*))&ungetc;
     }
     /* TODO: load dbSNP and known sites, and mark them. */
-    res = fa_kc(&kc, g, gc);
+    res = fa_kc(&kc, g, gc, ungc);
     EPR("left fa_kc");fflush(NULL);
     ASSERT(res >= 0, goto out);
     res = extend_uniq(&kc, seq->readlength - KEY_WIDTH);
