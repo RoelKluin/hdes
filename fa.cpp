@@ -36,18 +36,15 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
     h->hdr_type = ENSEMBL_HDR;
 
     uint32_t p = ID;
-    h->part[p] = kc->tid.l();
-    EPR("HERE1, %u", kc->tid.l()); fflush(NULL);
-    kc->hdr.insert(std::pair<uint32_t, Hdr*>(kc->tid.l(), h));
-    EPR("HERE2"); fflush(NULL);
+    h->part[p] = kc->id_l;
     while ((c = gc(g)) != -1) {
-        fputc(c, stderr);
+        //fputc(c, stderr);
         switch (c) {
-            case '\n': break;
+            case '\n': _buf_grow_add_err(kc->id, 1ul, '\0', return NULL); break;
             case ' ':
-                if (kc->tid.add('\0')) return NULL;
+                _buf_grow_add_err(kc->id, 1ul, '\0', return NULL);
                 if (p == IDTYPE) {
-                    char* q = kc->tid.at(h->part[p]);
+                    char* q = &kc->id[h->part[p]];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
                             strncmp(q, "supercontig", strlen(q)) != 0 &&
                             strncmp(q, "nonchromosomal", strlen(q)) != 0)
@@ -56,14 +53,14 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
                     h->hdr_type = UNKNOWN_HDR;
                 }
                 if (p < ARRAY_SIZE(h->part))
-                    h->part[++p] = kc->tid.l();
+                    h->part[++p] = kc->id_l;
                 continue;
             case ':': 
-                if (kc->tid.add('\0')) return NULL;
+                _buf_grow_add_err(kc->id, 1ul, '\0', return NULL);
                 if (p == ID || p == IDTYPE)
                     h->hdr_type = UNKNOWN_HDR;
                 else if (p == SEQTYPE) {
-                    char* q = kc->tid.at(h->part[p]);
+                    char* q = &kc->id[h->part[p]];
                     if (strncmp(q, "dna", strlen(q)) != 0) {
                         if (strncmp(q, "dna_rm", strlen(q)) == 0) {
                             EPR("\nWARNING: reference is repeatmasked");
@@ -81,14 +78,14 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
                     }
                 }
                 if (p < ARRAY_SIZE(h->part))
-                    h->part[++p] = kc->tid.l();
+                    h->part[++p] = kc->id_l;
                 continue;
             default:
                 if (isspace(c)) {
                     c = '\0';
                     h->hdr_type = UNKNOWN_HDR;
                 }
-                if (kc->tid.add(c)) return NULL;
+                _buf_grow_add_err(kc->id, 1ul, c, return NULL);
                 continue;
         }
         break;
@@ -96,15 +93,16 @@ Hdr* new_header(kct_t* kc, void* g, int (*gc) (void*))
     if (p < NR) 
         h->hdr_type = UNKNOWN_HDR;
 
+    kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], h));
     _buf_grow_err(kc->bd, 1ul, return NULL);
     ASSIGN_BD(kc->bd[kc->bd_l], NEW_REF_ID, ~0u, 0, ~0u, 0, 0);
 
     if (h->hdr_type == ENSEMBL_HDR) {
         h->p_l = p;
-        p = atoi(kc->tid.at(h->part[START]));
+        p = atoi(kc->id + h->part[START]);
         if (p != 1)
             kc->bd[kc->bd_l].s = p;
-        kc->bd[kc->bd_l].l = atoi(kc->tid.at(h->part[END]));
+        kc->bd[kc->bd_l].l = atoi(kc->id + h->part[END]);
     } else {
         h->p_l = 1;
         EPR("\nWARNING: non-ensembl reference.");
@@ -118,10 +116,11 @@ void free_kc(kct_t* kc)
         if (k->seq.m > 3)
             free(k->p.b2);
 
-    std::map<uint32_t, Hdr*, Tid>::iterator it;
+    std::map<char*, Hdr*, Tid>::iterator it;
     for (it = kc->hdr.begin(); it != kc->hdr.end(); ++it)
         delete it->second;
 
+    _buf_free(kc->id);
     _buf_free(kc->bd);
     _buf_free(kc->kct);
     _buf_free(kc->kcsndx);
@@ -257,11 +256,11 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*))
                     ++b2pos;
                 continue;
             }
-            EPR("%c", c);
+            //EPR("%c", c);
             break;
         } while (c >= 0);
         --b2pos;
-        EPR("processed %u Nts for %s", b2pos, kc->tid.at(h->part[0]));
+        EPR("processed %u Nts for %s", b2pos, kc->id + h->part[0]);
         ASSERT(b2pos + addpos < endpos, return -ERANGE);
         DEBUG_ASSIGN_ENDDNA(kc->bd[kc->bd_l].end_dna, dna);
         ++kc->bd_l;
@@ -301,7 +300,7 @@ int extend_uniq(kct_t* kc, unsigned ext)
 
     do { // until no no more new uniques
         uqct = 0;
-        std::map<uint32_t, Hdr*, Tid>::iterator h;
+        std::map<char*, Hdr*, Tid>::iterator h;
         for (h = kc->hdr.begin(); h != kc->hdr.end(); ++h) { // over ref headers
 
             std::list<uint32_t>::iterator bdit = h->second->bnd.begin();
@@ -355,7 +354,7 @@ int extend_uniq(kct_t* kc, unsigned ext)
                         else ++w->tmp_count;
                         continue;
                     }
-                    ASSERT(t < y->seq.l, return -EINVAL, ":\t%s\t%u", kc->tid.at(h->second->part[0]), pos);
+                    ASSERT(t < y->seq.l, return -EINVAL, ":\t%s\t%u", kc->id + h->second->part[0], pos);
                     t = y->seq.b2[t >> 2] >> (t << 1); // XXX
                     if (y->seq.l > 1) {
                         if (wAt == wbuf) ++w->count;
@@ -457,6 +456,11 @@ int fa_index(struct seqb2_t* seq)
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
     kc.kct = _buf_init(kc.kct, 16);
     kc.bd = _buf_init(kc.bd, 0);
+
+    // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
+    // (realloc would invalidate pointers inserted in kc->hdr)
+    kc.id = _buf_init(kc.id, 20);
+
     // the first entry (0) is for a reference ID always.
     memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
 

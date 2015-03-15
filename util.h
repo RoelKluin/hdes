@@ -64,6 +64,14 @@ if (!(cond)) { \
     __t;\
 })
 
+#define _buf_grow_err_print(buf, step, error_action) \
+if (buf##_l + step >= (1ul << buf##_m)) {\
+    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*(buf)) << (buf##_m + 1));fflush(NULL);\
+    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++(buf##_m));\
+    if_ever (__t == NULL) error_action;\
+    buf = __t;\
+}
+
 #define _buf_grow_err(buf, step, error_action) \
 if (buf##_l + step >= (1ul << buf##_m)) {\
     /*fprintf(stderr, #buf " realloc, %lu\n", sizeof(*(buf)) << (buf##_m + 1));fflush(NULL);*/\
@@ -72,6 +80,11 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     buf = __t;\
 }
 #define _buf_grow(buf, step) _buf_grow_err(buf, step, return -ENOMEM)
+#define _buf_grow_add_err(buf, step, add, error_action) ({\
+    _buf_grow_err(buf, step, error_action);\
+    buf[buf##_l++] = add;\
+})
+
 
 
 #define _buf_grow2(buf, step, s) \

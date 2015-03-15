@@ -125,42 +125,29 @@ packed_struct Walker {
 };
 
 struct Hdr {
-    uint32_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     uint32_t end_b2pos;
+    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     uint8_t hdr_type;
     uint8_t p_l;
     std::list<uint32_t> bnd; //
 };
 
 struct Tid {
-    Tid() { id = _buf_init_err(id, 0, id_m = 0x1f); }
-    ~Tid() { free(id); }
-    int add(char c) {
-        _buf_grow_err(id, 1ul, return -ENOMEM);
-        id[id_l++] = c;
-        return 0;
-    }
-    char* at(uint32_t l) const { return l < id_l ? id + l : NULL; }
-    unsigned l() const { return id_l; }
-    unsigned m() const { return id_m; }
-    bool operator () (uint32_t a, uint32_t b) const 
+    bool operator () (char*a, char* b) const 
     {
-        return strcmp(&id[a], &id[b]) == 0;
+        return strcmp(a, b) < 0;
     }
-private:
-    char* id;
-    unsigned id_l: 27;
-    unsigned id_m: 5;
-} tid;
+};
 
 struct kct_t {
     uint32_t *kcsndx;
     Kct *kct;
     Bnd *bd;
-    uint32_t kct_l, bd_l;
-    uint8_t kct_m, kcsndx_m, bd_m;
+    char* id;
+    uint32_t kct_l, bd_l, id_l;
+    uint8_t kct_m, kcsndx_m, bd_m, id_m;
     Tid tid;
-    std::map<uint32_t, Hdr*, Tid> hdr;
+    std::map<char*, Hdr*, Tid> hdr;
 };
 
 int fa_index(seqb2_t *seq);
