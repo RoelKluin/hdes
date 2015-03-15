@@ -20,15 +20,23 @@
 #include "gz.h"
 #define BUF_STACK (1 << 22)
 
-#define _seq_next(b, dna, rc) ({\
+#define __seq_le_n(b, dna, rc) ({\
     rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
     ((dna << 2) & KEYNT_MASK) | b;\
 })
-
-#define _seq_prev(b, dna, rc) ({\
+#define __seq_le_p(b, dna, rc) ({\
     rc = ((rc << 2) & KEYNT_MASK) | (b ^ 2);\
     (b << KEYNT_TOP) | (dna >> 2);\
 })
+
+#ifdef B2_LITTLE_ENDIAN
+# define _seq_next __seq_le_n
+# define _seq_prev __seq_le_p
+#else
+# define _seq_next __seq_le_p
+# define _seq_prev __seq_le_n
+#endif
+
 
 #define read_b2(s, p) ((s[(p)>>2] >> (((p) & 3) << 1)) & 3)
 
@@ -147,6 +155,7 @@ struct kct_t {
     uint32_t kct_l, bd_l, id_l;
     uint8_t kct_m, kcsndx_m, bd_m, id_m;
     Tid tid;
+    std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;
 };
 
