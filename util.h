@@ -23,6 +23,7 @@
 #define STR(s) #s
 
 #define EPQ(d, msg, ...) if (d) { fprintf (stderr, msg "\n", ##__VA_ARGS__); fflush(NULL); }
+#define EPQ0(d, ...) if (d) { fprintf (stderr, __VA_ARGS__); fflush(NULL); }
 #define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
 #define EPR0(...) fprintf (stderr, __VA_ARGS__)
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
@@ -33,7 +34,7 @@
 
 #define ASSERT(cond, action, ...) \
 if (!(cond)) { \
-    WARN("assertion '" #cond "' failed" __VA_ARGS__);\
+    WARN("assertion '" #cond "' failed " __VA_ARGS__);\
     action;\
 }
 
