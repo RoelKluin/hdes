@@ -47,7 +47,12 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_ndx(ndx, b, dna, rc) ({\
+#define _get_ndx(ndx, dna, rc) ({\
+    ndx = (dna & KEYNT_STRAND) ? dna : rc;\
+    ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+})
+
+#define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = (dna & KEYNT_STRAND);\
     ndx = b ? dna : rc;\
     ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
@@ -130,6 +135,7 @@ packed_struct Walker {
     uint32_t count;
     uint32_t infior: 22; //b2pos start and end of range
     uint32_t tmp_count: 10;
+    uint32_t observe_ct;
 };
 
 struct Hdr {

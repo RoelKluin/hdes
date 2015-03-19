@@ -20,14 +20,14 @@
 
 // KEYNT: 2bits, therefore multiplied by 2.
 #define KEYNT_BUFSZ_SHFT ((KEY_LENGTH * 2) - 1)
-#define KEYNT_BUFSZ (1u << KEYNT_BUFSZ_SHFT)
-#define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1u)
+#define KEYNT_BUFSZ (1ul << KEYNT_BUFSZ_SHFT)
+#define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1ul)
 
-#define KEYNT_STRAND (1u << KEY_WIDTH)
-#define KEYNT_AC (1u << (KEY_WIDTH - 1))
+#define KEYNT_STRAND (1ul << KEY_WIDTH)
+#define KEYNT_AC (1ul << (KEY_WIDTH - 1))
 
-#define KEYNT_MASK ((1u << (KEY_WIDTH << 1)) - 1u)
-#define HALF_KEYNT_MASK (KEYNT_STRAND - 1u)
+#define KEYNT_MASK ((1u << (KEY_WIDTH << 1)) - 1ul)
+#define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
 #define KEYNT_TRUNC_UPPER (~HALF_KEYNT_MASK & KEYNT_TRUNC_MASK)
 
 
@@ -38,10 +38,10 @@
 #define SEQ_OFFSET_BYTES 2
 #define NS_OFFSET_BYTES 3
 #define BUF_OFFSET_BYTES 5
-#define SEQ_OFFSET_MAX ((1u << (SEQ_OFFSET_BYTES << 3)) - 1u)
+#define SEQ_OFFSET_MAX ((1ul << (SEQ_OFFSET_BYTES << 3)) - 1ul)
 
 #define INIT_BUFSIZEBIT 23
-#define INIT_BUFSIZE (1u << INIT_BUFSIZEBIT)
+#define INIT_BUFSIZE (1ul << INIT_BUFSIZEBIT)
 
 typedef struct seqb2_t {
         uint8_t * s;
