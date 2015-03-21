@@ -94,15 +94,35 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define UNKNOWN_HDR 0
 #define ENSEMBL_HDR 1
 
-#define TEST_BND 1
-#ifdef TEST_BND
+#define DEBUG 1
+
+#ifdef DEBUG
 # define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) (end_dna_ref) = (dna)
-#define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
+# define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
         _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .end_dna = _e};
+
+# define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
+# define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
+# define get_kct(kc, ndx) (kc)->kct[(kc)->kcsndx[(ndx)]]
+# define _getxtdndx(kc, ndx, dna, rc) ({\
+        ndx = _get_ndx((ndx), (dna), (rc));\
+        ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
+        ndx;\
+})
 #else
 # define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) //nothing
 #define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
         _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
+
+# define _getxtdndx0(kc, ndx) (ndx)
+# define get_w(wlkr, kc, ndx) (wlkr)[(ndx)]
+# define get_kct(kc, ndx) (kc)->kct[(ndx)]
+# define _getxtdndx(kc, ndx, dna, rc) ({\
+        ndx = _get_ndx(ndx, dna, rc);\
+        ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
+        (kc)->kcsndx[ndx];\
+})
+
 #endif
 
 typedef packed_struct bnd_t {
@@ -111,7 +131,7 @@ typedef packed_struct bnd_t {
     uint32_t s; // start
     uint32_t l; // length
     uint32_t i; // inferiority
-#ifdef TEST_BND
+#ifdef DEBUG
     uint64_t end_dna;
 #endif
 } Bnd;
