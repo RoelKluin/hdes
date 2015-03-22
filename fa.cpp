@@ -351,7 +351,6 @@ int decr_excise(kct_t* kc, uint32_t* wbuf, Walker* wlkr, unsigned i, unsigned le
         ASSERT(wbuf[i] != ~0u, return -EFAULT, "%u/%u", i, left);
         Kct *x = &get_kct(kc, wbuf[i]);
         Walker* w = &get_w(wlkr, kc, wbuf[i]);
-        wbuf[i] = ~0u;
         // excise out twobits, i.e. shift 2bits above current 2bit
         // down. current bit pos is stored in walker.
         uint8_t* q, *qe;
@@ -364,24 +363,23 @@ int decr_excise(kct_t* kc, uint32_t* wbuf, Walker* wlkr, unsigned i, unsigned le
                   return -EFAULT);
             qe = &x->seq.b2[(x->seq.l-1) >> 2];
             ASSERT(x->seq.l != 0, return -EINVAL);
-            if (--x->seq.l == 0) {
-                EPR("two successive decrements on same key\n");
-                //print_dna(dna);
-            }
+            t = --x->seq.l;
         } else {
             q = &x->p.b2[t >> 2];
             qe = &x->p.b2[(x->p.l-1) >> 2];
             // could convert to Kct.seq, but why bother?
             ASSERT(x->p.l != 0, return -EINVAL);
-            if (--x->p.l == 0) {
-                EPR("two successive decrements on same key\n");
-                //print_dna(dna);
-            }
+            t = --x->p.l;
         }
+        if (t == 0) {
+            EPR0("two successive decrements on same key:\t");
+            print_ndx(wbuf[i]);
+        }
+        wbuf[i] = ~0u;
         //EPQ0(dbg, "%c", b6(((*q >> ((t & 3) << 1)) << 1) & 6));
         //EPR(dbg, "decreasing:%x at %lu:%c", (unsigned)*q, t,
         //        b6(((*q >> ((t & 3) << 1)) << 1) & 6));
-        t = (1 << (((t & 3) + 1) << 1)) - 1;
+        t = (1 << (((w->count & 3) + 1) << 1)) - 1;
         *q = ((*q & (t ^ 0xff)) >> 2) | (*q & (t >> 2));
         //EPR("became:%x", (unsigned)*q);
         while (q != qe) {
@@ -523,7 +521,7 @@ int extend_uniq(kct_t* kc, const int ext)
                         else ++w->tmp_count;
                         continue;
                     }
-                    ASSERT(y->seq.l == 1, return -EINVAL);
+                    ASSERT(t == 1, return -EINVAL);
                     // found unique
                     if (left == 0) { // this is a first unique.
                         EPQ(dbg, "unique at\t%s\t%u", kc->id + (*h)->part[0], pos);
@@ -571,7 +569,7 @@ int extend_uniq(kct_t* kc, const int ext)
                 }
                 if (left && left != ext) {
                     EPR("range extended until boundary");
-                    left = decr_excise(kc, wbuf, wlkr, ext, left);
+                    left = decr_excise(kc, wbuf, wlkr, ext, --left);
                     if (left < 0)
                         return left;
                 }
@@ -593,6 +591,11 @@ int extend_uniq(kct_t* kc, const int ext)
             }
         }
         EPR("extended %u/%u unique ranges in iteration %u", uqct, kc->bd_l, ++iter);
+        for (t = 0; t != kc->kct_l; ++t) {
+            Walker* w = wlkr + t;
+            ASSERT(w->tmp_count == 0u, return -EFAULT, "%lu", t);
+            w->count = 0u;
+        }
     } while (uqct != 0);
     free(wlkr);
     free(wbuf);
