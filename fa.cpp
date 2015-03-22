@@ -207,7 +207,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             if (c == -1) break;
             ungc(c, g);
             _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-            ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t + KEY_WIDTH, 0, dna);
+            ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t + KEY_WIDTH - 1, 0, dna);
             addpos += t;
         } else { // header
             if (h != NULL) {
@@ -319,8 +319,14 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
         if (c == '>' || c == -1) {
             EPR("processed %u Nts for %s", b2pos, kc->id + h->part[0]);
-            if (b2pos + addpos != endpos)
-                EPR("b2pos + addpos != endpos: %u + %u == %u", b2pos, addpos, endpos);
+            if (b2pos + addpos != endpos) {
+                t = *(h->bnd.begin());
+                EPR("b2pos + addpos != endpos: %u + %u == %u (%u)", b2pos, addpos, endpos, kc->bd[t].l);
+                print_dna(dna);
+                // correct it.
+                //endpos = b2pos + addpos;
+                kc->bd[t].l = b2pos + addpos;
+            }
         } else {
             EPR("=>\tN-stretch at Nt %u", b2pos);
         }
@@ -399,7 +405,8 @@ int decr_excise(kct_t* kc, uint32_t* wbuf, Walker* wlkr, unsigned i, unsigned le
     return left;
 }
 
-// XXX: inferiority ok? XXX: store deviant bit when unique
+// XXX: inferiority ok? XXX: store deviant bit when unique,
+// reverse seq could be required for mapping - maybe 
 int extend_uniq(kct_t* kc, const int ext)
 {
     uint64_t t = kc->kct_l * sizeof(Walker), dna = 0ul;
@@ -409,7 +416,7 @@ int extend_uniq(kct_t* kc, const int ext)
     uint32_t* wbuf = (uint32_t*)malloc(ext * sizeof(uint32_t));
     for (t = 0; t != ext; ++t) wbuf[t] = ~0u;
     bool dbg = false;
-    const char* dbgtid = "MT ";
+    const char* dbgtid = "GL000246.1 ";
 
     do { // until no no more new uniques
         uqct = 0;
@@ -444,7 +451,7 @@ int extend_uniq(kct_t* kc, const int ext)
                 uint32_t bd_i = kc->bd_l;
 
                 while (pos++ != bd->s - KEY_WIDTH) { // until next event
-                    ASSERT(_getxtdndx0(kc, ndx) != UNINITIALIZED, return -print_dna(dna), "at %u", pos);
+                    ASSERT(_getxtdndx0(kc, ndx) != UNINITIALIZED, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
 
                     Kct *y = &get_kct(kc, ndx);
                     //ASSERT(ndx < kc->kct_l, return -EINVAL);
