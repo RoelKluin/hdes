@@ -103,7 +103,9 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 # define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
 # define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
-# define get_kct(kc, ndx) (kc)->kct[(kc)->kcsndx[(ndx)]]
+# define _get_kct(kc, ndx) \
+        /*ASSERT((kc)->kcsndx[(ndx)] < (kc)->kct_l, return -EINVAL);*/\
+        (kc)->kct[(kc)->kcsndx[(ndx)]]
 # define _getxtdndx(kc, ndx, dna, rc) ({\
         ndx = _get_ndx((ndx), (dna), (rc));\
         EPQ(ndx == 0x47ef9, "%s:%u <========\n", hdr, pos);\
@@ -117,7 +119,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 # define _getxtdndx0(kc, ndx) (ndx)
 # define get_w(wlkr, kc, ndx) (wlkr)[(ndx)]
-# define get_kct(kc, ndx) (kc)->kct[(ndx)]
+# define _get_kct(kc, ndx) (kc)->kct[(ndx)]
 # define _getxtdndx(kc, ndx, dna, rc) ({\
         ndx = _get_ndx(ndx, dna, rc);\
         ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
@@ -156,7 +158,6 @@ packed_struct Walker {
     uint32_t count;
     uint32_t infior: 22; //b2pos start and end of range
     uint32_t tmp_count: 10;
-    uint32_t observe_ct;
 };
 
 struct Hdr {

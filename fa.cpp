@@ -53,6 +53,16 @@ static inline uint64_t revcmp(uint64_t dna)
     return dna >> (64 - (KEY_WIDTH << 1));
 }
 
+static void show_list(kct_t* kc, std::list<uint32_t> &bnd)
+{
+    std::list<uint32_t>::iterator it = bnd.begin();
+    unsigned i = 0;
+    for (it = bnd.begin(); it != bnd.end(); ++it) {
+        Bnd* bd = &kc->bd[*it];
+        EPR("[%u]:\t%u\t%u", i++, bd->s, bd->l);
+    }
+}
+
 static inline int print_ndx(uint64_t dna, bool dbg = true)
 {
     if (dbg == false) return -1;
@@ -70,7 +80,7 @@ static inline int print_ndx(uint64_t dna, bool dbg = true)
 enum ensembl_parts {ID,  SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META};
 
-enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, END_REF, DBSNP, KNOWN_SITE};
+enum bnd_type {NEW_REF_ID, START_SEQ, N_STRETCH, UQ_REGION, END_REF, DBSNP, KNOWN_SITE};
 
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
@@ -207,7 +217,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             if (c == -1) break;
             ungc(c, g);
             _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-            ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t + KEY_WIDTH - 1, 0, dna);
+            ASSIGN_BD(kc->bd[kc->bd_l], N_STRETCH, ~0u, b2pos + addpos, t + KEY_WIDTH, 0, dna);
             addpos += t;
         } else { // header
             if (h != NULL) {
@@ -349,7 +359,7 @@ int decr_excise(kct_t* kc, uint32_t* wbuf, Walker* wlkr, unsigned i, unsigned le
     while (--i != left) {
         //EPR0("%u/%u ", i, left);
         ASSERT(wbuf[i] != ~0u, return -EFAULT, "%u/%u", i, left);
-        Kct *x = &get_kct(kc, wbuf[i]);
+        Kct *x = &_get_kct(kc, wbuf[i]);
         Walker* w = &get_w(wlkr, kc, wbuf[i]);
         // excise out twobits, i.e. shift 2bits above current 2bit
         // down. current bit pos is stored in walker.
@@ -412,9 +422,11 @@ int extend_uniq(kct_t* kc, const int ext)
     memset(wlkr, 0ul, t);
     uint32_t uqct, iter = 0;
     uint32_t* wbuf = (uint32_t*)malloc(ext * sizeof(uint32_t));
-    for (t = 0; t != ext; ++t) wbuf[t] = ~0u;
+    for (int i = 0; i != ext; ++i) wbuf[i] = ~0u;
     bool dbg = false;
     const char* dbgtid = "GL000246.1 ";
+    // make sure we have always one space available;
+    _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
 
     do { // until no no more new uniques
         uqct = 0;
@@ -422,42 +434,46 @@ int extend_uniq(kct_t* kc, const int ext)
         for (h = kc->h.begin(); h != kc->h.end(); ++h) { // over ref headers
 
             std::list<uint32_t>::iterator bdit = (*h)->bnd.begin();
+            ASSERT(bdit != (*h)->bnd.end(), return -EFAULT);
 
             // first is special: chromo, which marks start and end of chromosome
             Bnd* bd = &kc->bd[*bdit];
             uint32_t pos = bd->s, endpos = bd->l;
             const char* hdr = kc->id + (*h)->part[0];
             EPR("----[\t%s:%u-%u\t]----", hdr, pos, endpos);
-            for (++bdit; bdit != (*h)->bnd.end(); ++bdit) {
+            pos += KEY_WIDTH;
+            while (++bdit != (*h)->bnd.end()) {
                 if (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) {
                     EPR("... turning debugging on ...");
                     dbg = true;
-                } else { dbg = false; }
+                }// else { dbg = false; }
                 // loop over events (stretches and maybe later, SNVs, splice sites)
 
                 dna = bd->dna;
                 uint64_t rc = revcmp(dna);
                 uint64_t ndx = _getxtdndx(kc, ndx, dna, rc);
-                EPR("dna:0x%lx\trc:0x%lx", dna, rc);
+                uint32_t bd_i = kc->bd_l;
+                uint32_t infior = 1;
+                EPR("dna:0x%lx\trc:0x%lx,%u/%u", dna, rc, *bdit, bd_i);
                 print_dna(dna);
-                
+                kc->bd[bd_i].s = pos;
+                kc->bd[bd_i].t = START_SEQ;
+                kc->bd[bd_i].end_dna = dna;
                 bd = &kc->bd[*bdit];
 
-                ASSERT(pos < endpos, return -EINVAL, "%u < %u", pos, endpos);
-                int left = ext;
-                uint32_t infior = 1;
-                uint32_t bd_i = kc->bd_l;
+                //show_list(kc, (*h)->bnd);
 
-                while (pos++ != bd->s - KEY_WIDTH) { // until next event
+                ASSERT(pos - KEY_WIDTH < endpos, return -EINVAL, "%u < %u", pos, endpos);
+
+                int left = ext;
+                EPR("Next event at %u, now %u", bd->s, pos);
+                ASSERT(pos <= bd->s, return -EFAULT);
+
+                for (;pos != bd->s;++pos) { // until next event
                     ASSERT(_getxtdndx0(kc, ndx) != UNINITIALIZED, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
 
-                    Kct *y = &get_kct(kc, ndx);
-                    //ASSERT(ndx < kc->kct_l, return -EINVAL);
+                    Kct *y = &_get_kct(kc, ndx);
                     Walker* w = &get_w(wlkr, kc, ndx);
-                    if (w->observe_ct++) {
-                        EPQ(dbg, "Walker already observed %u times", w->observe_ct);
-                        print_dna(dna, dbg);
-                    }
                     if (left == ext) {
                         //EPR("position after unique, unless extended.");
                         // what we'll jump to, in subsequent iterations.
@@ -478,10 +494,19 @@ int extend_uniq(kct_t* kc, const int ext)
                             infior = 0;
 
                             if (bd_i != kc->bd_l) {
+                                ASSERT(bd_i + 1 == kc->bd_l, return -1);
+                                // we did insert a range
                                 EPQ(dbg, "range ended at\t%s\t%u", kc->id + (*h)->part[0],
                                         kc->bd[bd_i].s + kc->bd[bd_i].l);
                                 print_dna(dna, dbg);
+                                //EPR("before %u, bd_I:%u", *bdit, bd_i);
+                                //show_list(kc, (*h)->bnd);
+                                ASSERT(bdit != (*h)->bnd.end(), return -EFAULT);
                                 (*h)->bnd.insert(bdit, bd_i++);
+                                //EPR("after %u", *bdit);
+                                //show_list(kc, (*h)->bnd);
+                                _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+                                bd = &kc->bd[*bdit];
                             }
                             // add tmp_count for each - we cannot extend it in this iteration
                             for (left = ext; --left;) {
@@ -490,8 +515,8 @@ int extend_uniq(kct_t* kc, const int ext)
                                 --get_w(wlkr, kc, wbuf[left]).tmp_count;
                                 wbuf[left] = ~0u;
                             }
-                            //wbuf[left] = ~0u;
                             ASSERT(w->tmp_count == 0, return -EFAULT, "(%u)", w->tmp_count);
+
                         }
                     }
                     t = w->count + w->tmp_count;
@@ -503,7 +528,7 @@ int extend_uniq(kct_t* kc, const int ext)
                         print_dnarc(dna, rc, dbg);
                         t = y->seq.l;
                     } else {
-                        EPQ0(dbg, "Kct in p format. m:%lu, l:%lu, t:%lu, ndx:0x%lx\t0x%lx\t", y->p.m, y->p.l, t, ndx, (size_t)&y->p.b2); print_dna(dna, dbg);
+                        //EPQ0(dbg, "Kct in p format. m:%lu, l:%lu, t:%lu, ndx:0x%lx\t0x%lx\t", y->p.m, y->p.l, t, ndx, (size_t)&y->p.b2); print_dna(dna, dbg);
                         ASSERT(t < y->p.l, return -EINVAL);
 
                         t = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
@@ -526,6 +551,7 @@ int extend_uniq(kct_t* kc, const int ext)
                     if (left == 0) { // this is a first unique.
                         EPQ(dbg, "unique at\t%s\t%u", kc->id + (*h)->part[0], pos);
                         print_dna(dna, dbg);
+                        ASSIGN_BD(kc->bd[kc->bd_l], UQ_REGION, ~0u, pos, ~0u, infior, dna);
                         left  = ext;
                         infior = w->infior + 1;
                         continue;
@@ -534,10 +560,6 @@ int extend_uniq(kct_t* kc, const int ext)
                         // insert a new range.
                         EPQ(dbg, "new range till\t%s\t%u", kc->id + (*h)->part[0], pos);
                         ++uqct;
-                        _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
-                        ASSIGN_BD(kc->bd[kc->bd_l], UQ_REGION, ~0u, pos, 0u, infior, dna);
-                        bd = &kc->bd[*bdit];
-                        kc->bd[bd_i].s = pos;
                         ++kc->bd_l; // incr. to invoke insert when range completes.
                         left = decr_excise(kc, wbuf, wlkr, ext, left);
                         if (left < 0)
@@ -568,17 +590,30 @@ int extend_uniq(kct_t* kc, const int ext)
                     // found second unique
                 }
                 if (left && left != ext) {
+                    if (bd_i != kc->bd_l) {
+                        EPR("bd_i(%u) != kc->bd_l(%u)", bd_i, kc->bd_l);
+                        // we did insert a range
+                        //(*h)->bnd.insert(bdit, bd_i++);
+                        //show_list(kc, (*h)->bnd);
+                        //_buf_grow_err(kc->bd, 1ul, return -ENOMEM);
+                        //bd = &kc->bd[*bdit];
+                    }
+                    // add tmp_count for each - we cannot extend it in this iteration
+                    /*for (left = ext; --left;) {
+                        get_w(wlkr, kc, wbuf[left]).count++;
+                        ASSERT(get_w(wlkr, kc, wbuf[left]).tmp_count > 0, return -EFAULT);
+                        --get_w(wlkr, kc, wbuf[left]).tmp_count;
+                        wbuf[left] = ~0u;
+                    }*/
                     EPR("range extended until boundary");
                     left = decr_excise(kc, wbuf, wlkr, ext, --left);
                     if (left < 0)
                         return left;
                 }
-#ifdef TEST_BND
+#ifdef DEBUG
                 if (kc->bd[*bdit].t != N_STRETCH) {
                     ASSERT(kc->bd[*bdit].end_dna == dna,
                             return -print_dnarc(dna, rc, 1) && print_dna(kc->bd[*bdit].end_dna));
-                } else {
-                    pos += KEY_WIDTH;
                 }
 #endif
                 EPR("%u => %u", pos, pos + kc->bd[*bdit].l);
@@ -590,12 +625,13 @@ int extend_uniq(kct_t* kc, const int ext)
                 print_dnarc(dna, rc, 1);
             }
         }
-        EPR("extended %u/%u unique ranges in iteration %u", uqct, kc->bd_l, ++iter);
+        EPR("extended %u unique ranges in iteration %u", uqct, ++iter);
         for (t = 0; t != kc->kct_l; ++t) {
             Walker* w = wlkr + t;
             ASSERT(w->tmp_count == 0u, return -EFAULT, "%lu", t);
             w->count = 0u;
         }
+        dbg = true;
     } while (uqct != 0);
     free(wlkr);
     free(wbuf);
