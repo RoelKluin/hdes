@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <assert.h>
 //#include <glib.h>
-#include <pcre.h>
+//#include <pcre.h>
 #include "fa.h"
 
 static inline int print_dna(uint64_t dna, bool dbg = true)
@@ -381,16 +381,17 @@ int decr_excise(kct_t* kc, uint32_t* wbuf, Walker* wlkr, unsigned i, unsigned le
             ASSERT(x->p.l != 0, return -EINVAL);
             t = --x->p.l;
         }
-        if (t == 0) {
+        /*if (t == 0) {
             EPR0("two successive decrements on same key:\t");
             print_ndx(wbuf[i]);
-        }
-        wbuf[i] = ~0u;
+        }*/
         //EPQ0(dbg, "%c", b6(((*q >> ((t & 3) << 1)) << 1) & 6));
         //EPR(dbg, "decreasing:%x at %lu:%c", (unsigned)*q, t,
         //        b6(((*q >> ((t & 3) << 1)) << 1) & 6));
         t = (1 << (((w->count & 3) + 1) << 1)) - 1;
         *q = ((*q & (t ^ 0xff)) >> 2) | (*q & (t >> 2));
+        EPQ(wbuf[i] == 0x182278, "=====> excised <======, became %x", *q);
+        wbuf[i] = ~0u;
         //EPR("became:%x", (unsigned)*q);
         while (q != qe) {
             //EPR("loop start:%x", (unsigned)*q);
@@ -423,7 +424,7 @@ int extend_uniq(kct_t* kc, const int ext)
     uint32_t uqct, iter = 0;
     uint32_t* wbuf = (uint32_t*)malloc(ext * sizeof(uint32_t));
     for (int i = 0; i != ext; ++i) wbuf[i] = ~0u;
-    bool dbg = false;
+    int dbg = 0;
     const char* dbgtid = "GL000246.1 ";
     // make sure we have always one space available;
     _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
@@ -445,8 +446,8 @@ int extend_uniq(kct_t* kc, const int ext)
             while (++bdit != (*h)->bnd.end()) {
                 if (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) {
                     EPR("... turning debugging on ...");
-                    dbg = true;
-                }// else { dbg = false; }
+                    dbg = 2;
+                } else { dbg = 0; }
                 // loop over events (stretches and maybe later, SNVs, splice sites)
 
                 dna = bd->dna;
@@ -498,7 +499,7 @@ int extend_uniq(kct_t* kc, const int ext)
                                 // we did insert a range
                                 EPQ(dbg, "range ended at\t%s\t%u", kc->id + (*h)->part[0],
                                         kc->bd[bd_i].s + kc->bd[bd_i].l);
-                                print_dna(dna, dbg);
+                                print_dna(dna, dbg > 1);
                                 //EPR("before %u, bd_I:%u", *bdit, bd_i);
                                 //show_list(kc, (*h)->bnd);
                                 ASSERT(bdit != (*h)->bnd.end(), return -EFAULT);
@@ -524,8 +525,8 @@ int extend_uniq(kct_t* kc, const int ext)
                         ASSERT(t < y->seq.l, return -EINVAL, "%s\t%u", kc->id + (*h)->part[0], pos);
                         t = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
                         dna = _seq_next(t, dna, rc);
-                        EPQ0(dbg, "ndx:0x%lx at %u. dna|rc:\t", ndx, pos);
-                        print_dnarc(dna, rc, dbg);
+                        EPQ0(dbg > 1, "ndx:0x%lx at %u. dna|rc:\t", ndx, pos);
+                        print_dnarc(dna, rc, dbg > 1);
                         t = y->seq.l;
                     } else {
                         //EPQ0(dbg, "Kct in p format. m:%lu, l:%lu, t:%lu, ndx:0x%lx\t0x%lx\t", y->p.m, y->p.l, t, ndx, (size_t)&y->p.b2); print_dna(dna, dbg);
@@ -534,13 +535,15 @@ int extend_uniq(kct_t* kc, const int ext)
                         t = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
 
                         dna = _seq_next(t, dna, rc);
-                        EPQ0(dbg, "dna:\t"); print_dna(dna, dbg);
+                        EPQ0(dbg > 1, "dna:\t"); print_dna(dna, dbg > 1);
 
                         //fprintf(stderr, "%c\n", b6(t<<1));
                         t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
                         //EPR("end Kct in p format. m:%lu, l:%lu, t:%lu, ndx:0x%lx\t0x%lx", y->p.m, y->p.l, t, ndx, (size_t)&y->p.b2);
                     }
+                    uint64_t lastndx = ndx;
                     ndx = _getxtdndx(kc, ndx, dna, rc);
+                    EPQ(ndx == 0x182278 /*0x91e1*/, " <===== ndx:0x%lx @ %u, %d", ndx, pos, print_ndx(ndx));
                     if (t > 1ul) {
                         if (left == 0) ++w->count;
                         else ++w->tmp_count;
@@ -550,7 +553,7 @@ int extend_uniq(kct_t* kc, const int ext)
                     // found unique
                     if (left == 0) { // this is a first unique.
                         EPQ(dbg, "unique at\t%s\t%u", kc->id + (*h)->part[0], pos);
-                        print_dna(dna, dbg);
+                        print_ndx(lastndx, dbg > 1);
                         ASSIGN_BD(kc->bd[kc->bd_l], UQ_REGION, ~0u, pos, ~0u, infior, dna);
                         left  = ext;
                         infior = w->infior + 1;
@@ -568,7 +571,7 @@ int extend_uniq(kct_t* kc, const int ext)
                         continue;
                     }
                     // else another unique within range.
-                    EPQ(dbg, "range extended to\t%s\t%u", kc->id + (*h)->part[0], pos);
+                    EPQ(dbg > 1, "range extended to\t%s\t%u", kc->id + (*h)->part[0], pos);
 
                     // XXX: infior can be more conservatively increased once an
                     // original range boundary is reached. Extended with another
@@ -582,8 +585,8 @@ int extend_uniq(kct_t* kc, const int ext)
                         return left;
                     //w = &get_w(wlkr, kc, wbuf[left]);
                     //ASSERT(w->tmp_count == 0, return -EFAULT);
-                    EPQ0(dbg, "\n");
-                    print_dna(dna, dbg);
+                    EPQ0(dbg > 1, "\n");
+                    print_dna(dna, dbg > 1);
                     left = ext;
 
                     // XXX: should inferiority increase?
@@ -616,7 +619,7 @@ int extend_uniq(kct_t* kc, const int ext)
                             return -print_dnarc(dna, rc, 1) && print_dna(kc->bd[*bdit].end_dna));
                 }
 #endif
-                EPR("%u => %u", pos, pos + kc->bd[*bdit].l);
+                EPR("%u => %u", kc->bd[*bdit].s, kc->bd[*bdit].s + kc->bd[*bdit].l);
                 pos += kc->bd[*bdit].l; // add skipped Nts
                 //if (kc->bd[*bdit].t == N_STRETCH) {
                 //    ++pos;
@@ -624,6 +627,8 @@ int extend_uniq(kct_t* kc, const int ext)
                 EPR0("end of range: ndx:0x%lx\tdna|rc:(%u)\t", ndx, pos);
                 print_dnarc(dna, rc, 1);
             }
+//            show_list(kc, (*h)->bnd);
+
         }
         EPR("extended %u unique ranges in iteration %u", uqct, ++iter);
         for (t = 0; t != kc->kct_l; ++t) {
@@ -631,7 +636,7 @@ int extend_uniq(kct_t* kc, const int ext)
             ASSERT(w->tmp_count == 0u, return -EFAULT, "%lu", t);
             w->count = 0u;
         }
-        dbg = true;
+        //dbg = 1;
     } while (uqct != 0);
     free(wlkr);
     free(wbuf);

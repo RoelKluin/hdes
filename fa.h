@@ -108,7 +108,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
         (kc)->kct[(kc)->kcsndx[(ndx)]]
 # define _getxtdndx(kc, ndx, dna, rc) ({\
         ndx = _get_ndx((ndx), (dna), (rc));\
-        EPQ(ndx == 0x47ef9, "%s:%u <========\n", hdr, pos);\
+        /*EPQ(ndx == 0x47ef9, "%s:%u <========\n", hdr, pos);*/\
         ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
         ndx;\
 })

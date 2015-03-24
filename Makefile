@@ -8,11 +8,11 @@ PROG=		uqct
 INCLUDES=	
 SUBDIRS=	.
 OBJS=		b6.o
-LIBS=		-lz -lpcre -L.
+LIBS=		-lz -L.
 DEBUG=		-g
 OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp fa.cpp fq.cpp main.cpp
-DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\"
+DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\" # -DKEY_LENGTH=11
 PREPROCESSED=	$(SOURCES:.cpp=.i)
 ASSEMBLIES=	$(SOURCES:.cpp=.s)
 OBJECTS=	$(SOURCES:.cpp=.o)
