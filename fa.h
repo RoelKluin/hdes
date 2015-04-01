@@ -97,9 +97,9 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define DEBUG 1
 
 #ifdef DEBUG
-# define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) (end_dna_ref) = (dna)
+# define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) (at_dna_ref) = (dna)
 # define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .end_dna = _e};
+        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .at_dna = _e};
 
 # define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
 # define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
@@ -113,7 +113,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
         ndx;\
 })
 #else
-# define DEBUG_ASSIGN_ENDDNA(end_dna_ref, dna) //nothing
+# define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) //nothing
 #define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
         _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
 
@@ -135,7 +135,7 @@ typedef packed_struct bnd_t {
     uint32_t l; // length
     uint32_t i; // inferiority
 #ifdef DEBUG
-    uint64_t end_dna;
+    uint64_t at_dna;
 #endif
 } Bnd;
 
