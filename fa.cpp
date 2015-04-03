@@ -237,20 +237,20 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             endpos = kc->bd[kc->bd_l].s;
         }
         for (t = b2pos + KEY_WIDTH; b2pos != t; ++b2pos) {
+            while (isspace(c = gc(g)));
             b ^= b;
-            switch(c = gc(g)) {
+            switch(c) {
                 case 'C': case 'c': b = 2;
                 case 'G': case 'g': b ^= 1;
                 case 'U': case 'u': case 'T': case 't': b ^= 2;
-                case 'A': case 'a': dna = _seq_next(b, dna, rc);
-                case '\n': continue;
+                case 'A': case 'a':
+                    _addtoseq(h->s, b);
+                    dna = _seq_next(b, dna, rc);
+                    continue;
             }
-            break;
-        }
-        if_ever (b2pos != t) {// c == -1, 'N' or '>'
             EPR("key incomplete before next boundary - "
                     "may cause enddna assertion failure");
-            continue;
+            break;
         }
         // ndx (key) is 2nd cNt bit excised, rc or dna
         _buf_grow_err(kc->bd, 1ul, return -ENOMEM);
