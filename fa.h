@@ -74,6 +74,13 @@
     }\
     /**/if (dbg) { fputc('\n', stderr); }/**/\
 })
+#define _addtoseq(buf, b)\
+    if ((buf ## _l & 3) == 0) {\
+        _buf_grow_err(buf, 1ul, 2, return -ENOMEM);\
+        buf[buf ## _l>>2] = '\0';\
+    }\
+    buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
+    ++(buf ## _l)
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
@@ -161,11 +168,12 @@ packed_struct Walker {
 };
 
 struct Hdr {
-    uint32_t end_b2pos;
+    uint32_t end_b2pos, s_l;
     uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     uint8_t hdr_type;
-    uint8_t p_l;
+    uint8_t p_l, s_m;
     std::list<uint32_t> bnd; //
+    uint8_t* s;
 };
 
 struct Tid {
@@ -180,8 +188,8 @@ struct kct_t {
     Kct *kct;
     Bnd *bd;
     char* id;
-    uint32_t kct_l, bd_l, id_l;
-    uint8_t kct_m, kcsndx_m, bd_m, id_m;
+    uint32_t kct_l, bd_l, id_l, s_l;
+    uint8_t kct_m, kcsndx_m, bd_m, id_m, s_m;
     Tid tid;
     std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;

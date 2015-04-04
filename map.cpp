@@ -98,7 +98,7 @@ int fa_ndx2(seqb2_t *fa)
                 if (isspace(c)) {
                     fa->s_l = b - s;
                     assert((uint64_t)fa->s_l + fa_ent_max < (1ul << 32));
-                    _buf_grow(fa->s, fa_ent_max);
+                    _buf_grow(fa->s, fa_ent_max, 0);
                     b = s + fa->s_l;
                     continue;
                 }

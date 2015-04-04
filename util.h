@@ -73,16 +73,15 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     buf = __t;\
 }
 
-#define _buf_grow_err(buf, step, error_action) \
-if (buf##_l + step >= (1ul << buf##_m)) {\
-    /*fprintf(stderr, #buf " realloc, %lu\n", sizeof(*(buf)) << (buf##_m + 1));fflush(NULL);*/\
+#define _buf_grow_err(buf, step, shft, error_action) \
+if (((buf##_l + step) >> shft) >= (1ul << buf##_m)) {\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++(buf##_m));\
     if_ever (__t == NULL) error_action;\
     buf = __t;\
 }
-#define _buf_grow(buf, step) _buf_grow_err(buf, step, return -ENOMEM)
-#define _buf_grow_add_err(buf, step, add, error_action) ({\
-    _buf_grow_err(buf, step, error_action);\
+#define _buf_grow(buf, step, shft) _buf_grow_err(buf, step, shft, return -ENOMEM)
+#define _buf_grow_add_err(buf, step, shft, add, error_action) ({\
+    _buf_grow_err(buf, step, shft, error_action);\
     buf[buf##_l++] = add;\
 })
 
