@@ -1,0 +1,33 @@
+#!/bin/bash
+dir=/home/roel/dev/git/hdes
+mf=Makefile
+
+cat << EOF | xclip
+cd $dir
+gvim -geometry 180x78+1913+145 $mf -c $(grep -P -o "\b(\w+|\/)*\.[ch](pp)?\b" $dir/$mf | sort | uniq | sed -n -r "
+G
+s/\n+$//
+/^[^\n]+$/{h;b;}
+/^([^.]+\.)[^\n]+\n\1/{
+  s/^([^\n]+)\n/+'tabnew \1'\n/
+  s/^([^\n]+)\n([^\n]+)$/\1 +'vs \2' /p
+  s/^.*$//
+  h
+  b
+}
+s/\n[^\n]+$//
+x
+s/^([^\n]+)$/+'tabnew \1' /p" | tr -s "\n " " " | sed -r "
+h;
+s/^((\+[^+]+){,9})(\+.*)?$/\1/
+x;
+s/^(\+[^+]+){,9}//
+:a
+s/([^+']+ )?\+'(tabnew|vs) ([^']+)' */\1 \3/
+/'/ba
+H
+x
+s/ *\n */ /")
+EOF
+echo "paste to start doing development"
+
