@@ -70,9 +70,9 @@
     dna = rc = 0u; \
     for (i = b2pos + KEY_WIDTH; b2pos != i; ++b2pos){\
         dna = __rdsq(next, b, s, b2pos, dna, rc);\
-        /**/if (dbg) { fputc(b6(b << 1), stderr); }/**/\
+        /**/if (dbg > 1) { fputc(b6(b << 1), stderr); }/**/\
     }\
-    /**/if (dbg) { fputc('\n', stderr); }/**/\
+    /**/if (dbg > 1) { fputc('\n', stderr); }/**/\
 })
 #define _addtoseq(buf, b)\
     if ((buf ## _l & 3) == 0) {\
@@ -97,9 +97,6 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define max(a,b) ((a) >= (b) ? (a) : (b))
 #undef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
-
-#define UNKNOWN_HDR 0
-#define ENSEMBL_HDR 1
 
 #define DEBUG 1
 
@@ -168,12 +165,14 @@ packed_struct Walker {
 };
 
 struct Hdr {
-    uint32_t end_b2pos, s_l;
-    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    uint8_t hdr_type;
-    uint8_t p_l, s_m;
-    std::list<uint32_t> bnd; //
+    Walker* wlkr;
+    uint32_t* wbuf;
     uint8_t* s;
+    uint32_t end_pos, s_l;
+    std::list<uint32_t> bnd; //
+    std::list<uint32_t>::iterator bdit;
+    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+    uint8_t p_l, s_m;
 };
 
 struct Tid {
@@ -185,10 +184,10 @@ struct Tid {
 
 struct kct_t {
     uint32_t *kcsndx;
-    Kct *kct;
-    Bnd *bd;
+    Kct* kct;
+    Bnd* bd;
     char* id;
-    uint32_t kct_l, bd_l, id_l, s_l;
+    uint32_t kct_l, bd_l, id_l, s_l, ext;
     uint8_t kct_m, kcsndx_m, bd_m, id_m, s_m;
     Tid tid;
     std::list<Hdr*> h;
