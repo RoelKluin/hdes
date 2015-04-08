@@ -182,10 +182,11 @@ free_kc(kct_t* kc)
         free(it->second->s);
         delete it->second;
     }
-
-    _buf_free(kc->id);
     _buf_free(kc->bd);
+    _buf_free(kc->id);
     _buf_free(kc->kct);
+    _buf_free(kc->wlkr);
+    _buf_free(kc->wbuf);
     _buf_free(kc->kcsndx);
 }
 
@@ -347,10 +348,10 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 }
 
 static int
-decr_excise(kct_t* kc, Hdr* h, unsigned i, unsigned left)
+decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 {
-    Walker* wlkr = h->wlkr;
-    uint32_t* wbuf = h->wbuf;
+    Walker* wlkr = kc->wlkr;
+    uint32_t* wbuf = kc->wbuf;
     while (--i > left) {
         //EPR0("%u/%u ", i, left);
         ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
@@ -416,7 +417,10 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     uint64_t rc = revcmp(dna);
     uint64_t ndx = _getxtdndx(kc, ndx, dna, rc);
     uint32_t infior = 1;
+    if (dbg > 2)
+        show_list(kc, h->bnd);
 
+    _buf_grow0(kc->bd, 1ul);
     Bnd *top = &kc->bd[kc->bd_l];
     ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, UNINITIALIZED, 1u, dna);
 
@@ -432,7 +436,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         print_dna(dna, dbg > 2);
 
         Kct *y = &_get_kct(kc, ndx);
-        Walker* w = &get_w(h->wlkr, kc, ndx);
+        Walker* w = &get_w(kc->wlkr, kc, ndx);
         if (left == ext) {
             //EPR("position after 2nd unique, or each extended.");
             // what we'll jump to, in subsequent iterations.
@@ -441,37 +445,42 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             top->dna = dna;
             top->l = pos - top->s;
             --left;
-            ASSERT(h->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_ndx(ndx));
-            h->wbuf[left] = ndx;
+            ASSERT(kc->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_ndx(ndx));
+            kc->wbuf[left] = ndx;
             if (infior > w->infior)
                 w->infior = infior;
 
         } else if (left) { // keep filling the buffer
             if (--left) {
-                ASSERT(h->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_ndx(ndx));
-                h->wbuf[left] = ndx;
+                ASSERT(kc->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_ndx(ndx));
+                kc->wbuf[left] = ndx;
                 if (infior > w->infior)
                     w->infior = infior;
             } else { // actually buf just became full, without extension(s not already handled)..
                 EPQ(top->s > 0xfffffff, "%u", -top->s);
                 infior = 0;
-                last = NULL; // we cannot extend from here.
 
                 if (top->l != UNINITIALIZED) {
                     // we did insert a range
                     print_dnarc(top->at_dna, top->dna, dbg > 1);
                     //show_list(kc, h->bnd);
-                    h->bnd.insert(h->bdit, kc->bd_l++); // even after increment one should be available for top.
-                    _buf_grow_err(kc->bd, 1ul, 0, return -ENOMEM);
-                    top = &kc->bd[kc->bd_l];
+                    if (last->t != NEW_REF_ID || (last->s + last->l) != top->s) {
+                        _buf_grow0(kc->bd, 2ul);
+                        h->bnd.insert(h->bdit, kc->bd_l); // even after increment one should be available for top.
+                        last = kc->bd + kc->bd_l++;
+                        top = last + 1;
+                    } else { // join - may be undesirable for certain boundary types in the future
+                        EPQ(dbg > 1, "joining %u & %u", last->s, top->s);
+                        last->l += top->l;
+                    }
+                    next = &kc->bd[*(h->bdit)];
                     top->l = UNINITIALIZED;
-                    next = &kc->bd[*(h->bdit)]; // unchanged.
                 }
                 // add tmp_count for each - we cannot extend it in this iteration
                 for (left = ext; --left;) {
-                    get_w(h->wlkr, kc, h->wbuf[left]).count++;
-                    --get_w(h->wlkr, kc, h->wbuf[left]).tmp_count;
-                    h->wbuf[left] = UNINITIALIZED;
+                    get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
+                    --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
+                    kc->wbuf[left] = UNINITIALIZED;
                 }
             }
         }
@@ -495,7 +504,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // found unique
         ++infior;
         if (left == 0) { // this is a first unique.
-            last = top = &kc->bd[kc->bd_l];
             // pos + 1 may work, but why...?
             ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, UNINITIALIZED, max(infior, w->infior + 1u), dna);
             left = ext;
@@ -504,7 +512,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         }
         // insert a new range.
         ++uqct;
-        left = decr_excise(kc, h, ext, left);
+        left = decr_excise(kc, ext, left);
         if (left < 0) return left;
         left = ext;
     }
@@ -512,9 +520,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     //ASSERT(dna == next->at_dna, return -print_dnarc(dna, next->at_dna), "[%u] => enddna mismatch", pos);
     pos += next->l;
     if (last && left) { // XXX
-        EPQ(dbg > 0, "joining region, %u & %u", last->s, next->s);
-        if (dbg > 0)
-            show_list(kc, h->bnd);
+        EPQ(dbg > 1, "joining region, %u & %u", last->s, next->s);
         if (last->t == NEW_REF_ID) {
             //last->l -= next->s - last->s;
             last->s = next->s;
@@ -526,15 +532,16 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             //next = last;
             //last = &kc->bd[*(--h->bdit)];
             EPR("%u", last->l);
-        show_list(kc, h->bnd);
         } else {
             next->l += next->s - last->s;
             next->s = last->s;
             next->at_dna = last->at_dna;
         }
+        if (dbg > 1)
+            show_list(kc, h->bnd);
 
         //XXX: why decrement left?
-        left = decr_excise(kc, h, ext, --left);
+        left = decr_excise(kc, ext, --left);
         if (left < 0)
             return left;
     }
@@ -549,13 +556,13 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
     int uqct = 0;
     h->bdit = h->bnd.begin();
 
-    for (Bnd *last = &kc->bd[*h->bdit]; ++h->bdit != h->bnd.end();) {
+    for (Bnd *last = &kc->bd[*h->bdit]; ++h->bdit != h->bnd.end(); last = &kc->bd[*h->bdit]) {
         int ret = ext_uq_bnd(kc, h, last);
         if (ret < 0) return ret;
         uqct += ret;
     }
     for (unsigned t = 0; t != kc->kct_l; ++t) { //XXX
-        Walker* w = h->wlkr + t;
+        Walker* w = kc->wlkr + t;
         //XXX
         ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%u", t, kc->kct_l);
     }
@@ -565,49 +572,22 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
 }
 
 static int
-ext_uq_iter(kct_t* kc, Walker* wlkr, uint32_t* wbuf)
+ext_uq_iter(kct_t* kc)
 {
     int uqct = 0;
     for (std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
-        (*h)->wlkr = wlkr;
-        (*h)->wbuf = wbuf;
         int ret = ext_uq_hdr(kc, *h);
-        (*h)->wlkr = NULL;
-        (*h)->wbuf = NULL;
         if (ret < 0) return ret;
         uqct += ret;
     }
     EPR("extended %u unique ranges in iteration %u", uqct, iter);
     if (iter == 2) dbg = 1;
-    for (unsigned t = 0; t != kc->kct_l; ++t, ++wlkr) {
-        ASSERT(wlkr->tmp_count == 0u, return -EFAULT, "%u/%u", t, kc->kct_l);
-        wlkr->count = 0u;
+    Walker * w = kc->wlkr;
+    for (unsigned t = 0; t != kc->kct_l; ++t, ++w) {
+        ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%u", t, kc->kct_l);
+        w->count = 0u;
     }
-    return uqct;
-}
-
-
-static int
-extend_uniq(kct_t* kc)
-{
-    Hdr h;
-    iter = 0;
-
-    size_t t = kc->kct_l * sizeof(Walker);
-    Walker* wlkr = (Walker*)malloc(t);
-    memset(wlkr, 0ul, t);
-
-    t = kc->ext * sizeof(uint32_t);
-    uint32_t* wbuf = (uint32_t*)malloc(t);
-    memset(wbuf, UNINITIALIZED, t);
-    int uqct;
-
-    do { // until no no more new uniques
-        uqct = ext_uq_iter(kc, wlkr, wbuf);
-    } while (uqct > 0);
-    free(wlkr);
-    free(wbuf);
     return uqct;
 }
 
@@ -630,6 +610,7 @@ int fa_index(struct seqb2_t* seq)
 {
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
     struct gzfh_t* fhin = seq->fh + 2; // init with ref
+    size_t t;
     uint64_t blocksize = (uint64_t)seq->blocksize << 20;
     int res, ret = -1;
     void* g;
@@ -637,6 +618,8 @@ int fa_index(struct seqb2_t* seq)
     int (*ungc) (int, void*);
     int is_gzfile = fhin->io != NULL;
     char file[256];
+    Hdr h;
+    iter = 0;
 
     const char* ndxact[4] = {".fa", "_kcpos.wig.gz"};
 
@@ -656,7 +639,7 @@ int fa_index(struct seqb2_t* seq)
     kc.bd = _buf_init(kc.bd, 1);
 
     // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
-    // (realloc would invalidate pointers inserted in kc->hdr)
+    // (realloc would invalidate pointers inserted in kc.hdr)
     kc.id = _buf_init(kc.id, 20);
 
     // the first entry (0) is for a reference ID always.
@@ -675,7 +658,18 @@ int fa_index(struct seqb2_t* seq)
     res = fa_kc(&kc, g, gc, ungc);
     EPR("left fa_kc");fflush(NULL);
     ASSERT(res >= 0, goto out);
-    res = extend_uniq(&kc);
+
+    t = kc.kct_l * sizeof(Walker);
+    kc.wlkr = (Walker*)malloc(t);
+    memset(kc.wlkr, 0ul, t);
+
+    t = kc.ext * sizeof(uint32_t);
+    kc.wbuf = (uint32_t*)malloc(t);
+    memset(kc.wbuf, UNINITIALIZED, t);
+
+    do { // until no no more new uniques
+        res = ext_uq_iter(&kc);
+    } while (res > 0);
     ASSERT(res >= 0, goto out);
 
     ret = res != 0;

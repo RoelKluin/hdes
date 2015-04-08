@@ -103,7 +103,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #ifdef DEBUG
 # define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) (at_dna_ref) = (dna)
 # define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .at_dna = _e};
+        (_bd) = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .at_dna = _e};
 
 # define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
 # define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
@@ -119,7 +119,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #else
 # define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) //nothing
 #define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        _bd = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
+        (_bd) = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
 
 # define _getxtdndx0(kc, ndx) (ndx)
 # define get_w(wlkr, kc, ndx) (wlkr)[(ndx)]
@@ -165,8 +165,6 @@ packed_struct Walker {
 };
 
 struct Hdr {
-    Walker* wlkr;
-    uint32_t* wbuf;
     uint8_t* s;
     uint32_t end_pos, s_l;
     std::list<uint32_t> bnd; //
@@ -183,10 +181,12 @@ struct Tid {
 };
 
 struct kct_t {
-    uint32_t *kcsndx;
-    Kct* kct;
     Bnd* bd;
     char* id;
+    Kct* kct;
+    Walker* wlkr;
+    uint32_t* wbuf;
+    uint32_t *kcsndx;
     uint32_t kct_l, bd_l, id_l, s_l, ext;
     uint8_t kct_m, kcsndx_m, bd_m, id_m, s_m;
     Tid tid;

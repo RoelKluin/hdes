@@ -80,6 +80,7 @@ if (((buf##_l + step) >> shft) >= (1ul << buf##_m)) {\
     buf = __t;\
 }
 #define _buf_grow(buf, step, shft) _buf_grow_err(buf, step, shft, return -ENOMEM)
+#define _buf_grow0(buf, step) _buf_grow_err(buf, step, 0, return -ENOMEM)
 #define _buf_grow_add_err(buf, step, shft, add, error_action) ({\
     _buf_grow_err(buf, step, shft, error_action);\
     buf[buf##_l++] = add;\
