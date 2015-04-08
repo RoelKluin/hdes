@@ -472,6 +472,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                     } else { // join - may be undesirable for certain boundary types in the future
                         EPQ(dbg > 1, "joining %u & %u", last->s, top->s);
                         last->l += top->l;
+                        last->dna = top->dna;
                     }
                     next = &kc->bd[*(h->bdit)];
                     top->l = UNINITIALIZED;
@@ -493,7 +494,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
         }
         uint8_t b2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
-        ASSERT(ndx == b2, return -print_dnarc(dna, rc), "[%u]: expected %c, got %c", pos,b6(b2<<1), b6(ndx<<1));
+        ASSERT(ndx == b2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c", pos,b6(b2<<1), b6(ndx<<1));
         dna = _seq_next(ndx, dna, rc);
         ndx = _getxtdndx(kc, ndx, dna, rc);
         if (t > 1ul) {
