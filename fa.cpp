@@ -527,31 +527,30 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     EPQ(dbg > 2, "---");
     //ASSERT(dna == next->at_dna, return -print_dnarc(dna, next->at_dna), "[%u] => enddna mismatch", pos);
     if (left) {
-        if ((top->s + top->l + ext) >= pos) { // XXX
-            EPQ0(dbg > 1, "joining end region, %u & %u\t", top->s, next->s);
-            print_dnarc(top->at_dna, next->at_dna, dbg > 1);
+        ASSERT((top->s + top->l + ext) > next->s, return -EFAULT);
+        EPQ0(dbg > 1, "joining end region, %u & %u\t", top->s, next->s);
+        print_dnarc(top->at_dna, next->at_dna, dbg > 1);
 
-            if (dbg > 1)
-                show_list(kc, h->bnd);
-            next->l += next->s - top->s;
-            next->s = top->s;
-            next->at_dna = top->at_dna;
-            
-            if (dbg > 1)
-                show_list(kc, h->bnd);
-
-            //XXX: why decrement left?
-            left = decr_excise(kc, ext, --left);
-            if (left < 0)
-                return left;
-        } else {
-            EPR("This DOES happen");
-            do {
-                get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
-                --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
-                kc->wbuf[left] = UNINITIALIZED;
-            } while (--left && kc->wbuf[left] != UNINITIALIZED);
+        next->l += next->s - top->s;
+        next->s = top->s;
+        next->at_dna = top->at_dna;
+        // if last and next have now become adjoining, merge the two
+        if (last->t == next->t &&
+                (last->s + last->l == next->s)) {
+            // XXX why not (last->s + last->l + ext > next->s) ? (assertion error later, but why?)
+            last->l += next->l;
+            last->dna = next->dna;
+            h->bdit = h->bnd.erase(h->bdit);
+            --h->bdit;
         }
+
+        if (dbg > 1)
+            show_list(kc, h->bnd);
+
+        //XXX: why decrement left?
+        left = decr_excise(kc, ext, --left);
+        if (left < 0)
+            return left;
     }
     pos += next->l;
 //                pos += kc->bd[*(h->bdit)].l; // add skipped Nts
@@ -590,7 +589,7 @@ ext_uq_iter(kct_t* kc)
         if (ret < 0) return ret;
         uqct += ret;
     }
-    EPR("extended %u unique ranges in iteration %u", uqct, iter);
+    EPR("extended %u unique ranges in iteration %u", uqct, iter++);
     if (iter == 2) dbg = 1;
     Walker * w = kc->wlkr;
     for (unsigned t = 0; t != kc->kct_l; ++t, ++w) {
