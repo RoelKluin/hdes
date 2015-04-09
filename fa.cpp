@@ -347,6 +347,8 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
     return 0;
 }
 
+static const unsigned long dbgndx = UNINITIALIZED;
+
 static int
 decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 {
@@ -366,15 +368,17 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         if (x->seq.m == 3) {
             q = &x->seq.b2[t >> 2];
             qe = &x->seq.b2[(x->seq.l-1) >> 2];
-            t = --x->seq.l;
+            --x->seq.l;
         } else {
             q = &x->p.b2[t >> 2];
             qe = &x->p.b2[(x->p.l-1) >> 2];
             // could convert to Kct.seq, but why bother?
-            t = --x->p.l;
+            --x->p.l;
         }
+        // mask to cover this and past nucleotide.
         t = (1 << (((w->count & 3) + 1) << 1)) - 1;
         *q = ((*q & (t ^ 0xff)) >> 2) | (*q & (t >> 2));
+        EPQ(wbuf[i] == dbgndx, "=====> excised <======, became %x", *q | (q != qe ? (q[1] & 3) << 6 : 0));
         wbuf[i] = UNINITIALIZED;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
@@ -384,6 +388,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
     //Walker* w = &get_w(wlkr, kc, wbuf[i]);
     //ASSERT(w->tmp_count > 0, return -EFAULT);
     //--w->tmp_count;
+    //EPQ(wbuf[i] == dbgndx, "=====> after excised <======");
     wbuf[i] = UNINITIALIZED;
 
     while (i != 0) {
@@ -422,7 +427,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
 
     _buf_grow0(kc->bd, 1ul);
     Bnd *top = &kc->bd[kc->bd_l];
-    ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, UNINITIALIZED, 1u, dna);
+    ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, 0, 1u, dna);
 
     // boundary is considered as a first unique,
     // if we find a 2nd, we really want to extend this region
@@ -431,6 +436,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     EPQ0(dbg > 0, "----[\t%s%s:%u-%u\t(%lu)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"",hdr, pos, next->s, last->t); print_dna(dna, dbg > 0);
 
     for (;pos < next->s;++pos) { // until next event
+        EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
         ASSERT(_getxtdndx0(kc, ndx) != UNINITIALIZED, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
         EPQ0(dbg > 2, "%u:\t", pos);
         print_dna(dna, dbg > 2);
@@ -460,9 +466,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 EPQ(top->s > 0xfffffff, "%u", -top->s);
                 infior = 0;
 
-                if (top->l != UNINITIALIZED) {
+                if (top->l != 0) {
                     // we did insert a range
-                    print_dnarc(top->at_dna, top->dna, dbg > 1);
+                    EPQ0(dbg > 1, "[%u-%u]\t", top->s, top->s + top->l);print_dnarc(top->at_dna, top->dna, dbg > 1);
                     //show_list(kc, h->bnd);
                     if (last->t != NEW_REF_ID || (last->s + last->l) != top->s) {
                         _buf_grow0(kc->bd, 2ul);
@@ -475,7 +481,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                         last->dna = top->dna;
                     }
                     next = &kc->bd[*(h->bdit)];
-                    top->l = UNINITIALIZED;
+                    top->l = 0;
                 }
                 // add tmp_count for each - we cannot extend it in this iteration
                 for (left = ext; --left;) {
@@ -486,16 +492,17 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             }
         }
         t = w->count + w->tmp_count;
+        uint8_t b2, sb2;
         if (y->seq.m == 3) { //EPR("Kct in seq format");
-            ndx = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
+            b2 = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
             t = y->seq.l;
         } else {
-            ndx = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
+            b2 = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
             t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
         }
-        uint8_t b2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
-        ASSERT(ndx == b2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c", pos,b6(b2<<1), b6(ndx<<1));
-        dna = _seq_next(ndx, dna, rc);
+        sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
+        ASSERT(b2 == sb2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c for ndx 0x%lx", pos,b6(sb2<<1), b6(b2<<1), ndx);
+        dna = _seq_next(b2, dna, rc);
         ndx = _getxtdndx(kc, ndx, dna, rc);
         if (t > 1ul) {
             if (left == 0) ++w->count;
@@ -505,8 +512,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // found unique
         ++infior;
         if (left == 0) { // this is a first unique.
-            // pos + 1 may work, but why...?
-            ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, UNINITIALIZED, max(infior, w->infior + 1u), dna);
+            ASSIGN_BD(*top, UQ_REGION, UNINITIALIZED, pos, 0, max(infior, w->infior + 1u), dna);
             left = ext;
             infior = top->i + 1;
             continue;
@@ -517,35 +523,37 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         if (left < 0) return left;
         left = ext;
     }
+    ASSERT(pos == next->s, return -EFAULT);
     EPQ(dbg > 2, "---");
     //ASSERT(dna == next->at_dna, return -print_dnarc(dna, next->at_dna), "[%u] => enddna mismatch", pos);
-    pos += next->l;
-    if (last && left) { // XXX
-        EPQ(dbg > 1, "joining region, %u & %u", last->s, next->s);
-        if (last->t == NEW_REF_ID) {
-            //last->l -= next->s - last->s;
-            last->s = next->s;
-            last->dna = next->dna;
-            // removes at bdit, returns after bdit
-            h->bdit = h->bnd.erase(h->bdit);
-            //--h->bdit;
-            //--kc->bd_l;
-            //next = last;
-            //last = &kc->bd[*(--h->bdit)];
-            EPR("%u", last->l);
-        } else {
-            next->l += next->s - last->s;
-            next->s = last->s;
-            next->at_dna = last->at_dna;
-        }
-        if (dbg > 1)
-            show_list(kc, h->bnd);
+    if (left) {
+        if ((top->s + top->l + ext) >= pos) { // XXX
+            EPQ0(dbg > 1, "joining end region, %u & %u\t", top->s, next->s);
+            print_dnarc(top->at_dna, next->at_dna, dbg > 1);
 
-        //XXX: why decrement left?
-        left = decr_excise(kc, ext, --left);
-        if (left < 0)
-            return left;
+            if (dbg > 1)
+                show_list(kc, h->bnd);
+            next->l += next->s - top->s;
+            next->s = top->s;
+            next->at_dna = top->at_dna;
+            
+            if (dbg > 1)
+                show_list(kc, h->bnd);
+
+            //XXX: why decrement left?
+            left = decr_excise(kc, ext, --left);
+            if (left < 0)
+                return left;
+        } else {
+            EPR("This DOES happen");
+            do {
+                get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
+                --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
+                kc->wbuf[left] = UNINITIALIZED;
+            } while (--left && kc->wbuf[left] != UNINITIALIZED);
+        }
     }
+    pos += next->l;
 //                pos += kc->bd[*(h->bdit)].l; // add skipped Nts
     EPQ0(dbg > 1, "%u => %u ]\t\t\t\tndx:\t", kc->bd[*(h->bdit)].s, kc->bd[*(h->bdit)].s + kc->bd[*(h->bdit)].l);print_ndx(ndx,dbg > 1);
     return uqct;
