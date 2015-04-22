@@ -20,7 +20,7 @@
 # define PROGRAM_NAME "uqct"
 #endif
 #ifndef PROGRAM_VERSION
-# define PROGRAM_VERSION "0.008"
+# define PROGRAM_VERSION "0.009"
 #endif
 
 static int
