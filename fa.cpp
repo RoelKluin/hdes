@@ -631,9 +631,10 @@ int fa_index(struct seqb2_t* seq)
     int is_gzfile = fhin->io != NULL;
     char file[256];
     Hdr h;
+    kct_t kc;
     iter = 0;
 
-    const char* ndxact[4] = {".fa", "_kcpos.wig.gz"};
+    const char* ndxact[4] = {".fa", "_x1.gz"};
 
     if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
         strncpy(file, fhout->name, res);
@@ -643,8 +644,20 @@ int fa_index(struct seqb2_t* seq)
         strcpy(file, fhin->name);
     }
     fhout->name = &file[0];
+    if (!fn_convert(fhout, ndxact[0], ndxact[1]))
+        return -1; // skip if this file was not provided on the commandline
 
-    kct_t kc;
+    fprintf(stderr, "== %s(%lu)\n", fhout->name, fhout - seq->fh);
+    fhout->fp = fopen(fhout->name, "r"); // test whether file exists
+    if (fhout->fp) {
+        //FIXME: then load it instead of up to fa_kc and store.
+        fprintf(stderr, "== %s already exists\n== done.\n", fhout->name);
+        return -1;
+    }
+
+    res = set_io_fh(fhout, blocksize, 0);
+    if (res < 0) { fprintf(stderr, "== set_io_fh failed:%d", res); goto out; }
+
     kc.ext = seq->readlength - KEY_WIDTH;
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
     kc.kct = _buf_init(kc.kct, 16);
@@ -671,6 +684,8 @@ int fa_index(struct seqb2_t* seq)
     EPR("left fa_kc");fflush(NULL);
     ASSERT(res >= 0, goto out);
 
+    // FIXME: write to file.
+
     t = kc.kct_l * sizeof(Walker);
     kc.wlkr = (Walker*)malloc(t);
     memset(kc.wlkr, 0ul, t);
@@ -687,6 +702,8 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
+    if (fhout->fp)
+        fclose(fhout->fp);
     free_kc(&kc);
     return ret;
 
