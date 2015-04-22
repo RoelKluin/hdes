@@ -496,7 +496,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         t = w->count + w->tmp_count;
         Kct *y = &_get_kct(kc, ndx);
         uint8_t b2, sb2;
-        if (y->seq.m == 3) { //EPR("Kct in seq format");
+        if (y->seq.m == 3 || y->seq.m == 2) { //EPR("Kct in seq format");
             b2 = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
             t = y->seq.l;
         } else {
@@ -513,7 +513,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             continue;
         }
         EPQ0(dbg > 1, "%u,", pos);
-        // found unique
+        // found unique, store orientation of 2nd bit of central Nt.
+        // if first bit is set, the key is in the wrong orientation.
+        // in any case - before any revcmping, the central bit needs to be
+        // put back in to ge the sequence at this site.
+        y->seq.m ^= (y->seq.m & 1) ^ !(dna & KEYNT_STRAND);
         ++infior;
         if (left == 0) { // this is a first unique.
             ASSIGN_BD(*inter, UQ_REGION, UNINITIALIZED, pos, 0, max(infior, w->infior + 1u), dna);
