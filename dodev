@@ -4,7 +4,7 @@ mf=Makefile
 
 cat << EOF | xclip
 cd $dir
-gvim -geometry 180x78+1913+145 $mf -c $(grep -P -o "\b(\w+|\/)*\.[ch](pp)?\b" $dir/$mf | sort | uniq | sed -n -r "
+gvim -geometry 180x78+0+0 $mf -c $(grep -P -o "\b(\w+|\/)*\.[ch](pp)?\b" $dir/$mf | sort | uniq | sed -n -r "
 G
 s/\n+$//
 /^[^\n]+$/{h;b;}

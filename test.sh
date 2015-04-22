@@ -99,4 +99,12 @@ zcat /tmp/out.bw.gz | awk 'BEGIN {
     for (x = 0; x != 5; ++x) print "column " x + 3 ":\t" m[x];
 }' | tee maxes.txt
 
+######################################
+# smaller ref, note key is now smaller as well
+#zcat hg19_including_nonprimary.fa.gz | sed '/^>[^GM]/Q' | gzip --fast > hg19_GL.fa.gz
+make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee uqct.err
+
+./faless hg19_GL.fa.gz --extend 10
+
+
 
