@@ -234,7 +234,7 @@ out: /* cleanup */
         fprintf(stderr, "closing %u\n", i);
         // XXX: valgrind complains here but the problem is in zlib
         // probably not a bug.
-        if (seq.fh[i].close && seq.fh[i].close(seq.fh[i].io) != Z_OK)
+        if (seq.fh[i].close && seq.fh[i].io != Z_NULL && seq.fh[i].close(seq.fh[i].io) != Z_OK)
             fprintf(stderr, "main: gzclose fails for %s\n", dopt[i].name);
         close(seq.fh[i].fd);
     }

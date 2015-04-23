@@ -21,6 +21,7 @@
 //#include <pcre.h>
 #include "fa.h"
 
+
 static inline int
 print_dna(uint64_t dna, bool dbg = true)
 {
@@ -403,7 +404,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
     return left;
 }
 
-static int dbg = 2;
+static int dbg = 0;
 static unsigned iter = 0;
 
 static inline void merge(Bnd *dest, Bnd *next)
@@ -422,7 +423,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     int uqct = 0;
     uint32_t pos = last->s + last->l;
     Bnd *next = &kc->bd[*(h->bdit)];
-    const char* dbgtid = "GL000207.1";//GL000239.1";//GL000210.1"; //GL000239.1";//MT ";
+    const char* dbgtid = "GL000210.1 ";//"GL000207.1";//MT"; //GL000239.1";
     const char* hdr = kc->id + h->part[0];
     dbg = (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) * 2;
 
@@ -447,7 +448,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
 
     for (;pos < next->s;++pos) { // until next event
         EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
-        ASSERT(_getxtdndx0(kc, ndx) != UNINITIALIZED, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
+        ASSERT(_getxtdndx0(kc, ndx) < kc->kct_l, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
         EPQ0(dbg > 2, "%u:\t", pos);
         print_dna(dna, dbg > 2);
 
@@ -495,7 +496,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         }
         t = w->count + w->tmp_count;
         Kct *y = &_get_kct(kc, ndx);
-        uint8_t b2, sb2;
+        uint8_t b2;
         if (y->seq.m == 3 || y->seq.m == 2) { //EPR("Kct in seq format");
             b2 = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
             t = y->seq.l;
@@ -503,8 +504,10 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             b2 = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
             t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
         }
-        sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
-        ASSERT(b2 == sb2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c for ndx 0x%lx", pos,b6(sb2<<1), b6(b2<<1), ndx);
+        if (h->s) {
+            uint8_t sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
+            ASSERT(b2 == sb2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c for ndx 0x%lx", pos,b6(sb2<<1), b6(b2<<1), ndx);
+        }
         dna = _seq_next(b2, dna, rc);
         ndx = _getxtdndx(kc, ndx, dna, rc);
         if (t > 1ul) {
@@ -618,6 +621,73 @@ fn_convert(struct gzfh_t* fhout, const char* search, const char* replace)
     return 1;
 }
 
+int write1(struct gzfh_t* fhout, kct_t* kc)
+{
+    int ret = -EFAULT;
+    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(uint32_t), 1) < 0)
+        return ret;
+    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(uint32_t), 1) < 0)
+        return ret;
+    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(uint32_t), 1) < 0)
+        return ret;
+    uint32_t len = kc->h.size();
+    if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t), 1) < 0)
+        return ret;
+    for(std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h)
+    {
+        EPR("%s..", kc->id + (*h)->part[0]);
+        if (fhout->write(fhout, (const char*)&((*h)->end_pos), sizeof(uint32_t), 1) < 0)
+            return ret;
+        // sequence is not stored.
+        if (fhout->write(fhout, (const char*)(*h)->part, 10 * sizeof(uint16_t), 1) < 0)
+            return ret;
+        if (fhout->write(fhout, (const char*)&((*h)->s_m), sizeof(uint8_t), 1) < 0)
+            return ret;
+        len = (*h)->bnd.size();
+        if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t), 1) < 0)
+            return ret;
+        for(std::list<uint32_t>::iterator b = (*h)->bnd.begin(); b != (*h)->bnd.end(); ++b)
+        {
+            if (fhout->write(fhout, (const char*)&(*b), sizeof(uint32_t), 1) < 0)
+                return ret;
+        }
+        // p_l is not needed anymore
+    }
+    if (fhout->write(fhout, (const char*)kc->bd, kc->bd_l * sizeof(bnd_t), 1) < 0)
+        return ret;
+    if (fhout->write(fhout, (const char*)kc->id, kc->id_l * sizeof(char), 1) < 0)
+        return ret;
+
+    // FIXME: with these valgrind reports unitilized values. XXX
+    // probably because data is too much for write in one.
+    /*len = kc->kct_l * 2;
+    uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
+    if (buf == NULL) return -ENOMEM;
+    uint32_t ndx = 0u, i = 0;
+    for (uint32_t ndx = 0u; ndx != KEYNT_BUFSZ; ++ndx) {
+        if (kc->kcsndx[ndx] == UNINITIALIZED) {
+            kc->kcsndx[ndx] = kc->kct_l; // make high bit range available
+        } else {
+            buf[i++] = ndx;
+            buf[i++] = kc->kcsndx[ndx];
+            ASSERT(i <= len, return -EFAULT);
+        }
+    }
+    ASSERT(i == len, return -EFAULT, "0x%x, 0x%x", i, len);
+    if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len, 1) < 0)
+        goto err;
+    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct), 1) < 0)
+        goto err;*/
+    // kc->wlkr and kc->wbuf should aren't filled yet.
+    // only this one can still grow.
+    if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t), 1) < 0)
+        goto err;
+    ret = 0;
+err:
+    //free(buf);
+    return ret;
+}
+
 int fa_index(struct seqb2_t* seq)
 {
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
@@ -667,7 +737,6 @@ int fa_index(struct seqb2_t* seq)
     // (realloc would invalidate pointers inserted in kc.hdr)
     kc.id = _buf_init(kc.id, 20);
 
-    // the first entry (0) is for a reference ID always.
     memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
 
     if (is_gzfile) {
@@ -684,7 +753,9 @@ int fa_index(struct seqb2_t* seq)
     EPR("left fa_kc");fflush(NULL);
     ASSERT(res >= 0, goto out);
 
-    // FIXME: write to file.
+    // write to disk, TODO: load from disk.
+    res = write1(fhout, &kc);
+    ASSERT(res >= 0, goto out);
 
     t = kc.kct_l * sizeof(Walker);
     kc.wlkr = (Walker*)malloc(t);
@@ -702,8 +773,6 @@ int fa_index(struct seqb2_t* seq)
     ret = res != 0;
 
 out:
-    if (fhout->fp)
-        fclose(fhout->fp);
     free_kc(&kc);
     return ret;
 

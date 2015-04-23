@@ -155,7 +155,6 @@ union Kct {
         uint64_t etc: 16;
         uint8_t* b2; // next_b2_0|next_b2_1|next_b2_2|next_b2_3|... 
     } p;
-    Bnd rng;
 };
 
 packed_struct Walker {
@@ -187,8 +186,8 @@ struct kct_t {
     Walker* wlkr;
     uint32_t* wbuf;
     uint32_t *kcsndx;
-    uint32_t kct_l, bd_l, id_l, s_l, ext;
-    uint8_t kct_m, kcsndx_m, bd_m, id_m, s_m;
+    uint32_t bd_l, id_l, kct_l, ext;
+    uint8_t kct_m, kcsndx_m, bd_m, id_m;
     Tid tid;
     std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;
@@ -197,3 +196,5 @@ struct kct_t {
 int fa_index(seqb2_t *seq);
 int fa_print(seqb2_t *fa);
 #endif // RK_FA_H
+
+
