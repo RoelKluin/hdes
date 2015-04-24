@@ -660,32 +660,31 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t)) < 0)
         return ret;
 
-    // FIXME: with these 2 writes below valgrind reports unitilized values
-    // upon file close. XXX
-    // probably because data is too much for write in one.
-    /*len = kc->kct_l * 2;
+    // FIXME: without this full flush below I get valgrind errors (upon close)
+    ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
+    EPR("after flush1");
+
+    len = kc->kct_l * 2;
     uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
     if (buf == NULL) return -ENOMEM;
-    uint32_t ndx = 0u, i = 0;
-    for (uint32_t ndx = 0u; ndx != KEYNT_BUFSZ; ++ndx) {
-        if (kc->kcsndx[ndx] == UNINITIALIZED) {
+    uint32_t i = 0;
+    for (uint32_t ndx = 0u; i != len; ++ndx) {
+        if (kc->kcsndx[ndx] >= kc->kct_l) {
             kc->kcsndx[ndx] = kc->kct_l; // make high bit range available
         } else {
             buf[i++] = ndx;
             buf[i++] = kc->kcsndx[ndx];
-            ASSERT(i <= len, return -EFAULT);
         }
     }
-    ASSERT(i == len, return -EFAULT, "0x%x, 0x%x", i, len);
-    if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len, 1) < 0)
+    if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len) < 0)
         goto err;
-    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct), 1) < 0)
-        goto err;*/
-    // kc->wlkr and kc->wbuf should aren't filled yet.
-    // only this one can still grow.
+    // Also this write requires the above flush.
+    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct)) < 0)
+        goto err;
+    // kc->wlkr and kc->wbuf aren't filled yet.
     ret = 0;
 err:
-    //free(buf);
+    free(buf);
     return ret;
 }
 

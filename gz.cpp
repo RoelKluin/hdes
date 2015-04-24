@@ -22,7 +22,7 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
             fprintf(stderr, "%s\n", gzerror(fh->io, &c));
             return c;
         }
-        fprintf(stderr, "==%d bytes written\n", c);
+        //fprintf(stderr, "==%d bytes written\n", c);
         l -= c, s += c;
     }
 
