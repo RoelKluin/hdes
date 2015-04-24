@@ -624,41 +624,44 @@ fn_convert(struct gzfh_t* fhout, const char* search, const char* replace)
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
     int ret = -EFAULT;
-    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(uint32_t), 1) < 0)
+    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(uint32_t)) < 0)
         return ret;
-    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(uint32_t), 1) < 0)
+    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(uint32_t)) < 0)
         return ret;
-    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(uint32_t), 1) < 0)
+    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(uint32_t)) < 0)
         return ret;
     uint32_t len = kc->h.size();
-    if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t), 1) < 0)
+    if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
         return ret;
     for(std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h)
     {
         EPR("%s..", kc->id + (*h)->part[0]);
-        if (fhout->write(fhout, (const char*)&((*h)->end_pos), sizeof(uint32_t), 1) < 0)
+        if (fhout->write(fhout, (const char*)&((*h)->end_pos), sizeof(uint32_t)) < 0)
             return ret;
-        // sequence is not stored.
-        if (fhout->write(fhout, (const char*)(*h)->part, 10 * sizeof(uint16_t), 1) < 0)
-            return ret;
-        if (fhout->write(fhout, (const char*)&((*h)->s_m), sizeof(uint8_t), 1) < 0)
-            return ret;
-        len = (*h)->bnd.size();
-        if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t), 1) < 0)
+        if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
             return ret;
         for(std::list<uint32_t>::iterator b = (*h)->bnd.begin(); b != (*h)->bnd.end(); ++b)
         {
-            if (fhout->write(fhout, (const char*)&(*b), sizeof(uint32_t), 1) < 0)
+            if (fhout->write(fhout, (const char*)&(*b), sizeof(uint32_t)) < 0)
                 return ret;
         }
+        // sequence is not stored.
+        if (fhout->write(fhout, (const char*)(*h)->part, 10 * sizeof(uint16_t)) < 0)
+            return ret;
+        if (fhout->write(fhout, (const char*)&((*h)->s_m), sizeof(uint8_t)) < 0)
+            return ret;
+        len = (*h)->bnd.size();
         // p_l is not needed anymore
     }
-    if (fhout->write(fhout, (const char*)kc->bd, kc->bd_l * sizeof(bnd_t), 1) < 0)
+    if (fhout->write(fhout, (const char*)kc->bd, kc->bd_l * sizeof(bnd_t)) < 0)
         return ret;
-    if (fhout->write(fhout, (const char*)kc->id, kc->id_l * sizeof(char), 1) < 0)
+    if (fhout->write(fhout, (const char*)kc->id, kc->id_l * sizeof(char)) < 0)
+        return ret;
+    if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t)) < 0)
         return ret;
 
-    // FIXME: with these valgrind reports unitilized values. XXX
+    // FIXME: with these 2 writes below valgrind reports unitilized values
+    // upon file close. XXX
     // probably because data is too much for write in one.
     /*len = kc->kct_l * 2;
     uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
@@ -680,20 +683,17 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
         goto err;*/
     // kc->wlkr and kc->wbuf should aren't filled yet.
     // only this one can still grow.
-    if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t), 1) < 0)
-        goto err;
     ret = 0;
 err:
     //free(buf);
     return ret;
 }
 
-int fa_index(struct seqb2_t* seq)
+int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 {
     struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
     struct gzfh_t* fhin = seq->fh + 2; // init with ref
     size_t t;
-    uint64_t blocksize = (uint64_t)seq->blocksize << 20;
     int res, ret = -1;
     void* g;
     int (*gc) (void*);

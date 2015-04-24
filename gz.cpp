@@ -10,27 +10,27 @@
  */
 #include <errno.h>
 #include <string.h> //strstr()
+#include <limits.h>
 #include "gz.h"
-
 static inline int
-b2gz_write(const gzfh_t* fh, const char* s, uint64_t l,
-        const size_t sz)
+b2gz_write(const gzfh_t* fh, const char* s, size_t l)
 {
     while (l) {
-        int c = gzwrite(fh->io, s, l > INT_MAX ? INT_MAX : l);
+        // last argument is unsigned
+        int c = gzwrite(fh->io, s, l > UINT_MAX ? UINT_MAX : l);
         if (c < 0) {
             fprintf(stderr, "%s\n", gzerror(fh->io, &c));
             return c;
         }
-        //fprintf(stderr, "==%d bytes written\n", c);
-        c /= sz, l -= c, s += c;
+        fprintf(stderr, "==%d bytes written\n", c);
+        l -= c, s += c;
     }
 
     return gzeof(fh->io) ? -EIO : 0;
 }
 
 static int
-rgzopen(struct gzfh_t* fh, uint64_t blocksize)
+rgzopen(struct gzfh_t* fh, uint32_t blocksize)
 {
     int fd = fileno(fh->fp);
     fh->fd = dup(fd);
@@ -42,7 +42,7 @@ rgzopen(struct gzfh_t* fh, uint64_t blocksize)
         return -EACCES;
     }
 
-    if (gzbuffer(fh->io, blocksize) == -1) {
+    if (gzbuffer(fh->io, blocksize << 20) == -1) {
         fputs("main: gzdopen failed to set blocksize\n", stderr);
         return -EINVAL;
     }
@@ -66,7 +66,7 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
 
 /* a force of 2 forces read */
 int
-set_io_fh(struct gzfh_t* fh, uint64_t blocksize, int force)
+set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
 {
     if (fh->fp == NULL)
         fh->fp = fopen(fh->name, "r"); // test whether file exists

@@ -166,9 +166,9 @@ packed_struct Walker {
 struct Hdr {
     uint8_t* s;
     uint32_t end_pos, s_l;
+    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
     std::list<uint32_t>::iterator bdit;
-    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     uint8_t p_l, s_m;
 };
 
@@ -193,7 +193,7 @@ struct kct_t {
     std::map<char*, Hdr*, Tid> hdr;
 };
 
-int fa_index(seqb2_t *seq);
+int fa_index(seqb2_t *seq, uint32_t blocksize);
 int fa_print(seqb2_t *fa);
 #endif // RK_FA_H
 

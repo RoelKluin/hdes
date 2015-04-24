@@ -103,7 +103,7 @@ fq_print(seqb2_t *fq)
             do {
                 c = w - (uint8_t *)buf;
                 if ((c + (readlength << 1) + SEQ_MAX_NAME_ETC) >= bufm) {
-                    if (fh->write(fh, buf, c, sizeof(char)) < 0) {
+                    if (fh->write(fh, buf, c) < 0) {
                         ret = -1;
                         break;
                     }
@@ -145,7 +145,7 @@ fq_print(seqb2_t *fq)
     } while (j-- != 0u);
     c = w - (uint8_t *)buf;
 
-    if (c && fh->write(fh, buf, c, sizeof(char)) < 0) ret = -1;
+    if (c && fh->write(fh, buf, c) < 0) ret = -1;
 
     if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
     _buf_free(fq->s);

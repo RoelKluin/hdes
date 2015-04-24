@@ -24,8 +24,7 @@
 #endif
 
 static int
-b2_write(const gzfh_t *fh, const char *s, uint64_t l,
-        const size_t sz)
+b2_write(const gzfh_t *fh, const char *s, uint64_t l)
 {
     while (l) {
         int c = write(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
@@ -34,7 +33,7 @@ b2_write(const gzfh_t *fh, const char *s, uint64_t l,
             return c;
         }
         fprintf(stderr, "==%d bytes written\n", c);
-        c /= sz, l -= c, s += c;
+        l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
 }
@@ -82,11 +81,10 @@ static int usage()
 
 int main(int argc, char* const* argv)
 {
-    uint64_t blocksize;
     struct seqb2_t seq = {0}; /* init everything to 0 or NULL */
     unsigned i = 0u, fhsz = ARRAY_SIZE(seq.fh);
     int c, ret = EXIT_FAILURE;
-    uint32_t optvals[16] = {
+    uint32_t blocksize, optvals[16] = {
         // maxreads, readlength, blocksize, phred_offset
         -1u, 0, 32, 33,                // default values
         1, KEY_WIDTH, 1, 32,           // bottom limit (minima)
@@ -134,9 +132,8 @@ int main(int argc, char* const* argv)
     }
     seq.maxreads = optvals[0];
     seq.readlength = optvals[1];
-    seq.blocksize = optvals[2];
+    blocksize = optvals[2];
     seq.phred_offset = optvals[3];
-    blocksize = (uint64_t)seq.blocksize << 20;
 
     /* options without a flag */
     while (optind != argc) {
@@ -196,7 +193,7 @@ int main(int argc, char* const* argv)
 //                fputs("== Readlength needed for indexing.\n", stderr);
 //                goto out;
 //            }
-            c = fa_index(&seq);
+            c = fa_index(&seq, blocksize);
             if (c < 0) {
                 fputs("== failed to create keyct.\n", stderr);
                 goto out;
