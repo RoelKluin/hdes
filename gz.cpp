@@ -29,6 +29,23 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
     return gzeof(fh->io) ? -EIO : 0;
 }
 
+static inline int
+b2gz_read(const gzfh_t* fh, char* s, size_t l)
+{
+    while (l) {
+        // last argument is unsigned
+        int c = gzread(fh->io, s, l > UINT_MAX ? UINT_MAX : l);
+        if (c < 0) {
+            fprintf(stderr, "%s\n", gzerror(fh->io, &c));
+            return c;
+        }
+        //fprintf(stderr, "==%d bytes read\n", c);
+        l -= c, s += c;
+    }
+
+    return gzeof(fh->io) ? -EIO : 0;
+}
+
 static int
 rgzopen(struct gzfh_t* fh, uint32_t blocksize)
 {
@@ -64,7 +81,7 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
     return 1;
 }
 
-/* a force of 2 forces read */
+/* a force of 2 forces read, return 0 for reading 1, writing, else error. */
 int
 set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
 {
@@ -72,7 +89,7 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         fh->fp = fopen(fh->name, "r"); // test whether file exists
     const char* t = strstr(fh->name,".gz");
 
-    if (fh->write && force != 2) { /* write without gzip by default */
+    if ((fh->write && force != 2) || fh->fp == NULL) { /* write without gzip by default */
         fprintf(stderr, "== preparing to write %s...\n", fh->name);
         if (fh->fp) { /* file already exists, overwrite? */
             fclose(fh->fp);
@@ -89,7 +106,7 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         if (t && t[3] == '\0') {/* '.gz' at _end_ */
             fh->write = b2gz_write;
             fh->close = gzclose_w;
-            return rgzopen(fh, blocksize);
+            return rgzopen(fh, blocksize) + 1;
         }
     } else {
         fprintf(stderr, "== preparing to read %s...\n", fh->name);
@@ -98,6 +115,7 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
             return -ENOENT;
         }
         if (t && t[3] == '\0') {
+            fh->read = b2gz_read;
             fh->close = gzclose_r;
             return rgzopen(fh, blocksize);
         }

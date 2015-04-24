@@ -20,9 +20,9 @@ typedef struct gzfh_t {
     FILE *fp;
     int fd;
     gzFile io;
+    int (*read) (const gzfh_t *fh, char*, size_t);
     int (*write) (const gzfh_t *fh, const char*, size_t);
     int (*close) (gzFile);
-    uint64_t blocksize;
 } gzfh;
 
 int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);

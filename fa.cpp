@@ -607,15 +607,9 @@ ext_uq_iter(kct_t* kc)
 }
 
 int
-fa_print(seqb2_t *fa)
+fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
 {
-    return 1;
-}
-
-int
-fn_convert(struct gzfh_t* fhout, const char* search, const char* replace)
-{
-    char* f = strstr(fhout->name, search);
+    char* f = strstr(fhio->name, search);
     if (f == NULL) return 0;
     strncpy(f, replace, strlen(replace) + 1);
     return 1;
@@ -635,10 +629,8 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
         return ret;
     for(std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h)
     {
-        EPR("%s..", kc->id + (*h)->part[0]);
+        EPQ(dbg > 1, "%s..", kc->id + (*h)->part[0]);
         if (fhout->write(fhout, (const char*)&((*h)->end_pos), sizeof(uint32_t)) < 0)
-            return ret;
-        if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
             return ret;
         for(std::list<uint32_t>::iterator b = (*h)->bnd.begin(); b != (*h)->bnd.end(); ++b)
         {
@@ -660,9 +652,10 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t)) < 0)
         return ret;
 
-    // FIXME: without this full flush below I get valgrind errors (upon close)
+    // FIXME: full flush silences valgrind errors on close, about uninit
+    // values - either when writing buf or kc->kct.
     ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
-    EPR("after flush1");
+    EPQ(dbg > 0, "after flush1");
 
     len = kc->kct_l * 2;
     uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
@@ -678,7 +671,6 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     }
     if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len) < 0)
         goto err;
-    // Also this write requires the above flush.
     if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct)) < 0)
         goto err;
     // kc->wlkr and kc->wbuf aren't filled yet.
@@ -688,9 +680,29 @@ err:
     return ret;
 }
 
+int restore1(struct gzfh_t* fhin, kct_t* kc)
+{
+    int ret = -EFAULT;
+    if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(uint32_t)) < 0)
+        return ret;
+    if (fhin->read(fhin, (char*)&kc->id_l, sizeof(uint32_t)) < 0)
+        return ret;
+    if (fhin->read(fhin, (char*)&kc->kct_l, sizeof(uint32_t)) < 0)
+        return ret;
+    uint32_t len;
+    if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
+        return ret;
+    for (uint32_t i=0; i != len; ++i) {
+        Hdr *h = new Hdr;
+        h->s = NULL; h->s_l = 0u; // XXX: may be removed in future.
+    }
+    //ret = 0;
+    return ret;
+}
+
 int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 {
-    struct gzfh_t* fhout = seq->fh + ARRAY_SIZE(seq->fh) - 1;
+    struct gzfh_t* fhio = seq->fh;
     struct gzfh_t* fhin = seq->fh + 2; // init with ref
     size_t t;
     int res, ret = -1;
@@ -699,61 +711,61 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
     int (*ungc) (int, void*);
     int is_gzfile = fhin->io != NULL;
     char file[256];
-    Hdr h;
     kct_t kc;
-    iter = 0;
+    kc.ext = seq->readlength - KEY_WIDTH;
 
     const char* ndxact[4] = {".fa", "_x1.gz"};
 
-    if (fhout->name != NULL && ((res = strlen(fhout->name)) > 255)) {
-        strncpy(file, fhout->name, res);
+    if (fhio->name != NULL && ((res = strlen(fhio->name)) > 255)) {
+        strncpy(file, fhio->name, res);
     } else {
         res = strlen(fhin->name);
         ASSERT(strncmp(fhin->name, "stdin", res) != 0, return -1);
         strcpy(file, fhin->name);
     }
-    fhout->name = &file[0];
-    if (!fn_convert(fhout, ndxact[0], ndxact[1]))
+    fhio->name = &file[0];
+    if (!fn_convert(fhio, ndxact[0], ndxact[1]))
         return -1; // skip if this file was not provided on the commandline
 
-    fprintf(stderr, "== %s(%lu)\n", fhout->name, fhout - seq->fh);
-    fhout->fp = fopen(fhout->name, "r"); // test whether file exists
-    if (fhout->fp) {
-        //FIXME: then load it instead of up to fa_kc and store.
-        fprintf(stderr, "== %s already exists\n== done.\n", fhout->name);
-        return -1;
-    }
-
-    res = set_io_fh(fhout, blocksize, 0);
+    fprintf(stderr, "== %s(%lu)\n", fhio->name, fhio - seq->fh);
+    res = set_io_fh(fhio, blocksize, 0);
     if (res < 0) { fprintf(stderr, "== set_io_fh failed:%d", res); goto out; }
 
-    kc.ext = seq->readlength - KEY_WIDTH;
-    kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
-    kc.kct = _buf_init(kc.kct, 16);
-    kc.bd = _buf_init(kc.bd, 1);
-
-    // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
-    // (realloc would invalidate pointers inserted in kc.hdr)
-    kc.id = _buf_init(kc.id, 20);
-
-    memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
-
-    if (is_gzfile) {
-        g = fhin->io;
-        gc = (int (*)(void*))&gzgetc;
-        ungc = (int (*)(int, void*))&gzungetc;
+    if (res == 0) {
+        res = restore1(fhio, &kc);
+        ASSERT(res >= 0, goto out);
+        res = fhio->close(fhio->io);
     } else {
-        g = fhin->fp;
-        gc = (int (*)(void*))&fgetc;
-        ungc = (int (*)(int, void*))&ungetc;
-    }
-    /* TODO: load dbSNP and known sites, and mark them. */
-    res = fa_kc(&kc, g, gc, ungc);
-    EPR("left fa_kc");fflush(NULL);
-    ASSERT(res >= 0, goto out);
 
-    // write to disk, TODO: load from disk.
-    res = write1(fhout, &kc);
+        kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
+        kc.kct = _buf_init(kc.kct, 16);
+        kc.bd = _buf_init(kc.bd, 1);
+
+        // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
+        // (realloc would invalidate pointers inserted in kc.hdr)
+        kc.id = _buf_init(kc.id, 20);
+
+        memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
+
+        if (is_gzfile) {
+            g = fhin->io;
+            gc = (int (*)(void*))&gzgetc;
+            ungc = (int (*)(int, void*))&gzungetc;
+        } else {
+            g = fhin->fp;
+            gc = (int (*)(void*))&fgetc;
+            ungc = (int (*)(int, void*))&ungetc;
+        }
+        /* TODO: load dbSNP and known sites, and mark them. */
+        res = fa_kc(&kc, g, gc, ungc);
+        EPR("left fa_kc");fflush(NULL);
+        ASSERT(res >= 0, goto out);
+
+        // write to disk, TODO: load from disk.
+        res = write1(fhio, &kc);
+        //ASSERT(res >= 0, goto out);
+        //res = fhio->close(fhio->io);
+    }
     ASSERT(res >= 0, goto out);
 
     t = kc.kct_l * sizeof(Walker);

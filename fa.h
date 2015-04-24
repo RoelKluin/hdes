@@ -194,7 +194,6 @@ struct kct_t {
 };
 
 int fa_index(seqb2_t *seq, uint32_t blocksize);
-int fa_print(seqb2_t *fa);
 #endif // RK_FA_H
 
 
