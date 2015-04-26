@@ -132,7 +132,7 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #endif
 
-typedef packed_struct bnd_t {
+packed_struct Bnd {
     uint64_t t: 8; // type
     uint64_t dna: 56;
     uint32_t s; // start
@@ -141,7 +141,7 @@ typedef packed_struct bnd_t {
 #ifdef DEBUG
     uint64_t at_dna;
 #endif
-} Bnd;
+};
 
 union Kct {
     packed_struct {
