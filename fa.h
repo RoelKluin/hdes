@@ -98,12 +98,15 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #undef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
 
+#define M56B ((1ul << 56) - 1ul)
+
+#define BD_GET_DNA(bd) (bd->tdna & M56B)
+#define BD_GET_T(bd)   (bd->tdna >> 56)
+#define BD_SHFT_T(t)   (((uint64_t)t) << 56)
+
 #define DEBUG 1
 
 #ifdef DEBUG
-# define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) (at_dna_ref) = (dna)
-# define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        (_bd) = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i, .at_dna = _e};
 
 # define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
 # define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
@@ -111,36 +114,32 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
         /*ASSERT((kc)->kcsndx[(ndx)] < (kc)->kct_l, return -EINVAL);*/\
         (kc)->kct[(kc)->kcsndx[(ndx)]]
 # define _getxtdndx(kc, ndx, dna, rc) ({\
-        ndx = _get_ndx((ndx), (dna), (rc));\
+        ndx = _get_ndx(ndx, (dna), (rc));\
         /*EPQ(ndx == 0x47ef9, "%s:%u <========\n", hdr, pos);*/\
         ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
         ndx;\
 })
 #else
-# define DEBUG_ASSIGN_ENDDNA(at_dna_ref, dna) //nothing
-#define ASSIGN_BD(_bd, _t, _d, _s, _l, _i, _e) \
-        (_bd) = {.t = _t, .dna = _d, .s = _s, .l = _l, .i = _i};
 
 # define _getxtdndx0(kc, ndx) (ndx)
 # define get_w(wlkr, kc, ndx) (wlkr)[(ndx)]
 # define _get_kct(kc, ndx) (kc)->kct[(ndx)]
 # define _getxtdndx(kc, ndx, dna, rc) ({\
-        ndx = _get_ndx(ndx, dna, rc);\
+        ndx = _get_ndx(ndx, (dna), (rc));\
         ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
         (kc)->kcsndx[ndx];\
 })
 
 #endif
 
-packed_struct Bnd {
-    uint64_t t: 8; // type
-    uint64_t dna: 56;
-    uint32_t s; // start
-    uint32_t l; // length
-    uint32_t i; // inferiority
+struct Bnd {
 #ifdef DEBUG
     uint64_t at_dna;
 #endif
+    uint64_t tdna; //type & dna
+    uint32_t s; // start
+    uint32_t l; // length
+    uint32_t i; // inferiority
 };
 
 union Kct {
