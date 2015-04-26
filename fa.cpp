@@ -335,16 +335,14 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             EPR("=>\tN-stretch at Nt %u", pos);
         }
         kc->bd[kc->bd_l].at_dna = dna;
-        _buf_grow0(kc->bd, 1ul);
+        _buf_grow0(kc->bd, 2ul);
         ++kc->bd_l;
     }
     if (h == NULL)
         return -EFAULT;
-    // add enddna as length to first element, the chromome boundary.
-    kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = BD_SHFT_T(NEW_REF_ID),
-        .s = pos, .l = 0, .i = 0};
-    _buf_grow0(kc->bd, 1ul);
-    ++kc->bd_l;
+    kc->bd[0].l -= pos;
+    kc->bd[0].s = pos;
+    h->bnd.push_back(0);
     return 0;
 }
 
@@ -436,7 +434,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         show_list(kc, h->bnd);
 
     // one extra must be available for inter.
-    _buf_grow0(kc->bd, 2ul);
     Bnd *inter = &kc->bd[kc->bd_l];
     *inter = {.at_dna = dna, .tdna = last->tdna & ~M56B, .s = pos, .l = 0, .i = infior};
 
