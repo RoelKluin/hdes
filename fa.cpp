@@ -64,7 +64,7 @@ show_list(kct_t* kc, std::list<uint32_t> &bnd)
     unsigned i = 0;
     for (it = bnd.begin(); it != bnd.end(); ++it) {
         Bnd* bd = &kc->bd[*it];
-        EPR0("[%u]:\t%u-%u\t%u\t", i++, bd->s, bd->s + bd->l, bd->l);
+        EPR0("[%u (%u)]:\t%u-%u\t%u\t", i++, *it, bd->s, bd->s + bd->l, bd->l);
         print_dnarc(bd->at_dna, BD_GET_DNA(bd));
     }
 }
@@ -87,7 +87,8 @@ print_ndx(uint64_t dna, bool dbg = true)
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 
-enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, END_REF, DBSNP, KNOWN_SITE};
+//XXX: is this necessry?
+enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, DBSNP, KNOWN_SITE};
 
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
@@ -155,16 +156,14 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
     }
 
     kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], h));
-    _buf_grow_err(kc->bd, 1ul, 0, return NULL);
-    kc->bd[kc->bd_l] = {.at_dna = UNINITIALIZED, .tdna = BD_SHFT_T(NEW_REF_ID), .s = 0, .l = UNINITIALIZED, .i = 0};
-
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bd[kc->bd_l].s = KEY_WIDTH + atoi(kc->id + h->part[START]) - 1;
+        kc->bd[kc->bd_l].l = KEY_WIDTH + atoi(kc->id + h->part[START]) - 1
+            -kc->bd[kc->bd_l].s;
         h->end_pos = atoi(kc->id + h->part[END]);
-        kc->bd[kc->bd_l].l = 0;
     } else {
+        kc->bd[kc->bd_l].l = -kc->bd[kc->bd_l].s;
         h->p_l = UNKNOWN_HDR;
         EPR("\nWARNING: non-ensembl reference.");
     }
@@ -209,8 +208,9 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
+        kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = 0, .s = pos, .l = 0, .i = 0};
         if (c != '>') { // N-stretch
-            t = KEY_WIDTH; // use  to count stretch (key is rebuilt later)
+            t = KEY_WIDTH; // stretch length + shift required for new key
             do {
                 if (c != '\n') {
                     if (c != 'N') {
@@ -223,17 +223,17 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 c = gc(g);
             } while(c != -1);
             if (c == -1) break;
+            kc->bd[kc->bd_l].tdna = BD_SHFT_T(N_STRETCH);
+            kc->bd[kc->bd_l].l = t;
             ungc(c, g);
-            _buf_grow_err(kc->bd, 1ul, 0, return -ENOMEM);
-            kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = BD_SHFT_T(N_STRETCH), .s = pos, .l = t, .i = 0};
         } else { // header
-            if (h != NULL) {
-                // add enddna as length to first element, the chromome boundary.
-                _buf_grow_err(kc->bd, 1ul, 0, return -ENOMEM);
-                kc->bd[kc->bd_l] = {.at_dna = dna,
-                    .tdna = BD_SHFT_T(END_REF), .s = pos, .l = 0, .i = 0};
-                h->bnd.push_back(kc->bd_l++);
-            }
+            // Append the index of the next boundary to the last header.
+            // The at_dna is of the last chromo. XXX if at_dna is removed
+            // altogether we can stop at h->bnd.end() instead.
+            if (h != NULL)
+                h->bnd.push_back(kc->bd_l);
+            kc->bd[kc->bd_l].tdna = BD_SHFT_T(NEW_REF_ID);
+
             h = new_header(kc, g, gc);
             if (h == NULL) return -EFAULT;
         }
@@ -335,14 +335,16 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             EPR("=>\tN-stretch at Nt %u", pos);
         }
         kc->bd[kc->bd_l].at_dna = dna;
+        _buf_grow0(kc->bd, 1ul);
         ++kc->bd_l;
     }
     if (h == NULL)
         return -EFAULT;
     // add enddna as length to first element, the chromome boundary.
-    _buf_grow_err(kc->bd, 1ul, 0, return -ENOMEM);
-    kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = BD_SHFT_T(END_REF), .s = pos, .l = 0, .i = 0};
-    h->bnd.push_back(kc->bd_l++);
+    kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = BD_SHFT_T(NEW_REF_ID),
+        .s = pos, .l = 0, .i = 0};
+    _buf_grow0(kc->bd, 1ul);
+    ++kc->bd_l;
     return 0;
 }
 
@@ -433,7 +435,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     if (dbg > 2)
         show_list(kc, h->bnd);
 
-    _buf_grow0(kc->bd, 1ul);
+    // one extra must be available for inter.
+    _buf_grow0(kc->bd, 2ul);
     Bnd *inter = &kc->bd[kc->bd_l];
     *inter = {.at_dna = dna, .tdna = last->tdna & ~M56B, .s = pos, .l = 0, .i = infior};
 
@@ -474,8 +477,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                     EPQ0(dbg > 1, "\n[%u-%u]\t", inter->s, inter->s + inter->l - 1);print_dnarc(inter->at_dna, BD_GET_DNA(inter), dbg > 1);
                     //show_list(kc, h->bnd);
                     if ((last->s + last->l) < inter->s) {
+                        h->bnd.insert(h->bdit, kc->bd_l);
                         _buf_grow0(kc->bd, 2ul);
-                        h->bnd.insert(h->bdit, kc->bd_l); // even after increment one should be available for inter.
                         last = kc->bd + kc->bd_l++;
                         inter = last + 1;
                     } else { // join - may be undesirable for certain boundary types in the future
@@ -502,7 +505,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             b2 = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
             t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
         }
-        if (h->s) {
+        if (h->s) { // not set after loading from disk.
             uint8_t sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
             ASSERT(b2 == sb2, return print_dnarc(dna, rc), "[%u]: expected %c, got %c for ndx 0x%lx", pos,b6(sb2<<1), b6(b2<<1), ndx);
         }
@@ -548,7 +551,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // if last and next have now become adjoining, merge the two
         // XXX why not (last->s + last->l + ext > next->s) ? (assertion error later, but why?)
         if ((last->s + last->l >= next->s)) {
-            if (BD_GET_T(next) != UQ_REGION)
+            if (BD_GET_T(next) != UQ_REGION) // XXX why this exclusion?
                 last->tdna ^= (last->tdna ^ next->tdna) & ~M56B;
 
             EPQ(dbg > 1,"merging %u-%u", last->s, next->s + next->l);

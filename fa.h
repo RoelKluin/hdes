@@ -138,7 +138,7 @@ struct Bnd {
 #endif
     uint64_t tdna; //type & dna
     uint32_t s; // start
-    uint32_t l; // length
+    int32_t l; // correction for position
     uint32_t i; // inferiority
 };
 
