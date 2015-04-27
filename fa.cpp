@@ -65,7 +65,7 @@ show_list(kct_t* kc, std::list<uint32_t> &bnd)
     for (it = bnd.begin(); it != bnd.end(); ++it) {
         Bnd* bd = &kc->bd[*it];
         EPR0("[%u (%u)]:\t%u-%u\t%u\t", i++, *it, bd->s, bd->s + bd->l, bd->l);
-        print_dnarc(bd->at_dna, BD_GET_DNA(bd));
+        print_dnarc(bd->at_dna, bd->dna);
     }
 }
 
@@ -86,9 +86,6 @@ print_ndx(uint64_t dna, bool dbg = true)
 }
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
-
-//XXX: is this necessry?
-enum bnd_type {NEW_REF_ID, N_STRETCH, UQ_REGION, DBSNP, KNOWN_SITE};
 
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
@@ -208,7 +205,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
-        kc->bd[kc->bd_l] = {.at_dna = dna, .tdna = 0, .s = pos, .l = 0, .i = 0};
+        kc->bd[kc->bd_l] = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = 0};
         if (c != '>') { // N-stretch
             t = KEY_WIDTH; // stretch length + shift required for new key
             do {
@@ -223,7 +220,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 c = gc(g);
             } while(c != -1);
             if (c == -1) break;
-            kc->bd[kc->bd_l].tdna = BD_SHFT_T(N_STRETCH);
             kc->bd[kc->bd_l].l = t;
             ungc(c, g);
         } else { // header
@@ -232,7 +228,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             // altogether we can stop at h->bnd.end() instead.
             if (h != NULL)
                 h->bnd.push_back(kc->bd_l);
-            kc->bd[kc->bd_l].tdna = BD_SHFT_T(NEW_REF_ID);
 
             h = new_header(kc, g, gc);
             if (h == NULL) return -EFAULT;
@@ -257,7 +252,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             continue;
         pos = kc->bd[kc->bd_l].s + kc->bd[kc->bd_l].l;
         // ndx (key) is 2nd cNt bit excised, rc or dna
-        kc->bd[kc->bd_l].tdna |= dna;
+        kc->bd[kc->bd_l].dna = dna;
         h->bnd.push_back(kc->bd_l);
         do {
             ndx = _get_ndx(ndx, dna, rc);
@@ -402,14 +397,14 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
     return left;
 }
 
-static int dbg = 0;
+static int dbg = 1;
 static unsigned iter = 0;
 
 static inline void merge(Bnd *dest, Bnd *next)
 {
     EPQ(dbg > 1, "Extending %u-%u til %u", dest->s, next->s, next->s + next->l);
     dest->l += next->l;
-    dest->tdna ^= (dest->tdna ^ next->tdna) & M56B;
+    dest->dna = next->dna;
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
@@ -425,7 +420,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     const char* hdr = kc->id + h->part[0];
     //dbg = (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) * 2;
 
-    uint64_t t, dna = BD_GET_DNA(last); // first seq after skip
+    uint64_t t, dna = last->dna; // first seq after skip
     uint64_t rc = revcmp(dna);
     uint64_t ndx = _getxtdndx(kc, ndx, dna, rc);
     Walker* w = &get_w(kc->wlkr, kc, ndx);
@@ -435,14 +430,14 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
 
     // one extra must be available for inter.
     Bnd *inter = &kc->bd[kc->bd_l];
-    *inter = {.at_dna = dna, .tdna = last->tdna & ~M56B, .s = pos, .l = 0, .i = infior};
+    *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = infior};
 
     // boundary is considered as a first unique,
     // if we find a 2nd, we really want to extend this region
     const int ext = kc->ext;
     int left = ext;
-    EPQ0(dbg > 0, "----[\t%s%s:(%u-%u)..(%u-%u)\t(%lu)@%u\t]----\tdna:",
-            strlen(hdr) < 8 ? "\t":"",hdr, last->s, last->s+last->l, next->s, next->s+next->l, BD_GET_T(last), pos); print_dna(dna, dbg > 0);
+    EPQ0(dbg > 0, "----[\t%s%s:(%u-%u)..(%u-%u)\t@%u\t]----\tdna:",
+            strlen(hdr) < 8 ? "\t":"",hdr, last->s, last->s+last->l, next->s, next->s+next->l, pos); print_dna(dna, dbg > 0);
 
     for (;pos < next->s;++pos) { // until next event
         EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
@@ -457,7 +452,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 // what we'll jump to, in subsequent iterations.
                 // This is inserted (once) when region is complete (left becomes 0) -
                 // otherwise it's overwritten successively.
-                inter->tdna ^= (inter->tdna ^ dna) & M56B;
+                inter->dna = dna;
                 inter->l = pos - inter->s;
             }
             if (--left) {
@@ -468,10 +463,16 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             } else { // actually buf just became full, without extension(s not already handled)..
                 EPQ(inter->s > 0xfffffff, "%u", -inter->s);
                 infior = 0;
+                // add tmp_count for each - we cannot extend it in this iteration
+                for (left = ext; --left;) {
+                    get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
+                    --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
+                    kc->wbuf[left] = UNINITIALIZED;
+                }
 
                 if (inter->l != 0) {
                     // we did insert a range
-                    EPQ0(dbg > 1, "\n[%u-%u]\t", inter->s, inter->s + inter->l - 1);print_dnarc(inter->at_dna, BD_GET_DNA(inter), dbg > 1);
+                    EPQ0(dbg > 1, "\n[%u-%u]\t", inter->s, inter->s + inter->l - 1);print_dnarc(inter->at_dna, inter->dna, dbg > 1);
                     //show_list(kc, h->bnd);
                     if ((last->s + last->l) < inter->s) {
                         h->bnd.insert(h->bdit, kc->bd_l);
@@ -483,12 +484,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                     }
                     next = &kc->bd[*h->bdit];
                     inter->l = 0;
-                }
-                // add tmp_count for each - we cannot extend it in this iteration
-                for (left = ext; --left;) {
-                    get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
-                    --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
-                    kc->wbuf[left] = UNINITIALIZED;
                 }
             }
         }
@@ -521,7 +516,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         y->seq.m ^= (y->seq.m & 1) ^ !(dna & KEYNT_STRAND);
         ++infior;
         if (left == 0) { // this is a first unique.
-            *inter = {.at_dna = dna, .tdna = BD_SHFT_T(UQ_REGION), .s = pos, .l = 0, .i = max(infior, w->infior + 1u)};
+            *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = max(infior, w->infior + 1u)};
             left = ext;
             infior = inter->i + 1;
             continue;
@@ -537,7 +532,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     //ASSERT(dna == next->at_dna, return -print_dnarc(dna, next->at_dna), "[%u] => enddna mismatch", pos);
     if (left) {
         ASSERT((inter->s + inter->l + ext) >= next->s, return -EFAULT);
-        EPQ0(dbg > 1, "\nExtending %u-%u til %u\t(next:%u-%u)\t", last->s, last->s+last->l, inter->s+inter->l, next->s, next->s+next->l); print_dnarc(BD_GET_DNA(last), inter->at_dna, dbg > 1);
+        EPQ0(dbg > 1, "\nExtending %u-%u til %u\t(next:%u-%u)\t", last->s, last->s+last->l, inter->s+inter->l, next->s, next->s+next->l); print_dnarc(last->dna, inter->at_dna, dbg > 1);
         next->l += next->s - inter->s;
         next->s = inter->s;
         next->at_dna = inter->at_dna;
@@ -548,9 +543,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // if last and next have now become adjoining, merge the two
         // XXX why not (last->s + last->l + ext > next->s) ? (assertion error later, but why?)
         if ((last->s + last->l >= next->s)) {
-            if (BD_GET_T(next) != UQ_REGION) // XXX why this exclusion?
-                last->tdna ^= (last->tdna ^ next->tdna) & ~M56B;
-
             EPQ(dbg > 1,"merging %u-%u", last->s, next->s + next->l);
             merge(last, next);
             h->bdit = h->bnd.erase(h->bdit);
@@ -613,6 +605,11 @@ fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
     return 1;
 }
 
+int kct_convert(kct_t* kc)
+{
+    return 0;
+}
+
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
     int ret = -EFAULT;
@@ -646,18 +643,14 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
             return ret;
         if (fhout->write(fhout, (const char*)&(*h)->p_l, sizeof(uint8_t)) < 0)
             return ret;
-        len = (*h)->bnd.size();
         // p_l is not needed anymore
     }
-    if (fhout->write(fhout, (const char*)&kc->bd_m, sizeof(uint8_t)) < 0)
-        return ret;
     // FIXME: full flush silences valgrind errors on close, about uninit
     // values - either when writing buf or kc->kct.
     ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
     EPR("after flush1");
     if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct)) < 0)
         return ret;
-
 
     len = kc->kct_l * 2;
     uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
@@ -676,12 +669,13 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
         goto err;
     ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
     EPR("after flush2");
-    len = kc->bd_l * sizeof(kc->bd[0]);
-    /*EPR("%u, %lu, %lu", kc->bd_l, sizeof(Bnd), len);
-    for (unsigned i = 0; i != kc->bd_l; ++i) {
+
+    len = kc->bd_l * sizeof(Bnd);
+    // when kc->bd is not packed, problem at 0th.
+    /*for (unsigned i = 0; i != kc->bd_l; ++i) {
         Bnd* bd = &kc->bd[i];
-        EPR("%u:\t%lu\t%u\t%u\t%u\t[%lu]", i, BD_GET_T(bd), bd->s, bd->l, bd->i, sizeof(kc->bd[i]));
-        print_dnarc(bd->at_dna, BD_GET_DNA(bd));
+        EPR("%u:\t%u\t%u\t%u\t[%lu]", i, bd->s, bd->l, bd->i, sizeof(kc->bd[i]));
+        print_dnarc(bd->at_dna, bd->dna);
     }*/
     // kc->wlkr and kc->wbuf aren't filled yet.
     if (fhout->write(fhout, (const char*)kc->bd, len) < 0)
@@ -697,6 +691,7 @@ err:
 int restore1(struct gzfh_t* fhin, kct_t* kc)
 {
     int ret = -EFAULT;
+    kc->bd = NULL; kc->id = NULL; kc->kct = NULL;
     if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(uint32_t)) < 0)
         return ret;
     EPR("%u", kc->bd_l);
@@ -730,8 +725,6 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
         kc->h.push_back(h);
         kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], kc->h.back()));
     }
-    if (fhin->read(fhin, (char*)&kc->bd_m, sizeof(uint8_t)) < 0)
-        return ret;
     len = kc->kct_l * sizeof(Kct);
     kc->kct = (Kct*)malloc(len);
     if (fhin->read(fhin, (char*)kc->kct, len) < 0)
@@ -740,13 +733,15 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     for (uint32_t i=0; i != kc->kct_l; ++i) {
         if (fhin->read(fhin, (char*)&val, sizeof(uint32_t)) < 0)
             return ret;
+        ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
         if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
             return ret;
         kc->kcsndx[val] = len;
     }
-    len = kc->bd_l * sizeof(Bnd);
-    EPR("%u, %lu, %lu", kc->bd_l, sizeof(Bnd), len);
+    len = next_pow2(kc->bd_l + 2);
+    kc->bd_m = __builtin_clz(len);
     kc->bd = (Bnd*)malloc(len);
+    len = kc->bd_l * sizeof(Bnd);
     if (fhin->read(fhin, (char*)kc->bd, len) < 0)
         return ret;
     return 0;

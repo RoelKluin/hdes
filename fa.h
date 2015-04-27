@@ -98,12 +98,6 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #undef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
 
-#define M56B ((1ul << 56) - 1ul)
-
-#define BD_GET_DNA(bd) (bd->tdna & M56B)
-#define BD_GET_T(bd)   (bd->tdna >> 56)
-#define BD_SHFT_T(t)   (((uint64_t)t) << 56)
-
 #define DEBUG 1
 
 #ifdef DEBUG
@@ -132,11 +126,11 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #endif
 
-struct Bnd {
+packed_struct Bnd {
 #ifdef DEBUG
-    uint64_t at_dna;
+    uint64_t at_dna; // dna before boundary (to check)
 #endif
-    uint64_t tdna; //type & dna
+    uint64_t dna; // dna after boundary
     uint32_t s; // start
     int32_t l; // correction for position
     uint32_t i; // inferiority

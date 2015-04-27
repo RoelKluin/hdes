@@ -154,7 +154,17 @@ sprint0x(uint8_t *out, register uint64_t u, uint8_t del, uint8_t len)
     return len + 3;
 }
 
+static unsigned next_pow2(unsigned x)
+{
+    x -= 1;
+    x |= (x >> 1);
+    x |= (x >> 2);
+    x |= (x >> 4);
+    x |= (x >> 8);
+    x |= (x >> 16);
 
+    return x + 1;
+}
 
 
 #define DEBUG 1
