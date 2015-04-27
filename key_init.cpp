@@ -10,6 +10,7 @@
  */
 #include "fa.h"
 
+#define ENS_HDR_PARTCT 10
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
@@ -17,6 +18,9 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
 {
     int c;
     Hdr* h = new Hdr;
+    h->part = (uint16_t*)malloc(ENS_HDR_PARTCT * sizeof(uint16_t));
+    ASSERT(h->part != NULL, return NULL);
+
     h->s = _buf_init_err(h->s, 8, return NULL);
     kc->h.push_back(h);
 
@@ -38,7 +42,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
                 } else if (p != ID) {
                     p = UNKNOWN_HDR;
                 }
-                if (++p < ARRAY_SIZE(h->part))
+                if (++p < ENS_HDR_PARTCT)
                     h->part[p] = kc->id_l;
                 continue;
             case ':': 
@@ -61,7 +65,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
                         } // else could still be ok.
                     }
                 }
-                if (++p < ARRAY_SIZE(h->part))
+                if (++p < ENS_HDR_PARTCT)
                     h->part[p] = kc->id_l;
                 continue;
             default:

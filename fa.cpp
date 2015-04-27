@@ -59,6 +59,7 @@ free_kc(kct_t* kc)
     std::map<char*, Hdr*, Tid>::iterator it;
     for (it = kc->hdr.begin(); it != kc->hdr.end(); ++it) {
         free(it->second->s);
+        free(it->second->part);
         delete it->second;
     }
     _buf_free(kc->bd);
@@ -157,6 +158,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         show_list(kc, h->bnd);
 
     // one extra must be available for inter.
+    _buf_grow0(kc->bd, 2ul);
     Bnd *inter = &kc->bd[kc->bd_l];
     *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = infior};
 
@@ -165,7 +167,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     const int ext = kc->ext;
     int left = ext;
     EPQ0(dbg > 0, "----[\t%s%s:(%u-%u)..(%u-%u)\t@%u\t]----\tdna:",
-            strlen(hdr) < 8 ? "\t":"",hdr, last->s, last->s+last->l, next->s, next->s+next->l, pos); print_dna(dna, dbg > 0);
+            strlen(hdr) < 8 ? "\t":"",hdr, last->s, last->s+last->l, next->s,
+            next->s+next->l, pos);
+    print_dna(dna, dbg > 0);
 
     for (;pos < next->s;++pos) { // until next event
         EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);

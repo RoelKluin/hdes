@@ -27,30 +27,27 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     uint32_t len = kc->h.size();
     if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
         return ret;
-    for(std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h)
+    for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
     {
-        EPR("%s..", kc->id + (*h)->part[0]);
-        if (fhout->write(fhout, (const char*)&(*h)->end_pos, sizeof(uint32_t)) < 0)
+        Hdr* h = *hit;
+        EPR("%s..", kc->id + h->part[0]);
+        if (fhout->write(fhout, (const char*)&h->end_pos, sizeof(uint32_t)) < 0)
             return ret;
-        uint32_t len = (*h)->bnd.size();
+        uint32_t len = h->bnd.size();
         if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
             return ret;
-        for(std::list<uint32_t>::iterator b = (*h)->bnd.begin(); b != (*h)->bnd.end(); ++b)
+        for(std::list<uint32_t>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b)
         {
             if (fhout->write(fhout, (const char*)&*b, sizeof(uint32_t)) < 0)
                 return ret;
         }
         // sequence is not stored.
-        if (fhout->write(fhout, (const char*)(*h)->part, 10 * sizeof(uint16_t)) < 0)
+        if (fhout->write(fhout, (const char*)&h->p_l, sizeof(uint8_t)) < 0)
             return ret;
-        if (fhout->write(fhout, (const char*)&(*h)->p_l, sizeof(uint8_t)) < 0)
+        if (fhout->write(fhout, (const char*)h->part, h->p_l * sizeof(uint16_t)) < 0)
             return ret;
         // p_l is not needed anymore
     }
-    // FIXME: full flush silences valgrind errors on close, about uninit
-    // values - either when writing buf or kc->kct.
-    ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
-    EPR("after flush1");
     if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct)) < 0)
         return ret;
 
@@ -69,8 +66,6 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     }
     if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len) < 0)
         goto err;
-    ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
-    EPR("after flush2");
 
     len = kc->bd_l * sizeof(Bnd);
     // when kc->bd is not packed, problem at 0th.
@@ -82,8 +77,6 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     // kc->wlkr and kc->wbuf aren't filled yet.
     if (fhout->write(fhout, (const char*)kc->bd, len) < 0)
         return ret;
-    ASSERT(gzflush(fhout->io, Z_FULL_FLUSH) == Z_OK, return -EFAULT);
-    EPR("after flush3");
     ret = 0;
 err:
     free(buf);
@@ -96,11 +89,11 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     kc->bd = NULL; kc->id = NULL; kc->kct = NULL;
     if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(uint32_t)) < 0)
         return ret;
-    EPR("%u", kc->bd_l);
     if (fhin->read(fhin, (char*)&kc->id_l, sizeof(uint32_t)) < 0)
         return ret;
     uint32_t len = kc->id_l * sizeof(char);
     kc->id = (char*)malloc(len);
+    ASSERT(kc->id != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->id, len) < 0)
         return ret;
     if (fhin->read(fhin, (char*)&kc->kct_l, sizeof(uint32_t)) < 0)
@@ -120,15 +113,19 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
                 return ret;
             h->bnd.push_back(val);
         }
-        if (fhin->read(fhin, (char*)h->part, 10 * sizeof(uint16_t)) < 0)
-            return ret;
         if (fhin->read(fhin, (char*)&h->p_l, sizeof(uint8_t)) < 0)
+            return ret;
+        blen = h->p_l * sizeof(uint16_t);
+        h->part = (uint16_t*)malloc(blen);
+        ASSERT(h->part != NULL, return -ENOMEM);
+        if (fhin->read(fhin, (char*)h->part, blen) < 0)
             return ret;
         kc->h.push_back(h);
         kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], kc->h.back()));
     }
     len = kc->kct_l * sizeof(Kct);
     kc->kct = (Kct*)malloc(len);
+    ASSERT(kc->kct != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->kct, len) < 0)
         return ret;
     memset(kc->kcsndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kcsndx[0]));
@@ -140,10 +137,11 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
             return ret;
         kc->kcsndx[val] = len;
     }
-    len = next_pow2(kc->bd_l + 2);
-    kc->bd_m = __builtin_clz(len);
-    kc->bd = (Bnd*)malloc(len);
+    kc->bd_m = __builtin_ctz(next_pow2(kc->bd_l + 2));
+    EPR("%u, %u", kc->bd_l, kc->bd_m);
     len = kc->bd_l * sizeof(Bnd);
+    kc->bd = (Bnd*)malloc((1 << kc->bd_m) * sizeof(Bnd));
+    ASSERT(kc->bd != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->bd, len) < 0)
         return ret;
     return 0;

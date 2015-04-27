@@ -162,7 +162,7 @@ enum ensembl_parts {ID, SEQTYPE, IDTYPE,
 struct Hdr {
     uint8_t* s;
     uint32_t end_pos, s_l;
-    uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+    uint16_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
     uint8_t p_l, s_m;
 };
