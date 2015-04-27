@@ -76,8 +76,22 @@
 
 unsigned b6(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
-inline uint64_t revseq(uint64_t x);
-inline unsigned get_twisted_even(unsigned rev, unsigned sq);
+#define REVSEQ(dna, m) ({\
+    m = 0x3333333333333333;\
+    dna = ((dna & m) << 2) | ((dna & ~m) >> 2);\
+    m = 0x0f0f0f0f0f0f0f0f;\
+    dna = ((dna & m) << 4) | ((dna & ~m) >> 4);\
+    m = 0x00ff00ff00ff00ff;\
+    asm ("bswap %0" : "=r" (dna) : "0" (dna));\
+    dna >> (64 - (KEY_WIDTH << 1));\
+})
+
+inline uint64_t revcmp(uint64_t dna) /* Reverse Complement, is ok. */
+{
+    uint64_t m;
+    dna ^= 0xaaaaaaaaaaaaaaaaUL;
+    return REVSEQ(dna, m);
+}
 
 /* With the b6 conversion, only the specified characters are converted to
  * 2bits, left shifted by one, with all other bits zeroed. With the function

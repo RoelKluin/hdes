@@ -61,23 +61,9 @@ inline uint8_t BitRevbyte(uint8_t x)
     return BitReverseTable256[x];
 }
 
-inline uint64_t revseq(uint64_t x)
-{
-    uint64_t m = 0x3333333333333333;
-    x = ((x & m) << 2) | ((x & ~m) >> 2);
-    m = 0x0f0f0f0f0f0f0f0f;
-    x = ((x & m) << 4) | ((x & ~m) >> 4);
-    m = 0x00ff00ff00ff00ff;
-    x = ((x & m) << 8) | ((x & ~m) >> 8);
-    m = 0x0000ffff0000ffff;
-    x = ((x & m) << 16) | ((x & (m << 16)) >> 16);
-    m = 0x00000000ffffffff;
-    return ((x & m) << 32) | ((x & (m << 32)) >> 32);
-}
-
 /*
  * This is to get a twisted halfdev for even number of Nts. for odd counts
- * the conversion is much more straightforward.
+ * the conversion is much more straightforward - 2nd bit of central Nt decides.
  */
 inline unsigned get_twisted_even(unsigned rev, unsigned sq)
 {

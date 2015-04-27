@@ -13,7 +13,7 @@
 #define RK_UTIL_H
 #include <stdint.h>
 #include <assert.h>
-
+#include "b6.h"
 
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
@@ -166,6 +166,25 @@ static unsigned next_pow2(unsigned x)
     return x + 1;
 }
 
+static int
+print_dna(uint64_t dna, bool dbg = true, const char sep = '\n')
+{
+    if (dbg) {
+        for (unsigned t = KEY_WIDTH; t--; dna >>= 2)
+            fputc(b6((dna & 3) << 1), stderr);
+        fputc(sep, stderr);
+    }
+    return -1;
+}
+static int
+print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true)
+{
+    if (dbg) {
+        print_dna(dna, false, '|');
+        print_dna(dna, false, '\n');
+    }
+    return -1;
+}
 
 #define DEBUG 1
 #endif // RK_UTIL_H

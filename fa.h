@@ -156,6 +156,9 @@ packed_struct Walker {
     uint32_t tmp_count: 10;
 };
 
+enum ensembl_parts {ID, SEQTYPE, IDTYPE,
+        IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
+
 struct Hdr {
     uint8_t* s;
     uint32_t end_pos, s_l;
@@ -187,6 +190,8 @@ struct kct_t {
 };
 
 int fa_index(seqb2_t *seq, uint32_t blocksize);
+int write1(struct gzfh_t* fhout, kct_t* kc);
+int restore1(struct gzfh_t* fhin, kct_t* kc);
 #endif // RK_FA_H
 
 
