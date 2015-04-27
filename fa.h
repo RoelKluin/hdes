@@ -188,7 +188,7 @@ struct kct_t {
     std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;
 };
-
+int fa_kc(kct_t*, void*, int (*) (void*), int (*) (int, void*));
 int fa_index(seqb2_t *seq, uint32_t blocksize);
 int write1(struct gzfh_t* fhout, kct_t* kc);
 int restore1(struct gzfh_t* fhin, kct_t* kc);

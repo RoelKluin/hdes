@@ -11,7 +11,8 @@ OBJS=		b6.o
 LIBS=		-lz -L.
 DEBUG=		-g
 OPT=		-O3
-SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp indexio.cpp fa.cpp fq.cpp main.cpp
+SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp indexio.cpp key_init.cpp \
+		fa.cpp fq.cpp main.cpp
 DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\" # -DKEY_LENGTH=11
 PREPROCESSED=	$(SOURCES:.cpp=.i)
 ASSEMBLIES=	$(SOURCES:.cpp=.s)
