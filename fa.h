@@ -164,7 +164,6 @@ struct Hdr {
     uint32_t end_pos, s_l;
     uint16_t part[10]; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
-    std::list<uint32_t>::iterator bdit;
     uint8_t p_l, s_m;
 };
 
@@ -187,6 +186,7 @@ struct kct_t {
     Tid tid;
     std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;
+    std::list<uint32_t>::iterator bdit;
 };
 int fa_kc(kct_t*, void*, int (*) (void*), int (*) (int, void*));
 int fa_index(seqb2_t *seq, uint32_t blocksize);

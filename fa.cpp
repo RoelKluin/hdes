@@ -143,7 +143,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     // N-stretches, later also skips, future: SNVs, splice sites?
     int uqct = 0;
     uint32_t pos = last->s + last->l;
-    Bnd *next = &kc->bd[*h->bdit];
+    Bnd *next = &kc->bd[*kc->bdit];
     const char* dbgtid = "GL000210.1 ";//"GL000207.1";//MT"; //GL000239.1";
     const char* hdr = kc->id + h->part[0];
     //dbg = (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) * 2;
@@ -203,14 +203,14 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                     EPQ0(dbg > 1, "\n[%u-%u]\t", inter->s, inter->s + inter->l - 1);print_2dna(inter->at_dna, inter->dna, dbg > 1);
                     //show_list(kc, h->bnd);
                     if ((last->s + last->l) < inter->s) {
-                        h->bnd.insert(h->bdit, kc->bd_l);
+                        h->bnd.insert(kc->bdit, kc->bd_l);
                         _buf_grow0(kc->bd, 2ul);
                         last = kc->bd + kc->bd_l++;
                         inter = last + 1;
                     } else { // join - may be undesirable for certain boundary types in the future
                         merge(last, inter);
                     }
-                    next = &kc->bd[*h->bdit];
+                    next = &kc->bd[*kc->bdit];
                     inter->l = 0;
                 }
             }
@@ -272,14 +272,14 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // XXX why not (last->s + last->l + ext > next->s) ? (assertion error later, but why?)
         if ((last->s + last->l >= next->s)) {
             merge(last, next);
-            h->bdit = h->bnd.erase(h->bdit);
-            --h->bdit;
+            kc->bdit = h->bnd.erase(kc->bdit);
+            --kc->bdit;
         }
 
     } else {
         EPQ(dbg > 1, "Not joining\n");
     }
-//                pos += kc->bd[*(h->bdit)].l; // add skipped Nts
+//                pos += kc->bd[*(kc->bdit)].l; // add skipped Nts
     return uqct;
 }
 
@@ -287,9 +287,9 @@ static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     int uqct = 0;
-    h->bdit = h->bnd.begin();
+    kc->bdit = h->bnd.begin();
 
-    for (Bnd *last = &kc->bd[*h->bdit]; ++h->bdit != h->bnd.end(); last = &kc->bd[*h->bdit]) {
+    for (Bnd *last = &kc->bd[*kc->bdit]; ++kc->bdit != h->bnd.end(); last = &kc->bd[*kc->bdit]) {
         int ret = ext_uq_bnd(kc, h, last);
         if (ret < 0) return ret;
         uqct += ret;
