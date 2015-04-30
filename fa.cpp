@@ -65,6 +65,7 @@ free_kc(kct_t* kc)
     _buf_free(kc->bd);
     _buf_free(kc->id);
     _buf_free(kc->kct);
+    _buf_free(kc->kce);
     _buf_free(kc->wlkr);
     _buf_free(kc->wbuf);
     _buf_free(kc->kcsndx);
@@ -72,14 +73,14 @@ free_kc(kct_t* kc)
 
 static const unsigned long dbgndx = UNINITIALIZED;
 
-// TODO: instead of excising, move to after (current) last instead.
 static int
 decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 {
     Walker* wlkr = kc->wlkr;
     uint32_t* wbuf = kc->wbuf;
     while (--i > left) {
-        //EPR0("%u/%u ", i, left);
+
+        // current bit pos and pending offsets are stored in walker.
         ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
         Kct *x = &_get_kct(kc, wbuf[i]);
         Walker* w = &get_w(wlkr, kc, wbuf[i]);
@@ -102,7 +103,8 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         // mask to cover this and past nucleotide.
         t = (1 << (((w->count & 3) + 1) << 1)) - 1;
         *q = ((*q & (t ^ 0xff)) >> 2) | (*q & (t >> 2));
-        EPQ(wbuf[i] == dbgndx, "=====> excised <======, became %x", *q | (q != qe ? (q[1] & 3) << 6 : 0));
+        EPQ(wbuf[i] == dbgndx, "=====> excised <======, became %x",
+                *q | (q != qe ? (q[1] & 3) << 6 : 0));
         wbuf[i] = UNINITIALIZED;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
@@ -122,7 +124,6 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         }
         --i;
     }
-
     return left;
 }
 
@@ -242,9 +243,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         }
         EPQ0(dbg > 1, "%u,", pos);
         // found unique, store orientation of 2nd bit of central Nt.
-        // if first bit is set, the key is in the wrong orientation.
+        // if last bit is set, the key is in the wrong orientation.
         // in any case - before any revcmping, the central bit needs to be
-        // put back in to ge the sequence at this site.
+        // put back in to generate the sequence at this site.
         y->seq.m ^= (y->seq.m & 1) ^ !(dna & KEYNT_STRAND);
         ++infior;
         if (left == 0) { // this is a first unique.
@@ -336,11 +337,6 @@ fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
     return 1;
 }
 
-int kct_convert(kct_t* kc)
-{
-    return 0;
-}
-
 int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 {
     struct gzfh_t* fhio = seq->fh;
@@ -375,6 +371,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 
     if (res == 1) {
         kc.kct = _buf_init(kc.kct, 16);
+        kc.kce = _buf_init(kc.kce, 8);
         kc.bd = _buf_init(kc.bd, 1);
 
         // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
@@ -396,6 +393,8 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
         res = fa_kc(&kc, g, gc, ungc);
         EPR("left fa_kc");fflush(NULL);
         ASSERT(res >= 0, goto out);
+
+        _buf_free(kc.kce);
 
         // write to disk, TODO: load from disk.
         res = write1(fhio, &kc);

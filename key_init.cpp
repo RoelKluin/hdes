@@ -45,7 +45,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
                 if (++p < ENS_HDR_PARTCT)
                     h->part[p] = kc->id_l;
                 continue;
-            case ':': 
+            case ':':
                 _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
@@ -226,13 +226,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
         if (c == '>' || c == -1) {
             EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
-            if (pos != h->end_pos) {
-                EPR("pos != h->end_pos: %u == %u (%u)", pos, h->end_pos, kc->bd[t].l);
-                print_dna(dna);
-                t = *(h->bnd.begin());
-                // correct it.
-                kc->bd[t].l = pos;
-            }
+            ASSERT (pos == h->end_pos, return -EFAULT, "pos != h->end_pos: %u == %u (%u)", pos, h->end_pos, kc->bd[t].l);
         } else {
             EPR("=>\tN-stretch at Nt %u", pos);
         }

@@ -55,6 +55,13 @@ if (!(cond)) { \
     if_ever (__t == NULL) error_action;\
     __t;\
 })
+#define _buf_init_err_m(buf, m, error_action) ({\
+    buf##_l = 0;\
+    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
+    decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
+    if_ever (__t == NULL) error_action;\
+    __t;\
+})
 #define _buf_init(buf, sz) _buf_init_err(buf, sz, return -ENOMEM)
 
 #define _buf_init_arr(buf, sz) ({\
@@ -73,14 +80,18 @@ if (buf##_l + step >= (1ul << buf##_m)) {\
     buf = __t;\
 }
 
-#define _buf_grow_err(buf, step, shft, error_action) \
-if (((buf##_l + step) >> shft) >= (1ul << buf##_m)) {\
-    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++(buf##_m));\
+#define _buf_grow_err_m(buf, step, m, shft, error_action) \
+if (((buf##_l + step) >> shft) >= (1ul << m)) {\
+    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
     if_ever (__t == NULL) error_action;\
     buf = __t;\
 }
-#define _buf_grow(buf, step, shft) _buf_grow_err(buf, step, shft, return -ENOMEM)
-#define _buf_grow0(buf, step) _buf_grow_err(buf, step, 0, return -ENOMEM)
+#define _buf_grow(buf, step, shft) _buf_grow_err_m(buf, step, buf##_m, shft, return -ENOMEM)
+#define _buf_growm(buf, step, m, shft) _buf_grow_err_m(buf, step, m, shft, return -ENOMEM)
+#define _buf_grow0(buf, step) _buf_grow_err_m(buf, step, buf##_m, 0, return -ENOMEM)
+#define _buf_grow0m(buf, step, m) _buf_grow_err_m(buf, step, m, 0, return -ENOMEM)
+
+#define _buf_grow_err(buf, step, shft, err) _buf_grow_err_m(buf, step, buf##_m, shft, err)
 #define _buf_grow_add_err(buf, step, shft, add, error_action) ({\
     _buf_grow_err(buf, step, shft, error_action);\
     buf[buf##_l++] = add;\
@@ -180,8 +191,8 @@ static int
 print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true)
 {
     if (dbg) {
-        print_dna(dna, false, '|');
-        print_dna(dna, false, '\n');
+        print_dna(dna, true, '|');
+        print_dna(dna2, true, '\n');
     }
     return -1;
 }

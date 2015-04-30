@@ -84,6 +84,8 @@
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
+#define FLAG_B2CT 0x80000000
+
 #define UNINITIALIZED (~0u)
 
 #define INFERIORITY_BIT (1u<<31)
@@ -150,6 +152,12 @@ union Kct {
     } p;
 };
 
+packed_struct kct_ext {
+    uint64_t m: 8;
+    uint64_t l: 40;
+    uint32_t* b2;
+};
+
 packed_struct Walker {
     uint32_t count;
     uint32_t infior: 22; //b2pos start and end of range
@@ -177,21 +185,26 @@ struct Tid {
 struct kct_t {
     Bnd* bd;
     char* id;
+    uint8_t* ts; //later req
     Kct* kct;
-    Walker* wlkr;
-    uint32_t* wbuf;
+    kct_ext* kce; // early req
+    Walker* wlkr; // later req
+    uint32_t* wbuf; // later req
     uint32_t *kcsndx;
-    uint32_t bd_l, id_l, kct_l, ext;
-    uint8_t kct_m, kcsndx_m, bd_m, id_m;
-    Tid tid;
+    uint32_t bd_l, id_l, kct_l, ext; // ext not stored
+    uint32_t kce_l; //early req
+    uint32_t ts_l; // late req
+    uint8_t kct_m, kce_m, kcsndx_m, bd_m, id_m; // only bd_m is required, but not stored either
+    Tid tid; // not stored (obviously)
     std::list<Hdr*> h;
     std::map<char*, Hdr*, Tid> hdr;
     std::list<uint32_t>::iterator bdit;
+    // could be possible to move bnd here.
 };
 int fa_kc(kct_t*, void*, int (*) (void*), int (*) (int, void*));
-int fa_index(seqb2_t *seq, uint32_t blocksize);
-int write1(struct gzfh_t* fhout, kct_t* kc);
-int restore1(struct gzfh_t* fhin, kct_t* kc);
+int fa_index(seqb2_t*, uint32_t);
+int write1(struct gzfh_t*, kct_t*);
+int restore1(struct gzfh_t*, kct_t*);
 #endif // RK_FA_H
 
 
