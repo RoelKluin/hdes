@@ -12,6 +12,7 @@
 #include "gz.h"
 
 // XXX: these need to be updated
+// read write of 64 bits may require some more work.
 
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
@@ -51,7 +52,11 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     }
     if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(uint64_t)) < 0)
         return ret;
-
+    if (fhout->write(fhout, (const char*)&kc->ts_l, sizeof(kc->ts_l)) < 0)
+        return ret;
+    len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
+    if (fhout->write(fhout, (const char*)kc->ts, len) < 0)
+        return ret; // XXX
     len = kc->kct_l * 2;
     uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
     if (buf == NULL) return -ENOMEM;
@@ -129,6 +134,15 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     ASSERT(kc->kct != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->kct, len) < 0)
         return ret;
+
+    if (fhin->read(fhin, (char*)&kc->ts_l, sizeof(kc->ts_l)) < 0)
+        return ret;
+    len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
+    kc->ts = (uint8_t*)malloc(len);
+    ASSERT(kc->ts != NULL, return -ENOMEM);
+    if (fhin->read(fhin, (char*)kc->ts, len) < 0)
+        return ret;
+
     memset(kc->kcsndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kcsndx[0]));
     for (uint32_t i=0; i != kc->kct_l; ++i) {
         if (fhin->read(fhin, (char*)&val, sizeof(uint32_t)) < 0)

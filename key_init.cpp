@@ -169,13 +169,14 @@ case 'A': case 'a':
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
                 ct = kc->kct + kc->kcsndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
-                if (*ct & FLAG_B2CT) { //EPR("at *ct a sequence & its length is stored");
-//if (ct == kc->kct+dof) { EPR("A: in seq format:%c", c); print_dna(*ct & (FLAG_B2CT - 1ul)); }
+                if (*ct & FLAG_B2CT) {
+                    EPQ(dbg > 2, "sequence & length");
                     t = *ct >> B2LEN_OFFS_SHFT;
+
                     if (t < 29ul) {
                         *ct += B2LEN_OFFS;
                     } else {
-//if (ct == kc->kct+dof) EPR("A: conversion to index format:%c", c);
+                        EPQ(dbg > 2, "conversion to index:%c", c);
                         t = *ct;                                  // temp store 2bit dna
                         *ct = ndx = kc->kce_l;                    // conversion: set to index.
                         ct = (uint64_t*)malloc(sizeof(uint64_t)); // make room for 2bit dna
@@ -184,10 +185,10 @@ case 'A': case 'a':
                         *ct = t & (FLAG_B2CT - 1ul);     // after current 2bit dna, in ndx.
                         t = 29;
                     }
-                } else { //EPR("*ct is index to an extended keycount");
-//if (ct == kc->kct+dof) EPR("A: in index format:%c", c);
+                } else {
+                    EPQ(dbg > 2, "in index format:%c", c);
                     ndx = *ct & INDEX_MASK;
-                    //EPR("ext:%lu/%lu, %lx", ndx, kc->kce_l, *ct);
+
                     t = kc->kce[ndx].l++;                // *ct is index to an extended keycount
                     if (t & 0x1f) {
                         ct = kc->kce[ndx].b2 + (t >> 5); // point to the uint32_t to be updated
@@ -202,7 +203,8 @@ case 'A': case 'a':
                     }
                     t &= 0x1f;
                 }
-            } else { //EPR("new key 0x%lx at %u", ndx, pos);
+            } else {
+                EPQ(dbg > 2, "new key 0x%lx at %u", ndx, pos);
                 _buf_grow(kc->kct, 1ul, 0);
                 kc->kcsndx[ndx] = kc->kct_l;
                 ct = kc->kct + kc->kct_l++;
@@ -340,6 +342,9 @@ int kct_convert(kct_t* kc)
         print_dna(*dest, dbg > 3, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }
+    // why not true, boundaries?
+    //ASSERT(offs == kc->ts_l, return -EFAULT, "%u, %u", offs, kc->ts_l);
+    kc->ts_l = offs;
     return 0;
 }
 

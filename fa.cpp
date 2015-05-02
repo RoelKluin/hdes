@@ -415,7 +415,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
     } else {
         res = restore1(fhio, &kc);
         ASSERT(res >= 0, goto out);
-        res = fhio->close(fhio->io);
+        //res = fhio->close(fhio->io);
     }
     ASSERT(res >= 0, goto out);
 
