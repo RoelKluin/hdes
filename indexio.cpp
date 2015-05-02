@@ -49,7 +49,7 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
             return ret;
         // p_l is not needed anymore
     }
-    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(Kct)) < 0)
+    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(uint64_t)) < 0)
         return ret;
 
     len = kc->kct_l * 2;
@@ -97,7 +97,7 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     ASSERT(kc->id != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->id, len) < 0)
         return ret;
-    if (fhin->read(fhin, (char*)&kc->kct_l, sizeof(uint32_t)) < 0)
+    if (fhin->read(fhin, (char*)&kc->kct_l, sizeof(kc->kct_l)) < 0)
         return ret;
     uint32_t blen, val;
     if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
@@ -124,8 +124,8 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
         kc->h.push_back(h);
         kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], kc->h.back()));
     }
-    len = kc->kct_l * sizeof(Kct);
-    kc->kct = (Kct*)malloc(len);
+    len = kc->kct_l * sizeof(uint64_t);
+    kc->kct = (uint64_t*)malloc(len);
     ASSERT(kc->kct != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->kct, len) < 0)
         return ret;
@@ -133,7 +133,7 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     for (uint32_t i=0; i != kc->kct_l; ++i) {
         if (fhin->read(fhin, (char*)&val, sizeof(uint32_t)) < 0)
             return ret;
-        ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
+        ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
         if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
             return ret;
         kc->kcsndx[val] = len;

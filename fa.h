@@ -88,7 +88,6 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
 #define FLAG_B2CT  (1ul << 58)
 #define INDEX_MASK ((1ul << 40) - 1ul)
-#define FLAG_B2CT 0x80000000
 
 #define UNINITIALIZED (~0u)
 
@@ -142,24 +141,10 @@ packed_struct Bnd {
     uint32_t i; // inferiority
 };
 
-union Kct {
-    packed_struct {
-        uint8_t m;
-        uint8_t l;
-        uint8_t b2[14]; // first 2bits, if exceeding 14*4 2bits, use p below instead.
-    } seq;
-    packed_struct {
-        uint64_t m: 8;
-        uint64_t l: 40;
-        uint64_t etc: 16;
-        uint8_t* b2; // next_b2_0|next_b2_1|next_b2_2|next_b2_3|... 
-    } p;
-};
-
 packed_struct kct_ext {
     uint64_t m: 8;
     uint64_t l: 40;
-    uint32_t* b2;
+    uint64_t* b2;
 };
 
 packed_struct Walker {
@@ -191,14 +176,14 @@ struct kct_t {
     Bnd* bd;
     char* id;
     uint8_t* ts; //later req
-    Kct* kct;
+    uint64_t* kct; // different meaning later.
     kct_ext* kce; // early req
     Walker* wlkr; // later req
     uint32_t* wbuf; // later req
     uint32_t *kcsndx;
-    uint32_t bd_l, id_l, kct_l, ext; // ext not stored
+    uint32_t bd_l, id_l, ext; // ext not stored
     uint32_t kce_l; //early req
-    uint32_t ts_l; // late req
+    uint64_t ts_l, kct_l; // late req, continued req
     uint8_t kct_m, kce_m, kcsndx_m, bd_m, id_m; // only bd_m is required, but not stored either
     Tid tid; // not stored (obviously)
     std::list<Hdr*> h;
@@ -210,6 +195,7 @@ int fa_kc(kct_t*, void*, int (*) (void*), int (*) (int, void*));
 int fa_index(seqb2_t*, uint32_t);
 int write1(struct gzfh_t*, kct_t*);
 int restore1(struct gzfh_t*, kct_t*);
+int kct_convert(kct_t*);
 #endif // RK_FA_H
 
 

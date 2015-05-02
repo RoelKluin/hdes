@@ -52,10 +52,6 @@ print_ndx(uint64_t dna, bool dbg = true)
 static void
 free_kc(kct_t* kc)
 {
-    for (Kct* k = kc->kct; k != &kc->kct[kc->kct_l]; ++k)
-        if (k->seq.m > 3)
-            free(k->p.b2);
-
     std::map<char*, Hdr*, Tid>::iterator it;
     for (it = kc->hdr.begin(); it != kc->hdr.end(); ++it) {
         free(it->second->s);
@@ -64,8 +60,9 @@ free_kc(kct_t* kc)
     }
     _buf_free(kc->bd);
     _buf_free(kc->id);
+    _buf_free(kc->ts);
     _buf_free(kc->kct);
-    _buf_free(kc->kce);
+    //_buf_free(kc->kce);
     _buf_free(kc->wlkr);
     _buf_free(kc->wbuf);
     _buf_free(kc->kcsndx);
@@ -82,34 +79,48 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 
         // current bit pos and pending offsets are stored in walker.
         ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
-        Kct *x = &_get_kct(kc, wbuf[i]);
         Walker* w = &get_w(wlkr, kc, wbuf[i]);
-        // excise out twobits, i.e. shift 2bits above current 2bit
-        // down. current bit pos is stored in walker.
-        uint8_t* q, *qe;
         ASSERT(w->tmp_count > 0, return -EFAULT);
-        --w->tmp_count;
-        uint64_t t = w->count;
-        if (x->seq.m == 3) {
-            q = &x->seq.b2[t >> 2];
-            qe = &x->seq.b2[(x->seq.l-1) >> 2];
-            --x->seq.l;
-        } else {
-            q = &x->p.b2[t >> 2];
-            qe = &x->p.b2[(x->p.l-1) >> 2];
-            // could convert to Kct.seq, but why bother?
-            --x->p.l;
-        }
+
+        // get ts offset
+        uint64_t *e = &_get_kct(kc, wbuf[i]);
+        uint64_t nt = e != kc->kct ? e[-1] : 0;
+        //EPR0("(%u part, %ux, byte %u(%x)):\t", 4 - (nt & 3),
+        //        *e - nt - w->excise_ct, nt >> 2, kc->ts[nt >> 2]);
+        nt += w->count + --w->tmp_count;
+        uint64_t offs = *e - ++w->excise_ct;
+
+        // excise out twobits, i.e. shift 2bits above current 2bit down.
+        uint8_t* q = &kc->ts[nt >> 2];
+        uint8_t* qe = &kc->ts[offs >> 2];
+
+        ASSERT(q != qe || ((nt&3) < (offs&3)), return -EFAULT);
+
+        // shift for past Nt;
+        //EPR0("before excision:");print_dna(*q);
+        uint8_t c = ((nt & 3) + 1) << 1;
+        uint8_t t = *q & ((1ul << c) - 1ul); // capture this and past Nts.
+        if (c) c -= 2;
+        *q = ((*q ^ t) >> 2) | (*q & ((1ul << c) - 1ul)); // excise out Nt.
+        t >>= c;
+        EPR("moving %c from %lu to %lu", b6(t << 1), nt, offs);
+
         // mask to cover this and past nucleotide.
-        t = (1 << (((w->count & 3) + 1) << 1)) - 1;
-        *q = ((*q & (t ^ 0xff)) >> 2) | (*q & (t >> 2));
         EPQ(wbuf[i] == dbgndx, "=====> excised <======, became %x",
                 *q | (q != qe ? (q[1] & 3) << 6 : 0));
         wbuf[i] = UNINITIALIZED;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
+            //EPR0("became; next:");print_2dna(*q,q[1]);
             *++q >>= 2;
         }
+        // append excised Nt to end. // XXX
+        offs = (offs & 3) << 1;        // set shift
+        //EPR("%u, %c", offs, b6(t << 1));
+        t <<= offs;                    // move excised in position
+        offs = *q & ((1u << offs) - 1u); // below 2bits were shifted correctly
+        *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
+        //EPR0("after append:");print_dna(*q);
     }
     //Walker* w = &get_w(wlkr, kc, wbuf[i]);
     //ASSERT(w->tmp_count > 0, return -EFAULT);
@@ -127,7 +138,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
     return left;
 }
 
-static int dbg = 1;
+static int dbg = 3;
 static unsigned iter = 0;
 
 static inline void merge(Bnd *dest, Bnd *next)
@@ -176,7 +187,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
         ASSERT(_getxtdndx0(kc, ndx) < kc->kct_l, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
         EPQ0(dbg > 2, "%u:\t", pos);
-        print_dna(dna, dbg > 2);
+        print_2dna(dna, rc, dbg > 2);
 
         w = &get_w(kc->wlkr, kc, ndx);
         if (left) { // keep filling the buffer
@@ -220,33 +231,39 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 }
             }
         }
-        t = w->count + w->tmp_count;
-        Kct *y = &_get_kct(kc, ndx);
-        uint8_t b2;
-        if (y->seq.m == 3 || y->seq.m == 2) { //EPR("Kct in seq format");
-            b2 = (y->seq.b2[t >> 2] >> ((t & 3) << 1)) & 3;
-            t = y->seq.l;
-        } else {
-            b2 = (y->p.b2[t >> 2] >> ((t & 3) << 1)) & 3; // get next 2bit
-            t = y->p.l; // can also be 1 (unique), unless we decide to convert back upon decrement
-        }
+        uint64_t *e = &_get_kct(kc, ndx);
+        uint64_t offs = e != kc->kct ? e[-1] : 0;
+        unsigned ct = *e - offs - w->excise_ct;
+        offs += w->count + w->tmp_count;
+
+        EPQ0(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %u(%x)):",
+                offs, *e, 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2]);
+        print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1));
+
+        uint8_t b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
+
         if (h->s) { // not set after loading from disk.
             uint8_t sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
-            ASSERT(b2 == sb2, return print_2dna(dna, rc), "[%u]: expected %c, got %c for ndx 0x%lx", pos,b6(sb2<<1), b6(b2<<1), ndx);
+            ASSERT(b2 == sb2, return print_2dna(dna, rc),
+                    "[%u]: expected %c, got %c for ndx 0x%lx, [%u, %u]",
+                    pos,b6(sb2<<1), b6(b2<<1), ndx, w->count, w->tmp_count);
         }
         dna = _seq_next(b2, dna, rc);
         ndx = _getxtdndx(kc, ndx, dna, rc);
-        if (t > 1ul) {
+        if (ct > 1ul) {
             if (left == 0) ++w->count;
             else ++w->tmp_count;
             continue;
         }
         EPQ0(dbg > 1, "%u,", pos);
         // found unique, store orientation of 2nd bit of central Nt.
-        // if last bit is set, the key is in the wrong orientation.
+        // length is set to zero if the key is in the wrong orientation.
+        w->count = !(dna & KEYNT_STRAND);
+        w->tmp_count = 0;
+
         // in any case - before any revcmping, the central bit needs to be
-        // put back in to generate the sequence at this site.
-        y->seq.m ^= (y->seq.m & 1) ^ !(dna & KEYNT_STRAND);
+        // put back in to generate the sequence at the unique site.
+
         ++infior;
         if (left == 0) { EPQ(dbg > 2, "this is a first unique.");
             *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = max(infior, w->infior + 1u)};
@@ -394,6 +411,8 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
         EPR("left fa_kc");fflush(NULL);
         ASSERT(res >= 0, goto out);
 
+        res = kct_convert(&kc);
+        ASSERT(res >= 0, goto out);
         _buf_free(kc.kce);
 
         // write to disk, TODO: load from disk.
