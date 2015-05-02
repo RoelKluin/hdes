@@ -269,65 +269,75 @@ int kct_convert(kct_t* kc)
         unsigned t = offs & 3;
         ASSERT(dest < kc->ts + ts_end, return -EFAULT);
         if (x & FLAG_B2CT) { // then x contains count and next Nts below this bit
-//EPR("B: in seq format (t=%u, %lu)", t, offs);
 
-            l = x >> B2LEN_OFFS_SHFT; // isolate twobit count
-            *src = offs + l;                 // kc->kct conversion: store end position
-                                           // of its next Nts from now on.
+            l = x >> B2LEN_OFFS_SHFT;    // isolate twobit count
+            *src = offs + l;             // kc->kct conversion: store end position
+                                         // of its next Nts from now on.
             dest = kc->ts + (offs >> 2); // destination for copy.
-            offs += l;                  // update offs for next.
-            x &= FLAG_B2CT - 1ul;      // remove len => what is left is 2bit.
+            x &= FLAG_B2CT - 1ul;        // remove len => what is left is 2bit.
+            x <<= t << 1;                // prealign 2bits for appending to dest
+            offs += l;                   // update offs for next round.
 
-//EPR0("orig (%u, %u)\t", l, dest - kc->ts); print_dna(x);
-
-            x <<= t << 1;               // prealign 2bits for appending to dest
-
-//EPR0("aligned\t"); print_dna(x);
+            dbg = offs == dbgoffs ?  dbg | 4 : dbg & ~4;
+            EPQ0(dbg > 3, "orig seq (%lu, %lu), %u\t", l, dest - kc->ts, t);
+            print_2dna(*dest, x, dbg > 3, 4);
 
             *dest |= x & 0xff;
             x >>= 8;
-            l -= l >= (-t & 3) ? -t & 3 : l; 
 
-//EPR0("first copied\t"); print_dna(*dest);
+            print_dna(*dest, dbg > 3, '.', 4);
 
         } else {
-//EPR("B: in index format");
-            kct_ext* ke = kc->kce + x;  // x was an index to a extended keycount.
-            l = ke->l;                  // get length
-            *src = offs + l;
+            kct_ext* ke = kc->kce + x;   // x was an index to a extended keycount.
+            l = ke->l;                   // get length
+            *src = offs + l;             // kc->kct conversion
             dest = kc->ts + (offs >> 2);
-            offs += l;                  // update offs for next.
-
             uint64_t *s = ke->b2;
             x = *s;
-            *dest |= (x << (t << 1)) & 0xff;
-            x >>= (-t & 3) << 1;
-            l -= l >= (-t & 3) ? -t & 3 : l; 
+
+            dbg = (offs + l) == dbgoffs ?  dbg | 4 : dbg & ~4;
+            EPQ0(dbg > 3, "orig seqndx (%lu, %lu), %u\t", l, dest - kc->ts, t);
+            print_2dna(*dest, x, dbg > 3, 4);
+            t <<= 1;
+            *dest |= (x << t) & 0xff;
+            x >>= 8 - t;
+            offs += l;                  // update offs for next.
+
+            print_dna(*dest, dbg > 3, '.', 4);
 
             while (l > 32) {
                 *++dest = x & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
+                print_dna(*dest, dbg > 3, '.', 4);
                 *++dest = x >>= 8; // zero if t == 0
+                print_dna(*dest, dbg > 3, '\n', 4);
                 x = *++s;
-                *dest |= (x << (t << 1)) & 0xff;
-                x >>= (-t & 3) << 1;
+                *dest |= (x << t) & 0xff;
+                x >>= 8 - t;
                 l -= 32;
             }
-//EPR0("orig\t"); print_dna(x);
+            print_dna(x, dbg > 3, '.', 4);
             free(ke->b2);
 	}
         while (l >= 4) { // first is already written.
             *++dest = x & 0xff;
-//EPR0("copied rest:\t"); print_dna(*dest);
+            print_dna(*dest, dbg > 3, '.', 4);
             x >>= 8;
             l -= 4;
         }
         *++dest = x; // if l == 0, pre-empty next.
+        print_dna(*dest, dbg > 3, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }
     return 0;

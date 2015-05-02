@@ -93,8 +93,6 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         uint8_t* q = &kc->ts[nt >> 2];
         uint8_t* qe = &kc->ts[offs >> 2];
 
-        ASSERT(q != qe || ((nt&3) < (offs&3)), return -EFAULT);
-
         // shift for past Nt;
         EPQ0(dbg > 2, "before excision:");print_dna(*q, dbg > 2);
         uint8_t c = ((nt & 3) + 1) << 1;
@@ -113,7 +111,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
             EPQ0(dbg > 2, "became; next:");print_2dna(*q,q[1], dbg > 2);
             *++q >>= 2;
         }
-        // append excised Nt to end. // XXX
+        // append excised Nt to end.
         offs = (offs & 3) << 1;        // set shift
         EPQ(dbg > 2, "%u, %c", offs, b6(t << 1));
         t <<= offs;                    // move excised in position
@@ -121,9 +119,6 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
         EPQ0(dbg > 2, "after append:");print_dna(*q, dbg > 2);
     }
-    //Walker* w = &get_w(wlkr, kc, wbuf[i]);
-    //ASSERT(w->tmp_count > 0, return -EFAULT);
-    //--w->tmp_count;
     wbuf[i] = UNINITIALIZED;
 
     while (i != 0) {
@@ -234,7 +229,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         unsigned ct = *e - offs - w->excise_ct;
         offs += w->count + w->tmp_count;
 
-        EPR("offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %lu(%x)ndx:0x%lx):",
+        EPQ(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %lu(%x)ndx:0x%lx):",
                 offs, *e, 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
         print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 2);
 
@@ -296,7 +291,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             kc->bdit = h->bnd.erase(kc->bdit);
             --kc->bdit;
         }
-
     } else {
         EPQ(dbg > 1, "Not joining\n");
     }
