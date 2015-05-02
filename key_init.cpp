@@ -165,6 +165,7 @@ case 'A': case 'a':
             if (isspace(c = gc(g))) continue;
             uint64_t *ct;
             ndx = _get_ndx(ndx, dna, rc);
+            dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
                 ct = kc->kct + kc->kcsndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
@@ -217,14 +218,17 @@ case 'U': case 'u': b ^= 2;
 case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
                 *ct |= b << (t << 1);
+                print_dna(*ct, dbg > 3, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
                 ++pos;
                 _addtoseq(h->s, b);
                 dna = _seq_next(b, dna, rc);
                 continue;
             }
             // happens at a boundary: no next Nts.
-            if (t < 29ul) *ct -= B2LEN_OFFS;
-            else --kc->kce[ndx].l;
+            if ((ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)))
+                *ct -= B2LEN_OFFS;
+            else // If not within ->kct range then this is an extended keycount:
+                --kc->kce[ndx].l;
             break;
         }
 

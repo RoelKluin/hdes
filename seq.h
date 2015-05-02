@@ -55,5 +55,4 @@ typedef struct seqb2_t {
 
 unsigned get_fastx_type(char* f, const unsigned last_fq, const unsigned fhsz);
 
-
 #endif //RK_SEQ_H

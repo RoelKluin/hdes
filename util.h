@@ -15,6 +15,10 @@
 #include <assert.h>
 #include "b6.h"
 
+static const unsigned long dbgndx = 0x13539a;//;0xd5668;//UNINITIALIZED;
+
+static int dbg = 1;
+
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 #endif
@@ -178,21 +182,21 @@ static unsigned next_pow2(unsigned x)
 }
 
 static int
-print_dna(uint64_t dna, bool dbg = true, const char sep = '\n')
+print_dna(uint64_t dna, bool dbg = true, const char sep = '\n', unsigned len = KEY_WIDTH)
 {
     if (dbg) {
-        for (unsigned t = KEY_WIDTH; t--; dna >>= 2)
+        for (unsigned t = len; t--; dna >>= 2)
             fputc(b6((dna & 3) << 1), stderr);
         fputc(sep, stderr);
     }
     return -1;
 }
 static int
-print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true)
+print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true, unsigned len = KEY_WIDTH)
 {
     if (dbg) {
-        print_dna(dna, true, '|');
-        print_dna(dna2, true, '\n');
+        print_dna(dna, true, '|', len);
+        print_dna(dna2, true, '\n', len);
     }
     return -1;
 }

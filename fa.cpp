@@ -68,8 +68,6 @@ free_kc(kct_t* kc)
     _buf_free(kc->kcsndx);
 }
 
-static const unsigned long dbgndx = UNINITIALIZED;
-
 static int
 decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 {
@@ -79,6 +77,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 
         // current bit pos and pending offsets are stored in walker.
         ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
+        dbg = wbuf[i] == dbgndx ?  dbg | 4 : dbg & ~4;
         Walker* w = &get_w(wlkr, kc, wbuf[i]);
         ASSERT(w->tmp_count > 0, return -EFAULT);
 
@@ -97,35 +96,34 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         ASSERT(q != qe || ((nt&3) < (offs&3)), return -EFAULT);
 
         // shift for past Nt;
-        //EPR0("before excision:");print_dna(*q);
+        EPQ0(dbg > 2, "before excision:");print_dna(*q, dbg > 2);
         uint8_t c = ((nt & 3) + 1) << 1;
         uint8_t t = *q & ((1ul << c) - 1ul); // capture this and past Nts.
         if (c) c -= 2;
         *q = ((*q ^ t) >> 2) | (*q & ((1ul << c) - 1ul)); // excise out Nt.
         t >>= c;
-        EPR("moving %c from %lu to %lu", b6(t << 1), nt, offs);
+        EPQ(dbg > 2, "moving %c from %lu to %lu", b6(t << 1), nt, offs);
 
         // mask to cover this and past nucleotide.
-        EPQ(wbuf[i] == dbgndx, "=====> excised <======, became %x",
+        EPQ(dbg > 2, "=====> excised <======, became %x",
                 *q | (q != qe ? (q[1] & 3) << 6 : 0));
         wbuf[i] = UNINITIALIZED;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
-            //EPR0("became; next:");print_2dna(*q,q[1]);
+            EPQ0(dbg > 2, "became; next:");print_2dna(*q,q[1], dbg > 2);
             *++q >>= 2;
         }
         // append excised Nt to end. // XXX
         offs = (offs & 3) << 1;        // set shift
-        //EPR("%u, %c", offs, b6(t << 1));
+        EPQ(dbg > 2, "%u, %c", offs, b6(t << 1));
         t <<= offs;                    // move excised in position
         offs = *q & ((1u << offs) - 1u); // below 2bits were shifted correctly
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
-        //EPR0("after append:");print_dna(*q);
+        EPQ0(dbg > 2, "after append:");print_dna(*q, dbg > 2);
     }
     //Walker* w = &get_w(wlkr, kc, wbuf[i]);
     //ASSERT(w->tmp_count > 0, return -EFAULT);
     //--w->tmp_count;
-    //EPQ(wbuf[i] == dbgndx, "=====> after excised <======");
     wbuf[i] = UNINITIALIZED;
 
     while (i != 0) {
@@ -138,7 +136,6 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
     return left;
 }
 
-static int dbg = 3;
 static unsigned iter = 0;
 
 static inline void merge(Bnd *dest, Bnd *next)
@@ -164,6 +161,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     uint64_t t, dna = last->dna; // first seq after skip
     uint64_t rc = revcmp(dna);
     uint64_t ndx = _getxtdndx(kc, ndx, dna, rc);
+    dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
     Walker* w = &get_w(kc->wlkr, kc, ndx);
     uint32_t infior = max(last->i + 1, w->infior); //XXX
     if (dbg > 2)
@@ -236,9 +234,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         unsigned ct = *e - offs - w->excise_ct;
         offs += w->count + w->tmp_count;
 
-        EPQ0(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %u(%x)):",
-                offs, *e, 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2]);
-        print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1));
+        EPR("offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %lu(%x)ndx:0x%lx):",
+                offs, *e, 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
+        print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 2);
 
         uint8_t b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
 
@@ -250,6 +248,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         }
         dna = _seq_next(b2, dna, rc);
         ndx = _getxtdndx(kc, ndx, dna, rc);
+        dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
         if (ct > 1ul) {
             if (left == 0) ++w->count;
             else ++w->tmp_count;
