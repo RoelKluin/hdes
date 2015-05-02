@@ -2,7 +2,7 @@ CC=		g++
 #CC=		clang --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11
 AR=		ar
-VERSION=	0.009
+VERSION=	0.010
 LOBJS=
 PROG=		uqct
 INCLUDES=	
