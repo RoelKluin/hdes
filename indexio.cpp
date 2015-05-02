@@ -11,21 +11,22 @@
 #include "fa.h"
 #include "gz.h"
 
+// XXX: these need to be updated
 
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
     int ret = -EFAULT;
-    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(uint32_t)) < 0)
+    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(kc->bd_l)) < 0)
         return ret;
     EPR("%u", kc->bd_l);
-    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(uint32_t)) < 0)
+    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(kc->id_l)) < 0)
         return ret;
-    if (fhout->write(fhout, (const char*)kc->id, kc->id_l * sizeof(char)) < 0)
+    if (fhout->write(fhout, (const char*)kc->id, kc->id_l) < 0)
         return ret;
-    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(uint32_t)) < 0)
+    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(kc->kct_l)) < 0)
         return ret;
     uint32_t len = kc->h.size();
-    if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
+    if (fhout->write(fhout, (const char*)&len, sizeof(len)) < 0)
         return ret;
     for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
     {
@@ -87,11 +88,11 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
 {
     int ret = -EFAULT;
     kc->bd = NULL; kc->id = NULL; kc->kct = NULL;
-    if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(uint32_t)) < 0)
+    if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(kc->bd_l)) < 0)
         return ret;
-    if (fhin->read(fhin, (char*)&kc->id_l, sizeof(uint32_t)) < 0)
+    if (fhin->read(fhin, (char*)&kc->id_l, sizeof(kc->id_l)) < 0)
         return ret;
-    uint32_t len = kc->id_l * sizeof(char);
+    uint32_t len = kc->id_l;
     kc->id = (char*)malloc(len);
     ASSERT(kc->id != NULL, return -ENOMEM);
     if (fhin->read(fhin, (char*)kc->id, len) < 0)

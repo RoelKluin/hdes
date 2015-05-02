@@ -143,10 +143,11 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             while (isspace(c = gc(g)));
             b ^= b;
             switch(c) {
-                case 'C': case 'c': b = 2;
-                case 'G': case 'g': b ^= 1;
-                case 'U': case 'u': case 'T': case 't': b ^= 2;
-                case 'A': case 'a':
+case 'C': case 'c': b = 2;
+case 'G': case 'g': b ^= 1;
+case 'U': case 'u':
+case 'T': case 't': b ^= 2;
+case 'A': case 'a':
                     _addtoseq(h->s, b);
                     dna = _seq_next(b, dna, rc);
                     continue;
@@ -161,6 +162,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
         // ndx (key) is 2nd cNt bit excised, rc or dna
         kc->bd[kc->bd_l].dna = dna;
         h->bnd.push_back(kc->bd_l);
+
         do {
             ndx = _get_ndx(ndx, dna, rc);
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
@@ -230,9 +232,8 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
         } else {
             EPR("=>\tN-stretch at Nt %u", pos);
         }
-        kc->bd[kc->bd_l].at_dna = dna;
+        kc->bd[kc->bd_l++].at_dna = dna;
         _buf_grow0(kc->bd, 2ul);
-        ++kc->bd_l;
     }
     if (h == NULL)
         return -EFAULT;

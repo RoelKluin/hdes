@@ -248,7 +248,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         // put back in to generate the sequence at this site.
         y->seq.m ^= (y->seq.m & 1) ^ !(dna & KEYNT_STRAND);
         ++infior;
-        if (left == 0) { // this is a first unique.
+        if (left == 0) { EPQ(dbg > 2, "this is a first unique.");
             *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = max(infior, w->infior + 1u)};
             left = ext;
             infior = inter->i + 1;

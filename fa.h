@@ -84,6 +84,10 @@
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
+#define B2LEN_OFFS_SHFT 59
+#define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
+#define FLAG_B2CT  (1ul << 58)
+#define INDEX_MASK ((1ul << 40) - 1ul)
 #define FLAG_B2CT 0x80000000
 
 #define UNINITIALIZED (~0u)
@@ -160,8 +164,9 @@ packed_struct kct_ext {
 
 packed_struct Walker {
     uint32_t count;
-    uint32_t infior: 22; //b2pos start and end of range
-    uint32_t tmp_count: 10;
+    uint32_t excise_ct;
+    uint32_t infior; //b2pos start and end of range
+    uint32_t tmp_count;
 };
 
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
