@@ -161,66 +161,72 @@ case 'A': case 'a':
         kc->bd[kc->bd_l].dna = dna;
         h->bnd.push_back(kc->bd_l);
 
-        do {
+        while (1) {
+            if (isspace(c = gc(g))) continue;
+            uint64_t *ct;
+            ndx = _get_ndx(ndx, dna, rc);
+            if (kc->kcsndx[ndx] != UNINITIALIZED) {
+                ct = kc->kct + kc->kcsndx[ndx];
+                // TODO: using a length - based conversion, we could cram in 30th bit.
+                if (*ct & FLAG_B2CT) { //EPR("at *ct a sequence & its length is stored");
+//if (ct == kc->kct+dof) { EPR("A: in seq format:%c", c); print_dna(*ct & (FLAG_B2CT - 1ul)); }
+                    t = *ct >> B2LEN_OFFS_SHFT;
+                    if (t < 29ul) {
+                        *ct += B2LEN_OFFS;
+                    } else {
+//if (ct == kc->kct+dof) EPR("A: conversion to index format:%c", c);
+                        t = *ct;                                  // temp store 2bit dna
+                        *ct = ndx = kc->kce_l;                    // conversion: set to index.
+                        ct = (uint64_t*)malloc(sizeof(uint64_t)); // make room for 2bit dna
+                        _buf_grow0(kc->kce, 1ul);
+                        kc->kce[kc->kce_l++] = { .m = 0, .l = 30, .b2 = ct }; // 29th will be added
+                        *ct = t & (FLAG_B2CT - 1ul);     // after current 2bit dna, in ndx.
+                        t = 29;
+                    }
+                } else { //EPR("*ct is index to an extended keycount");
+//if (ct == kc->kct+dof) EPR("A: in index format:%c", c);
+                    ndx = *ct & INDEX_MASK;
+                    //EPR("ext:%lu/%lu, %lx", ndx, kc->kce_l, *ct);
+                    t = kc->kce[ndx].l++;                // *ct is index to an extended keycount
+                    if (t & 0x1f) {
+                        ct = kc->kce[ndx].b2 + (t >> 5); // point to the uint32_t to be updated
+                    } else {
+                        if (t == (0x20u << kc->kce[ndx].m)) {
+                            kc->kce[ndx].b2 = (uint64_t *)realloc(kc->kce[ndx].b2,
+                                    8 << ++kc->kce[ndx].m);
+                            ASSERT(kc->kce[ndx].b2 != NULL, return -ENOMEM);
+                        }
+                        ct = kc->kce[ndx].b2 + (t >> 5);
+                        *ct = 0ul;
+                    }
+                    t &= 0x1f;
+                }
+            } else { //EPR("new key 0x%lx at %u", ndx, pos);
+                _buf_grow(kc->kct, 1ul, 0);
+                kc->kcsndx[ndx] = kc->kct_l;
+                ct = kc->kct + kc->kct_l++;
+                *ct = B2LEN_OFFS | FLAG_B2CT;
+                t = 0;
+            }
             b ^= b;
-            switch ((c = gc(g))) {
+            switch (c) {
 case 'C': case 'c': b = 2;
 case 'G': case 'g': b ^= 1;
 case 'T': case 't':
 case 'U': case 'u': b ^= 2;
-case 'A': case 'a': 
-                uint64_t *ct;
-                ndx = _get_ndx(ndx, dna, rc);
-                if (kc->kcsndx[ndx] != UNINITIALIZED) {
-                    ct = kc->kct + kc->kcsndx[ndx];
-                    // TODO: using a length - based conversion, we could cram in 30th bit.
-                    if (*ct & FLAG_B2CT) { //EPR("at *ct a sequence & its length is stored");
-//if (ct == kc->kct+dof) { EPR("A: in seq format:%c", c); print_dna(*ct & (FLAG_B2CT - 1ul)); }
-                        t = *ct >> B2LEN_OFFS_SHFT;
-                        if (t < 29ul) {
-                            *ct += B2LEN_OFFS;
-                        } else {
-//if (ct == kc->kct+dof) EPR("A: conversion to index format:%c", c);
-                            ndx = *ct;                                // temp store 2bit dna
-                            *ct = kc->kce_l;                          // conversion: set to index.
-                            ct = (uint64_t*)malloc(sizeof(uint64_t)); // make room for 2bit dna
-                            _buf_grow0(kc->kce, 1ul);
-                            kc->kce[kc->kce_l++] = { .m = 0, .l = 30, .b2 = ct }; // 29th will be added
-                            *ct = ndx & (FLAG_B2CT - 1ul);     // after current 2bit dna, in ndx.
-                        }
-                    } else { //EPR("*ct is index to an extended keycount");
-//if (ct == kc->kct+dof) EPR("A: in index format:%c", c);
-                        ndx = *ct & INDEX_MASK;
-                        //EPR("ext:%lu/%lu, %lx", ndx, kc->kce_l, *ct);
-                        t = kc->kce[ndx].l++;                // *ct is index to an extended keycount
-                        if (t & 0x1f) {
-                            ct = kc->kce[ndx].b2 + (t >> 5); // point to the uint32_t to be updated
-                        } else {
-                            if (t == (0x20u << kc->kce[ndx].m)) {
-                                kc->kce[ndx].b2 = (uint64_t *)realloc(kc->kce[ndx].b2,
-                                        8 << ++kc->kce[ndx].m);
-                                ASSERT(kc->kce[ndx].b2 != NULL, return -ENOMEM);
-                            }
-                            ct = kc->kce[ndx].b2 + (t >> 5);
-                            *ct = 0ul;
-                        }
-                        t &= 0x1f;
-                    }
-                } else { //EPR("new key 0x%lx at %u", ndx, pos);
-                    _buf_grow(kc->kct, 1ul, 0);
-                    kc->kcsndx[ndx] = kc->kct_l;
-                    ct = kc->kct + kc->kct_l++;
-                    *ct = B2LEN_OFFS | FLAG_B2CT;
-                    t = 0;
-                }
+case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
                 *ct |= b << (t << 1);
                 ++pos;
-                c = '\n';
                 _addtoseq(h->s, b);
                 dna = _seq_next(b, dna, rc);
+                continue;
             }
-        } while (isspace(c));
+            // happens at a boundary: no next Nts.
+            if (t < 29ul) *ct -= B2LEN_OFFS;
+            else --kc->kce[ndx].l;
+            break;
+        }
 
         if (c == '>' || c == -1) {
             EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
@@ -262,8 +268,6 @@ int kct_convert(kct_t* kc)
 //EPR("B: in seq format (t=%u, %lu)", t, offs);
 
             l = x >> B2LEN_OFFS_SHFT; // isolate twobit count
-            ASSERT(l != 0, return -EFAULT, "An inserted key should have at least one count\n"
-                    "%lu/%lu]:\t%lx, %lu", src - kc->kct, kc->kct_l, x, offs);
             *src = offs + l;                 // kc->kct conversion: store end position
                                            // of its next Nts from now on.
             dest = kc->ts + (offs >> 2); // destination for copy.
