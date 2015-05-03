@@ -29,10 +29,10 @@ b2_write(const gzfh_t *fh, const char *s, uint64_t l)
     while (l) {
         int c = write(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
         if (c < 0) {
-            fputs("error while writing\n", stderr);
+            EPR("error while writing");
             return c;
         }
-        fprintf(stderr, "==%d bytes written\n", c);
+        EPR("==%d bytes written", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
@@ -44,10 +44,10 @@ b2_read(const gzfh_t *fh, char *s, uint64_t l)
     while (l) {
         int c = read(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
         if (c < 0) {
-            fputs("error while reading\n", stderr);
+            EPR("error while reading");
             return c;
         }
-        fprintf(stderr, "==%d bytes read\n", c);
+        EPR("==%d bytes read", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
@@ -82,16 +82,14 @@ static struct option_description dopt[] = {
 static int usage()
 {
     unsigned i;
-    fprintf(stderr, "Program: %s\n", PROGRAM_NAME);
-    fprintf(stderr, "Version: %s\n", PROGRAM_VERSION);
-    fprintf(stderr, "Contact: Roel Kluin <r.kluin@nki.nl>\n\n");
-    fprintf(stderr, "Usage:   %s [options] <in.fq> [in2.fq] [ref] <prefix> \n\n",
-            PROGRAM_NAME);
+    EPR("Program: %s\n"
+        "Version: %s\n"
+        "Contact: Roel Kluin <r.kluin@nki.nl>\n\n"
+        "Usage:   %s [options] <in.fq> [in2.fq] [ref] <prefix> \n",
+            PROGRAM_NAME, PROGRAM_VERSION, PROGRAM_NAME);
     for (i = 0; dopt[i].name != NULL; ++i)
-        fprintf(stderr, "\t-%c|--%s\t%s\n", dopt[i].val, dopt[i].name, dopt[i].descr);
-    fputc('\n', stderr);
-    fputs("Instead of a file you may specify stdin or stdout for some tasks\n", stderr);
-    fputc('\n', stderr);
+        EPR("\t-%c|--%s\t%s", dopt[i].val, dopt[i].name, dopt[i].descr);
+    EPR("\nInstead of a file you may specify stdin or stdout for some tasks\n");
     return 1;
 }
 
@@ -120,7 +118,7 @@ int main(int argc, char* const* argv)
             case 'r': ++i;
             case '2': ++i;
             case '1':
-//                fprintf(stderr, "%s: %s\n", dopt[i].name, optarg);
+//                EPR("%s: %s", dopt[i].name, optarg);
                 assert((seq.fh[i].write == NULL) != (i == fhsz - 1));
                 seq.fh[i].name = optarg;
                 break;
@@ -129,13 +127,13 @@ int main(int argc, char* const* argv)
             case 'l': ++i;
             case 'm': {
                 assert(dopt[i + fhsz].val == optvals[12 + i]);
-//                fprintf(stderr, "%s: %s\n", dopt[i + fhsz].name, optarg);
+//                EPR("%s: %s", dopt[i + fhsz].name, optarg);
                 unsigned t = atoi(optarg);
                 if ((t < optvals[4 + i]) || (t > optvals[8 + i])) {
                     t = i + fhsz;
-                    fprintf(stderr, "\t-%c|--%s %s is invalid.\n\t%s must be "
-                        "between %u and %u\n", dopt[t].val, dopt[t].name, optarg,
-                        dopt[t].descr, optvals[4 + i], optvals[8 + i]);
+                    EPR("\t-%c|--%s %s is invalid.\n\t%s must be between %u and %u",
+                            dopt[t].val, dopt[t].name, optarg, dopt[t].descr,
+                            optvals[4 + i], optvals[8 + i]);
                     goto out;
                 }
                 optvals[i] = t;
@@ -155,10 +153,10 @@ int main(int argc, char* const* argv)
     while (optind != argc) {
         char* f = (char*)argv[optind++];
         i = get_fastx_type(f, 2, fhsz);
-        while ((i < 2) && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
+        if ((i < 2) && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
 
         if ((i >= fhsz) || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.
-            fprintf(stderr, "Unhandled argument %s (%u)\n", f, i);
+            EPR("Unhandled argument %s (%u)", f, i);
             goto out;
         }
         seq.fh[i].name = f;
@@ -166,8 +164,8 @@ int main(int argc, char* const* argv)
 
     if (optind != argc) {
         while (optind != argc)
-            fprintf(stderr, "main: Extra argument %s\n", argv[optind++]);
-        fprintf(stderr, "main: Too many arguments\n");
+            EPR("main: Extra argument %s", argv[optind++]);
+        EPR("main: Too many arguments");
         goto out;
     }
 
@@ -180,76 +178,72 @@ int main(int argc, char* const* argv)
             c = set_io_fh(&seq.fh[i], blocksize, (seq.mode & amopt('f')) != 0);
 
         if (c < 0) {
-            fprintf(stderr, "main: -%c [%s] failed.\n", dopt[i].val, dopt[i].name);
+            EPR("main: -%c [%s] failed.", dopt[i].val, dopt[i].name);
             goto out;
         }
 
-        fprintf(stderr, "%s(%u):\t%s\n", dopt[i].name, i, c == 0 ? seq.fh[i].name :
+        EPR("%s(%u):\t%s", dopt[i].name, i, c == 0 ? seq.fh[i].name :
                 (i >= fhsz - 1 ? "stdout" : "stdin"));
     }
     if (seq.fh[2].name != NULL) {
         if (seq.fh[1].name) {
-            fputs("== Paired-end alignment\n", stderr);
+            EPR("== Paired-end alignment");
             /*if ((c = pe_fq_b2(&seq)) != 0) {
-                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                EPR("ERROR: fq_b2() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
-            fputs("== Single-end alignment\n", stderr);
+            EPR("== Single-end alignment");
             /*if ((c = fq_b2(&seq)) != 0) {
-                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                EPR("ERROR: fq_b2() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else {
 //            if (seq.readlength == 0) {
-//                fputs("== Readlength needed for indexing.\n", stderr);
+//                EPR("== Readlength needed for indexing.");
 //                goto out;
 //            }
             c = fa_index(&seq, blocksize);
             if (c < 0) {
-                fputs("== failed to create keyct.\n", stderr);
+                EPR("== failed to create keyct.");
                 goto out;
             }
             fputc('\n', stderr);
         }
     } else {
         if (seq.fh[1].name) {
-            fputs("== Paired-end assembly\n", stderr);
+            EPR("== Paired-end assembly");
             /*if ((c = pe_fq_b2(&seq)) != 0) {
-                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                EPR("ERROR: fq_b2() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
-            fputs("== Single-end assembly\n", stderr);
+            EPR("== Single-end assembly");
             if ((c = fq_b2(&seq)) != 0) {
-                fprintf(stderr, "ERROR: fq_b2() returned %d\n", c);
+                EPR("ERROR: fq_b2() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
             fq_print(&seq);
         } else {
-            fputs("No input files specified\n", stderr);
+            EPR("No input files specified");
             goto out;
         }
     }
-    fputs("Cleanup\n", stderr); fflush(NULL);
+    EPR("Cleanup"); fflush(NULL);
 
     ret = EXIT_SUCCESS;
 out: /* cleanup */
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].fp == NULL) continue;
-        fprintf(stderr, "closing %u\n", i);
-        // XXX: valgrind complains here but the problem is in zlib
-        // probably not a bug.
-        if (seq.fh[i].close && seq.fh[i].io != Z_NULL && seq.fh[i].close(seq.fh[i].io) != Z_OK)
-            fprintf(stderr, "main: gzclose fails for %s\n", dopt[i].name);
-        close(seq.fh[i].fd);
+        EPR("closing %u\n", i);
+        rclose(&seq.fh[i]);
     }
     return ret;
 }

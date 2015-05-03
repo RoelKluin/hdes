@@ -46,13 +46,21 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
     return gzeof(fh->io) ? -EIO : 0;
 }
 
+/* from: http://www.zlib.net/manual.html at gzdopen:
+ * gzclose on the gzopen-returned gzFile will also close the file descriptor fd.
+ *
+ * If you want to keep fd open, use fd = dup(fd_keep); gz = gzdopen(fd, mode);.
+ * The duplicated descriptor should be saved to avoid a leak, since gzdopen does
+ * not close fd if it fails. If you are using fileno() to get the file descriptor
+ * from a FILE *, then you will have to use dup() to avoid double-close()ing the
+ * file descriptor. Both gzclose() and fclose() will close the associated file
+ * descriptor, so they need to have different file descriptors.
+ */
 static int
 rgzopen(struct gzfh_t* fh, uint32_t blocksize)
 {
-    int fd = fileno(fh->fp);
-    fh->fd = dup(fd);
     /* wb1: 1 is for fast compression */
-    fh->io = gzdopen(fd, fh->write ? "wb1" : "rb");
+    fh->io = gzdopen(fileno(fh->fp), fh->write ? "wb1" : "rb");
 
     if (fh->io == Z_NULL) {
         fputs("main: gzdopen failed\n", stderr);
@@ -81,7 +89,36 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
     return 1;
 }
 
-/* a force of 2 forces read, return 0 for reading 1, writing, else error. */
+int
+rclose(gzfh_t* fh)
+{
+    int ret = 0;
+    if (fh->io) {
+        if (fh->read && fh->write) {
+            ret = gzclose(fh->io);
+        } else if (fh->read) {
+            ret = gzclose_r(fh->io);
+            fclose(fh->fp);
+        } else if (fh->write) {
+            ret = gzclose_w(fh->io);
+            fclose(fh->fp);
+        } else if (fh->fp) {
+            fclose(fh->fp);
+        }
+        fh->read = NULL;
+        fh->write = NULL;
+        fh->io = NULL;
+    } else if (fh->fp) {
+        EPR("closing fh->fp");
+        fclose(fh->fp);
+    } else {
+        EPR("already seems closed: %s", fh->name ? fh->name : "<unknown>");
+    }
+    fh->fp = NULL;
+    return ret;
+}
+
+// a force of 2 forces read, return 0 for reading, for writing 1, else error.
 int
 set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
 {
@@ -94,6 +131,7 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         if (fh->fp) { /* file already exists, overwrite? */
             fclose(fh->fp);
             if (!force) {
+                fh->fp = NULL;
                 fprintf(stderr, "use -f to force write %s\n", fh->name);
                 return -EEXIST;
             }
@@ -103,11 +141,12 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
             fprintf(stderr, "cannot write to %s\n", fh->name);
             return -EPERM;
         }
+        int ret = 1;
         if (t && t[3] == '\0') {/* '.gz' at _end_ */
             fh->write = b2gz_write;
-            fh->close = gzclose_w;
-            return rgzopen(fh, blocksize) + 1;
+            ret = rgzopen(fh, blocksize);
         }
+        return ret;
     } else {
         fprintf(stderr, "== preparing to read %s...\n", fh->name);
         if (fh->fp == NULL) {
@@ -116,7 +155,6 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         }
         if (t && t[3] == '\0') {
             fh->read = b2gz_read;
-            fh->close = gzclose_r;
             return rgzopen(fh, blocksize);
         }
     }

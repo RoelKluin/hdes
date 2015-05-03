@@ -15,8 +15,10 @@
 #include <assert.h>
 #include "b6.h"
 
-static const unsigned long dbgndx = 0xd5668;//UNINITIALIZED;
-static const unsigned long dbgoffs = 7400;//UNINITIALIZED;
+#define UNINITIALIZED (~0u)
+
+static const unsigned long dbgndx = UNINITIALIZED;
+static const unsigned long dbgoffs = UNINITIALIZED;
 
 static int dbg = 1;
 

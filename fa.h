@@ -47,10 +47,11 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_ndx(ndx, dna, rc) ({\
+#define _get_ndx0(ndx, dna, rc) ({\
     ndx = (dna & KEYNT_STRAND) ? dna : rc;\
-    ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+    ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
 })
+#define _get_ndx(kc, ndx, dna, rc) kc->kcsndx[_get_ndx0(ndx, dna, rc)]
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = (dna & KEYNT_STRAND);\
@@ -89,8 +90,6 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define FLAG_B2CT  (1ul << 58)
 #define INDEX_MASK ((1ul << 40) - 1ul)
 
-#define UNINITIALIZED (~0u)
-
 #define INFERIORITY_BIT (1u<<31)
 #define ORIENTATION (1u<<30)
 
@@ -104,32 +103,6 @@ KHASH_MAP_INIT_INT64(UQCT, unsigned)
 #define min(a,b) ((a) <= (b) ? (a) : (b))
 
 #define DEBUG 1
-
-#ifdef DEBUG
-
-# define _getxtdndx0(kc, ndx) (kc)->kcsndx[(ndx)]
-# define get_w(wlkr, kc, ndx) (wlkr)[(kc)->kcsndx[(ndx)]]
-# define _get_kct(kc, ndx) \
-        /*ASSERT((kc)->kcsndx[(ndx)] < (kc)->kct_l, return -EINVAL);*/\
-        (kc)->kct[(kc)->kcsndx[(ndx)]]
-# define _getxtdndx(kc, ndx, dna, rc) ({\
-        ndx = _get_ndx(ndx, (dna), (rc));\
-        /*EPQ(ndx == 0x47ef9, "%s:%u <========\n", hdr, pos);*/\
-        ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
-        ndx;\
-})
-#else
-
-# define _getxtdndx0(kc, ndx) (ndx)
-# define get_w(wlkr, kc, ndx) (wlkr)[(ndx)]
-# define _get_kct(kc, ndx) (kc)->kct[(ndx)]
-# define _getxtdndx(kc, ndx, dna, rc) ({\
-        ndx = _get_ndx(ndx, (dna), (rc));\
-        ASSERT(ndx < (1ul << KEYNT_BUFSZ_SHFT), return -EINVAL);\
-        (kc)->kcsndx[ndx];\
-})
-
-#endif
 
 packed_struct Bnd {
 #ifdef DEBUG

@@ -19,7 +19,6 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     int ret = -EFAULT;
     if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(kc->bd_l)) < 0)
         return ret;
-    EPR("%u", kc->bd_l);
     if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(kc->id_l)) < 0)
         return ret;
     if (fhout->write(fhout, (const char*)kc->id, kc->id_l) < 0)
@@ -32,7 +31,6 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
     {
         Hdr* h = *hit;
-        EPR("%s..", kc->id + h->part[0]);
         if (fhout->write(fhout, (const char*)&h->end_pos, sizeof(uint32_t)) < 0)
             return ret;
         uint32_t len = h->bnd.size();
@@ -153,7 +151,6 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
         kc->kcsndx[val] = len;
     }
     kc->bd_m = __builtin_ctz(next_pow2(kc->bd_l + 2));
-    EPR("%u, %u", kc->bd_l, kc->bd_m);
     len = kc->bd_l * sizeof(Bnd);
     kc->bd = (Bnd*)malloc((1 << kc->bd_m) * sizeof(Bnd));
     ASSERT(kc->bd != NULL, return -ENOMEM);

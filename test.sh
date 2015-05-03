@@ -107,4 +107,6 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 ./faless hg19_GL.fa.gz --extend 10
 
 
+make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
+
 

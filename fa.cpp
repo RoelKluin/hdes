@@ -62,9 +62,6 @@ free_kc(kct_t* kc)
     _buf_free(kc->id);
     _buf_free(kc->ts);
     _buf_free(kc->kct);
-    //_buf_free(kc->kce);
-    _buf_free(kc->wlkr);
-    _buf_free(kc->wbuf);
     _buf_free(kc->kcsndx);
 }
 
@@ -78,16 +75,14 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         // current bit pos and pending offsets are stored in walker.
         ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
         dbg = wbuf[i] == dbgndx ?  dbg | 4 : dbg & ~4;
-        Walker* w = &get_w(wlkr, kc, wbuf[i]);
+        Walker* w = wlkr + wbuf[i];
         ASSERT(w->tmp_count > 0, return -EFAULT);
 
         // get ts offset
-        uint64_t *e = &_get_kct(kc, wbuf[i]);
-        uint64_t nt = e != kc->kct ? e[-1] : 0;
-        //EPR0("(%u part, %ux, byte %u(%x)):\t", 4 - (nt & 3),
-        //        *e - nt - w->excise_ct, nt >> 2, kc->ts[nt >> 2]);
+        uint64_t* kct = kc->kct;
+        uint64_t nt = wbuf[i] != 0 ? kct[wbuf[i] - 1] : 0;
         nt += w->count + --w->tmp_count;
-        uint64_t offs = *e - ++w->excise_ct;
+        uint64_t offs = kct[wbuf[i]] - ++w->excise_ct;
 
         // excise out twobits, i.e. shift 2bits above current 2bit down.
         uint8_t* q = &kc->ts[nt >> 2];
@@ -120,14 +115,6 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         EPQ0(dbg > 2, "after append:");print_dna(*q, dbg > 2);
     }
     wbuf[i] = UNINITIALIZED;
-
-    while (i != 0) {
-        if (wbuf[i] != UNINITIALIZED) {
-            Walker* w = &get_w(wlkr, kc, wbuf[i]);
-            ASSERT(wbuf[i] == UNINITIALIZED, return print_ndx(wbuf[i]), "index %u/%u:%u", i, left, w->tmp_count);
-        }
-        --i;
-    }
     return left;
 }
 
@@ -153,11 +140,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     const char* hdr = kc->id + h->part[0];
     //dbg = (strncmp(hdr, dbgtid, strlen(dbgtid)) == 0) * 2;
 
-    uint64_t t, dna = last->dna; // first seq after skip
+    uint64_t dna = last->dna; // first seq after skip
     uint64_t rc = revcmp(dna);
-    uint64_t ndx = _getxtdndx(kc, ndx, dna, rc);
-    dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
-    Walker* w = &get_w(kc->wlkr, kc, ndx);
+    uint64_t ndx = _get_ndx(kc, ndx, (dna), (rc));
+    dbg = ndx == dbgndx ? dbg | 4 : dbg & ~4;
+
+    Walker* w = &kc->wlkr[ndx];
     uint32_t infior = max(last->i + 1, w->infior); //XXX
     if (dbg > 2)
         show_list(kc, h->bnd);
@@ -171,18 +159,18 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     // if we find a 2nd, we really want to extend this region
     const int ext = kc->ext;
     int left = ext;
-    EPQ0(dbg > 0, "----[\t%s%s:(%u-%u)..(%u-%u)\t@%u\t]----\tdna:",
+    EPQ0(dbg > 1, "----[\t%s%s:(%u-%u)..(%u-%u)\t@%u\t]----\tdna:",
             strlen(hdr) < 8 ? "\t":"",hdr, last->s, last->s+last->l, next->s,
             next->s+next->l, pos);
-    print_dna(dna, dbg > 0);
+    print_dna(dna, dbg > 1);
 
     for (;pos < next->s;++pos) { // until next event
         EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
-        ASSERT(_getxtdndx0(kc, ndx) < kc->kct_l, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
+        ASSERT(ndx < kc->kct_l, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
         EPQ0(dbg > 2, "%u:\t", pos);
         print_2dna(dna, rc, dbg > 2);
 
-        w = &get_w(kc->wlkr, kc, ndx);
+        w = &kc->wlkr[ndx];
         if (left) { // keep filling the buffer
             if (left == ext) {
                 //EPR("position after 2nd unique, or each extended.");
@@ -202,8 +190,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 infior = 0;
                 // add tmp_count for each - we cannot extend it in this iteration
                 for (left = ext; --left;) {
-                    get_w(kc->wlkr, kc, kc->wbuf[left]).count++;
-                    --get_w(kc->wlkr, kc, kc->wbuf[left]).tmp_count;
+                    ++kc->wlkr[kc->wbuf[left]].count;
+                    --kc->wlkr[kc->wbuf[left]].tmp_count;
                     kc->wbuf[left] = UNINITIALIZED;
                 }
 
@@ -224,13 +212,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 }
             }
         }
-        uint64_t *e = &_get_kct(kc, ndx);
-        uint64_t offs = e != kc->kct ? e[-1] : 0;
-        unsigned ct = *e - offs - w->excise_ct;
+        uint64_t offs = ndx != 0 ? kc->kct[ndx-1] : 0;
+        unsigned ct = kc->kct[ndx] - offs - w->excise_ct;
         offs += w->count + w->tmp_count;
 
         EPQ(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %lu(%x)ndx:0x%lx):",
-                offs, *e, 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
+                offs, kc->kct[ndx], 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
         print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 2);
 
         uint8_t b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
@@ -242,7 +229,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                     pos,b6(sb2<<1), b6(b2<<1), ndx, w->count, w->tmp_count);
         }
         dna = _seq_next(b2, dna, rc);
-        ndx = _getxtdndx(kc, ndx, dna, rc);
+        ndx = _get_ndx(kc, ndx, dna, rc);
         dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
         if (ct > 1ul) {
             if (left == 0) ++w->count;
@@ -273,7 +260,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     }
     ASSERT(pos == next->s, return -EFAULT);
     EPQ(dbg > 2, "---");
-    //ASSERT(dna == next->at_dna, return -print_2dna(dna, next->at_dna), "[%u] => enddna mismatch", pos);
     if (left) {
         ASSERT((inter->s + inter->l + ext) >= next->s, return -EFAULT);
         EPQ0(dbg > 1, "\nExtending %u-%u til %u\t(next:%u-%u)\t", last->s, last->s+last->l, inter->s+inter->l, next->s, next->s+next->l); print_2dna(last->dna, inter->at_dna, dbg > 1);
@@ -291,10 +277,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             kc->bdit = h->bnd.erase(kc->bdit);
             --kc->bdit;
         }
-    } else {
-        EPQ(dbg > 1, "Not joining\n");
     }
-//                pos += kc->bd[*(kc->bdit)].l; // add skipped Nts
     return uqct;
 }
 
@@ -309,13 +292,14 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
         if (ret < 0) return ret;
         uqct += ret;
     }
-    for (unsigned t = 0; t != kc->kct_l; ++t) { //XXX
+#ifdef DEBUG
+    for (unsigned t = 0; t != kc->kct_l; ++t) {
         Walker* w = kc->wlkr + t;
-        //XXX
         ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%u", t, kc->kct_l);
     }
     if (dbg > 1)
         show_list(kc, h->bnd);
+#endif
 
     return uqct;
 }
@@ -352,7 +336,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
     struct gzfh_t* fhio = seq->fh;
     struct gzfh_t* fhin = seq->fh + 2; // init with ref
     size_t t;
-    int res, ret = -1;
+    int res = -ENOMEM, ret = -1;
     void* g;
     int (*gc) (void*);
     int (*ungc) (int, void*);
@@ -362,7 +346,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
     kc.ext = seq->readlength - KEY_WIDTH;
     kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
 
-    const char* ndxact[4] = {".fa", "_x1.gz"};
+    const char* ndxact[4] = {".fa", "_x1.gz", "_x2.gz"};
 
     if (fhio->name != NULL && ((res = strlen(fhio->name)) > 255)) {
         strncpy(file, fhio->name, res);
@@ -372,69 +356,105 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
         strcpy(file, fhin->name);
     }
     fhio->name = &file[0];
-    if (!fn_convert(fhio, ndxact[0], ndxact[1]))
-        return -1; // skip if this file was not provided on the commandline
 
-    fprintf(stderr, "== %s(%lu)\n", fhio->name, fhio - seq->fh);
-    res = set_io_fh(fhio, blocksize, 0);
-    if (res < 0) { fprintf(stderr, "== set_io_fh failed:%d", res); goto out; }
+    // first check whether last file exists
+    if (!fn_convert(fhio, ndxact[0], ndxact[2]))
+        return -1;
 
-    if (res == 1) {
-        kc.kct = _buf_init(kc.kct, 16);
-        kc.kce = _buf_init(kc.kce, 8);
-        kc.bd = _buf_init(kc.bd, 1);
+    fhio->fp = fopen(fhio->name, "r");
+    if (fhio->fp == NULL) {
 
-        // FIXME: assigning 1 Mb for reference id, to keep realloc from happening.
-        // (realloc would invalidate pointers inserted in kc.hdr)
-        kc.id = _buf_init(kc.id, 20);
+        // last file did not exist, check 2nd last.
+        if (!fn_convert(fhio, ndxact[2], ndxact[1]))
+            return -1;
 
-        memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
+        fhio->fp = fopen(fhio->name, "r");
 
-        if (is_gzfile) {
-            g = fhin->io;
-            gc = (int (*)(void*))&gzgetc;
-            ungc = (int (*)(int, void*))&gzungetc;
-        } else {
-            g = fhin->fp;
-            gc = (int (*)(void*))&fgetc;
-            ungc = (int (*)(int, void*))&ungetc;
+        if (fhio->fp == NULL) { // write both first output file and last.
+            res = set_io_fh(fhio, blocksize, 0);
+            ASSERT(res >= 0, goto out);
+
+            kc.kct = _buf_init_err(kc.kct, 16, goto out);
+            kc.kce = _buf_init_err(kc.kce, 8, goto out);
+            kc.bd = _buf_init_err(kc.bd, 1, goto out);
+
+            // FIXME: assigning 1 Mb for reference ids, to keep realloc from
+            // happening. (realloc would invalidate pointers inserted in kc.hdr)
+            kc.id = _buf_init_err(kc.id, 20, goto out);
+
+            memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
+
+            if (is_gzfile) {
+                g = fhin->io;
+                gc = (int (*)(void*))&gzgetc;
+                ungc = (int (*)(int, void*))&gzungetc;
+            } else {
+                g = fhin->fp;
+                gc = (int (*)(void*))&fgetc;
+                ungc = (int (*)(int, void*))&ungetc;
+            }
+            /* TODO: load dbSNP and known sites, and mark them. */
+            res = fa_kc(&kc, g, gc, ungc);
+            EPR("done reading and intializing keycounts");
+            ASSERT(res >= 0, goto out);
+
+            res = kct_convert(&kc);
+            EPR("done converting keycounts");
+            _buf_free(kc.kce);
+            ASSERT(res >= 0, goto out);
+
+            res = write1(fhio, &kc);
+            EPR("done writing(1) %s to disk", fhio->name);
+        } else { // read first file, write last.
+            res = set_io_fh(fhio, blocksize, 2);
+            ASSERT(res >= 0, goto out);
+            res = restore1(fhio, &kc);
+            EPR("done loading(1) %s from disk", fhio->name);
         }
-        /* TODO: load dbSNP and known sites, and mark them. */
-        res = fa_kc(&kc, g, gc, ungc);
-        EPR("left fa_kc");fflush(NULL);
+        ASSERT(res >= 0, goto out);
+        res = rclose(fhio);
         ASSERT(res >= 0, goto out);
 
-        res = kct_convert(&kc);
-        ASSERT(res >= 0, goto out);
-        _buf_free(kc.kce);
+        t = kc.kct_l * sizeof(Walker);
+        kc.wlkr = (Walker*)malloc(t);
+        ASSERT(kc.wlkr != NULL, goto out)
+        memset(kc.wlkr, 0ul, t);
 
-        // write to disk, TODO: load from disk.
+        t = kc.ext * sizeof(uint32_t);
+        kc.wbuf = (uint32_t*)malloc(t);
+        if (kc.wbuf == NULL) {
+            free(kc.wlkr);
+            goto out;
+        }
+        memset(kc.wbuf, UNINITIALIZED, t);
+
+        do { // until no no more new uniques
+            res = ext_uq_iter(&kc);
+        } while (res > 0);
+        _buf_free(kc.wlkr);
+        _buf_free(kc.wbuf);
+        ASSERT(res >= 0, goto out);
+
+        // reopen for writing processed boundaries (2nd file)
+        if (!fn_convert(fhio, ndxact[1], ndxact[2]))
+            return -1;
+        res = set_io_fh(fhio, blocksize, 0);
+        ASSERT(res >= 0, goto out, "failed to open %s", fhio->name);
+
         res = write1(fhio, &kc);
-        //ASSERT(res >= 0, goto out);
-        //res = fhio->close(fhio->io);
+        EPR("done writing(2) %s to disk", fhio->name);
+
     } else {
-        res = restore1(fhio, &kc);
+        // read last file
+        res = set_io_fh(fhio, blocksize, 2);
         ASSERT(res >= 0, goto out);
-        //res = fhio->close(fhio->io);
+
+        res = restore1(fhio, &kc);
+        EPR("done loading(2) %s from disk", fhio->name);
     }
-    ASSERT(res >= 0, goto out);
-
-    t = kc.kct_l * sizeof(Walker);
-    kc.wlkr = (Walker*)malloc(t);
-    memset(kc.wlkr, 0ul, t);
-
-    t = kc.ext * sizeof(uint32_t);
-    kc.wbuf = (uint32_t*)malloc(t);
-    memset(kc.wbuf, UNINITIALIZED, t);
-
-    do { // until no no more new uniques
-        res = ext_uq_iter(&kc);
-    } while (res > 0);
-    ASSERT(res >= 0, goto out);
-
     ret = res != 0;
-
 out:
+    EPQ(ret, "an error occured:%d", res);
     free_kc(&kc);
     return ret;
 

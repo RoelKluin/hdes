@@ -22,10 +22,10 @@ typedef struct gzfh_t {
     gzFile io;
     int (*read) (const gzfh_t *fh, char*, size_t);
     int (*write) (const gzfh_t *fh, const char*, size_t);
-    int (*close) (gzFile);
 } gzfh;
 
 int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
 int set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force);
+int rclose(gzfh_t *fh);
 
 #endif //RK_GZ_H
