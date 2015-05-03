@@ -52,11 +52,12 @@ print_ndx(uint64_t dna, bool dbg = true)
 static void
 free_kc(kct_t* kc)
 {
-    std::map<char*, Hdr*, Tid>::iterator it;
-    for (it = kc->hdr.begin(); it != kc->hdr.end(); ++it) {
-        free(it->second->s);
-        free(it->second->part);
-        delete it->second;
+    std::list<Hdr*>::iterator it;
+    for (it = kc->h.begin(); it != kc->h.end(); ++it) {
+        Hdr* h = *it;
+        free(h->s);
+        free(h->part);
+        delete h;
     }
     _buf_free(kc->bd);
     _buf_free(kc->id);
@@ -108,7 +109,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         }
         // append excised Nt to end.
         offs = (offs & 3) << 1;        // set shift
-        EPQ(dbg > 2, "%u, %c", offs, b6(t << 1));
+        EPQ(dbg > 2, "%lu, %c", offs, b6(t << 1));
         t <<= offs;                    // move excised in position
         offs = *q & ((1u << offs) - 1u); // below 2bits were shifted correctly
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
@@ -216,7 +217,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
         unsigned ct = kc->kct[ndx] - offs - w->excise_ct;
         offs += w->count + w->tmp_count;
 
-        EPQ(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%u part, %ux, byte %lu(%x)ndx:0x%lx):",
+        EPQ(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)ndx:0x%lx):",
                 offs, kc->kct[ndx], 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
         print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 2);
 
@@ -295,7 +296,7 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
 #ifdef DEBUG
     for (unsigned t = 0; t != kc->kct_l; ++t) {
         Walker* w = kc->wlkr + t;
-        ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%u", t, kc->kct_l);
+        ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%lu", t, kc->kct_l);
     }
     if (dbg > 1)
         show_list(kc, h->bnd);
@@ -378,9 +379,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
             kc.kce = _buf_init_err(kc.kce, 8, goto out);
             kc.bd = _buf_init_err(kc.bd, 1, goto out);
 
-            // FIXME: assigning 1 Mb for reference ids, to keep realloc from
-            // happening. (realloc would invalidate pointers inserted in kc.hdr)
-            kc.id = _buf_init_err(kc.id, 20, goto out);
+            kc.id = _buf_init_err(kc.id, 5, goto out);
 
             memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
 

@@ -12,9 +12,6 @@
 #ifndef RK_FA_H
 #define RK_FA_H
 #include <list>
-#include <stack>
-#include <map>
-#include <queue>
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
@@ -133,16 +130,9 @@ enum ensembl_parts {ID, SEQTYPE, IDTYPE,
 struct Hdr {
     uint8_t* s;
     uint32_t end_pos, s_l;
-    uint16_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+    uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
     uint8_t p_l, s_m;
-};
-
-struct Tid {
-    bool operator () (char*a, char* b) const 
-    {
-        return strcmp(a, b) < 0;
-    }
 };
 
 struct kct_t {
@@ -158,9 +148,7 @@ struct kct_t {
     uint32_t kce_l; //early req
     uint64_t ts_l, kct_l; // late req, continued req
     uint8_t kct_m, kce_m, kcsndx_m, bd_m, id_m; // only bd_m is required, but not stored either
-    Tid tid; // not stored (obviously)
     std::list<Hdr*> h;
-    std::map<char*, Hdr*, Tid> hdr;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
 };

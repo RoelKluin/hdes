@@ -39,10 +39,10 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
 
     // 1: buffer sizes
     __WRITE_VAL(len)
-    __WRITE_VAL(kc->kct_l)
-    __WRITE_VAL(kc->bd_l)
-    __WRITE_VAL(kc->ts_l)
     __WRITE_VAL(kc->id_l)
+    __WRITE_VAL(kc->bd_l)
+    __WRITE_VAL(kc->kct_l)
+    __WRITE_VAL(kc->ts_l)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
@@ -93,13 +93,14 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     kc->bd = NULL;
     kc->id = NULL;
     kc->kct = NULL;
+    // 0: version number
 
     // 1: buffer sizes
     __READ_VAL(len) // header size: how many contigs
-    __READ_VAL(kc->kct_l)
-    __READ_VAL(kc->bd_l)
-    __READ_VAL(kc->ts_l)
     __READ_VAL(kc->id_l)
+    __READ_VAL(kc->bd_l)
+    __READ_VAL(kc->kct_l)
+    __READ_VAL(kc->ts_l)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
@@ -124,7 +125,6 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
         }
         __READ_PTR(h->part, h->p_l)
         kc->h.push_back(h);
-        kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], kc->h.back()));
     }
     __READ_PTR(kc->kct, kc->kct_l);
 

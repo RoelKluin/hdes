@@ -18,7 +18,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
 {
     int c;
     Hdr* h = new Hdr;
-    h->part = (uint16_t*)malloc(ENS_HDR_PARTCT * sizeof(uint16_t));
+    h->part = (uint32_t*)malloc(ENS_HDR_PARTCT * sizeof(uint32_t));
     ASSERT(h->part != NULL, return NULL);
 
     h->s = _buf_init_err(h->s, 8, return NULL);
@@ -33,7 +33,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
             case ' ':
                 _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
                 if (p == IDTYPE) {
-                    char* q = &kc->id[h->part[p]];
+                    char* q = kc->id + h->part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
                             strncmp(q, "supercontig", strlen(q)) != 0 &&
                             strncmp(q, "nonchromosomal", strlen(q)) != 0) {
@@ -50,7 +50,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
-                    char* q = &kc->id[h->part[p]];
+                    char* q = kc->id + h->part[p];
                     if (strncmp(q, "dna", strlen(q)) != 0) {
                         if (strncmp(q, "dna_rm", strlen(q)) == 0) {
                             EPR("\nWARNING: reference is repeatmasked");
@@ -79,7 +79,6 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         break;
     }
 
-    kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], h));
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
