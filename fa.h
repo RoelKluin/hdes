@@ -16,13 +16,24 @@
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
-#define BUF_STACK (1 << 22)
 
+// length of the next NTs, when in sequence format, i.e. the lower bits
+// contain a twobit rather than a index to a extended keycount (kct_ext)
 #define B2LEN_OFFS_SHFT 59
 #define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
+
+// indicates whether (set) or not the kct contains a sequence or an index
 #define FLAG_B2CT  (1ul << 58)
+
+// in kct_convert(), all next NTs are put in a single buffer and kcts are
+// converted to 2bit indices to their respective next Nts: Below this bit.
 #define STRAND_SHFT 40
 #define INDEX_MASK ((1ul << STRAND_SHFT) - 1ul)
+
+// While some movement of next-NTs per key takes place - upwards
+// movement of next-NTs that lie within range of unique indices and can
+// therefore be skipped in future iterations, the number of next-Nts per
+// key remain constant.
 
 
 #define __seq_le_n(b, dna, rc) ({\
@@ -68,8 +79,6 @@
 })
 
 
-#define _update_ndx()
-
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = (dna & KEYNT_STRAND);\
     ndx = b ? dna : rc;\
@@ -102,13 +111,8 @@
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
-#define INFERIORITY_BIT (1u<<31)
-#define ORIENTATION (1u<<30)
-
 #define ULL(x) ((unsigned __int128)(x))
 
-#define NR_MASK 0x3fffffff
-#define TYPE_MASK 0xc0000000
 #undef max
 #define max(a,b) ((a) >= (b) ? (a) : (b))
 #undef min

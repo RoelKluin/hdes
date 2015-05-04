@@ -71,11 +71,11 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
     i = 0;
     // FIXME: may need 64 bit index.
     for (uint32_t ndx = 0u; i != len; ++ndx) {
-        if (kc->kcsndx[ndx] >= kc->kct_l) {
-            kc->kcsndx[ndx] = kc->kct_l; // make high bit range available
+        if (kc->kctndx[ndx] >= kc->kct_l) {
+            kc->kctndx[ndx] = kc->kct_l; // make high bit range available
         } else {
             buf[i++] = ndx;
-            buf[i++] = kc->kcsndx[ndx];
+            buf[i++] = kc->kctndx[ndx];
         }
     }
     __WRITE_PTR(buf, len)
@@ -131,12 +131,12 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
     __READ_PTR(kc->ts, len);
 
-    memset(kc->kcsndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kcsndx[0]));
+    memset(kc->kctndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kctndx[0]));
     for (uint32_t i=0; i != kc->kct_l; ++i) {
         __READ_VAL(val)
         ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
         __READ_VAL(len)
-        kc->kcsndx[val] = len;
+        kc->kctndx[val] = len;
     }
     return 0;
 }

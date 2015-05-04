@@ -165,8 +165,8 @@ case 'A': case 'a':
             if (isspace(c = gc(g))) continue;
             uint64_t *ct;
             _get_ndx(ndx, ndx, dna, rc);
-            if (kc->kcsndx[ndx] != UNINITIALIZED) {
-                ct = kc->kct + kc->kcsndx[ndx];
+            if (kc->kctndx[ndx] != UNINITIALIZED) {
+                ct = kc->kct + kc->kctndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
                 if (*ct & FLAG_B2CT) {
                     EPQ(dbg > 2, "sequence & length");
@@ -205,7 +205,7 @@ case 'A': case 'a':
             } else {
                 EPQ(dbg > 2, "new key 0x%lx at %u", ndx, pos);
                 _buf_grow(kc->kct, 1ul, 0);
-                kc->kcsndx[ndx] = kc->kct_l;
+                kc->kctndx[ndx] = kc->kct_l;
                 ct = kc->kct + kc->kct_l++;
                 *ct = B2LEN_OFFS | FLAG_B2CT;
                 t = 0;
