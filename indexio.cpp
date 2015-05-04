@@ -33,9 +33,10 @@
 
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
-    uint32_t* buf = NULL;
+    uint64_t* buf = NULL;
     int ret = -EFAULT;
     uint32_t val, i, len = kc->h.size();
+    uint64_t len64;
 
     // 1: buffer sizes
     __WRITE_VAL(len)
@@ -63,22 +64,25 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
         __WRITE_PTR(h->part, h->p_l)
     }
     __WRITE_PTR(kc->kct, kc->kct_l)
-    len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    __WRITE_PTR(kc->ts, len)
-    len = kc->kct_l * 2;
-    buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
+    len64 = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
+    __WRITE_PTR(kc->ts, len64)
+    len64 = kc->kct_l * 2;
+    buf = (uint64_t*)malloc(sizeof(uint64_t) * len64);
     if (buf == NULL) return -ENOMEM;
     i = 0;
-    // FIXME: may need 64 bit index.
-    for (uint32_t ndx = 0u; i != len; ++ndx) {
-        if (kc->kctndx[ndx] >= kc->kct_l) {
+    // TODO: put this conversion in kct_convert and only write kc->kctndx here..
+    for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx) {
+
+        // ..then INDEX_MASK'ing isn't necessary test should be
+        // kc->kctndx[ndx] == ~0ul
+        if ((kc->kctndx[ndx] & INDEX_MASK) >= kc->kct_l) {
             kc->kctndx[ndx] = kc->kct_l; // make high bit range available
         } else {
             buf[i++] = ndx;
             buf[i++] = kc->kctndx[ndx];
         }
     }
-    __WRITE_PTR(buf, len)
+    __WRITE_PTR(buf, len64)
     ret = 0;
 err:
     if (buf)
@@ -90,6 +94,7 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
 {
     int ret = -EFAULT;
     uint32_t len, blen, val;
+    uint64_t val64, len64;
     kc->bd = NULL;
     kc->id = NULL;
     kc->kct = NULL;
@@ -128,15 +133,15 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     }
     __READ_PTR(kc->kct, kc->kct_l);
 
-    len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    __READ_PTR(kc->ts, len);
+    len64 = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
+    __READ_PTR(kc->ts, len64);
 
-    memset(kc->kctndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kctndx[0]));
+    memset(kc->kctndx, kc->kct_l, KEYNT_BUFSZ * sizeof(*kc->kctndx));
     for (uint32_t i=0; i != kc->kct_l; ++i) {
-        __READ_VAL(val)
-        ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
-        __READ_VAL(len)
-        kc->kctndx[val] = len;
+        __READ_VAL(val64)
+        ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
+        __READ_VAL(len64)
+        kc->kctndx[val64] = len64;
     }
     return 0;
 }

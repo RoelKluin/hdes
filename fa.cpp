@@ -69,11 +69,11 @@ static int
 decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
 {
     Walker* wlkr = kc->wlkr;
-    uint32_t* wbuf = kc->wbuf;
+    uint64_t* wbuf = kc->wbuf;
     while (--i > left) {
 
         // current bit pos and pending offsets are stored in walker.
-        ASSERT(wbuf[i] != UNINITIALIZED, return -EFAULT, "%u/%u", i, left);
+        ASSERT(wbuf[i] != ~0ul, return -EFAULT, "%u/%u", i, left);
         dbg = wbuf[i] == dbgndx ?  dbg | 4 : dbg & ~4;
         Walker* w = wlkr + wbuf[i];
         ASSERT(w->tmp_count > 0, return -EFAULT);
@@ -100,7 +100,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         // mask to cover this and past nucleotide.
         EPQ(dbg > 2, "=====> excised <======, became %x",
                 *q | (q != qe ? (q[1] & 3) << 6 : 0));
-        wbuf[i] = UNINITIALIZED;
+        wbuf[i] = ~0ul;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
             EPQ0(dbg > 2, "became; next:");print_2dna(*q,q[1], dbg > 2);
@@ -114,7 +114,7 @@ decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
         EPQ0(dbg > 2, "after append:");print_dna(*q, dbg > 2);
     }
-    wbuf[i] = UNINITIALIZED;
+    wbuf[i] = ~0ul;
     return left;
 }
 
@@ -178,7 +178,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 inter->l = pos - inter->s;
             }
             if (--left) {
-                ASSERT(kc->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_dna(dna));
+                ASSERT(kc->wbuf[left] == ~0ul, return -EFAULT, "[%u]", pos & print_dna(dna));
                 kc->wbuf[left] = wx;
                 if (infior > this_infior) {
                     // replace this inferiority
@@ -192,7 +192,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 for (left = ext; --left;) {
                     ++kc->wlkr[kc->wbuf[left]].count;
                     --kc->wlkr[kc->wbuf[left]].tmp_count;
-                    kc->wbuf[left] = UNINITIALIZED;
+                    kc->wbuf[left] = ~0ul;
                 }
 
                 if (inter->l != 0) {
@@ -376,7 +376,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 
             kc.id = _buf_init_err(kc.id, 5, goto out);
 
-            memset(kc.kctndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kctndx[0]));
+            memset(kc.kctndx, ~0ul, KEYNT_BUFSZ * sizeof(*kc.kctndx));
 
             if (is_gzfile) {
                 g = fhin->io;
@@ -414,13 +414,13 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
         ASSERT(kc.wlkr != NULL, goto out)
         memset(kc.wlkr, 0ul, t);
 
-        t = kc.ext * sizeof(uint32_t);
-        kc.wbuf = (uint32_t*)malloc(t);
+        t = kc.ext * sizeof(uint64_t);
+        kc.wbuf = (uint64_t*)malloc(t);
         if (kc.wbuf == NULL) {
             free(kc.wlkr);
             goto out;
         }
-        memset(kc.wbuf, UNINITIALIZED, t);
+        memset(kc.wbuf, ~0ul, t);
 
         do { // until no no more new uniques
             res = ext_uq_iter(&kc);

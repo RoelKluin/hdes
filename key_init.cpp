@@ -165,7 +165,8 @@ case 'A': case 'a':
             if (isspace(c = gc(g))) continue;
             uint64_t *ct;
             _get_ndx(ndx, ndx, dna, rc);
-            if (kc->kctndx[ndx] != UNINITIALIZED) {
+            if (kc->kctndx[ndx] != ~0ul) {
+                ASSERT(kc->kctndx[ndx] < kc->kct_l, return -EFAULT, "0x%lx, 0x%lx", kc->kctndx[ndx], ndx);
                 ct = kc->kct + kc->kctndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
                 if (*ct & FLAG_B2CT) {
@@ -344,6 +345,8 @@ int kct_convert(kct_t* kc)
     // why not true, boundaries?
     //ASSERT(offs == kc->ts_l, return -EFAULT, "%u, %u", offs, kc->ts_l);
     kc->ts_l = offs;
+    // TODO: convert kctndx to nextnt index here.
+
     return 0;
 }
 

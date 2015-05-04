@@ -67,6 +67,7 @@
     wx = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
     ndx = wx ? dna : rc;    /* strand. Excise it out since its always the same */\
     ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+    ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
     dbg = (ndx & INDEX_MASK) == dbgndx ? dbg | 4 : dbg & ~4;\
 });
 
@@ -160,8 +161,8 @@ struct kct_t {
     uint64_t* kct; // different meaning later.
     kct_ext* kce; // early req
     Walker* wlkr; // later req
-    uint32_t* wbuf; // later req
-    uint32_t *kctndx;
+    uint64_t* wbuf; // later req
+    uint64_t *kctndx;
     uint32_t bd_l, id_l, ext; // ext not stored
     uint32_t kce_l; //early req
     uint64_t ts_l, kct_l; // late req, continued req
