@@ -14,51 +14,61 @@
 // XXX: these need to be updated
 // read write of 64 bits may require some more work.
 
+#define __WRITE_VAL(x) \
+    if (fhout->write(fhout, (const char*)&(x), sizeof(x)) < 0)\
+        goto err;
+#define __WRITE_PTR(x, l) \
+    if (fhout->write(fhout, (const char*)(x), (l) * sizeof(*(x))) < 0)\
+        goto err;
+
+#define __READ_VAL(x) \
+    if (fhin->read(fhin, (char*)&(x), sizeof(x)) < 0) \
+        return ret;
+#define __READ_PTR(x, l) \
+    x = (decltype(x))malloc((l) * sizeof(*(x)));\
+    ASSERT(x != NULL, return -ENOMEM);\
+    if (fhin->read(fhin, (char*)x, l * sizeof(*(x))))\
+        return ret;
+
+
 int write1(struct gzfh_t* fhout, kct_t* kc)
 {
+    uint32_t* buf = NULL;
     int ret = -EFAULT;
-    if (fhout->write(fhout, (const char*)&kc->bd_l, sizeof(kc->bd_l)) < 0)
-        return ret;
-    if (fhout->write(fhout, (const char*)&kc->id_l, sizeof(kc->id_l)) < 0)
-        return ret;
-    if (fhout->write(fhout, (const char*)kc->id, kc->id_l) < 0)
-        return ret;
-    if (fhout->write(fhout, (const char*)&kc->kct_l, sizeof(kc->kct_l)) < 0)
-        return ret;
-    uint32_t len = kc->h.size();
-    if (fhout->write(fhout, (const char*)&len, sizeof(len)) < 0)
-        return ret;
+    uint32_t val, i, len = kc->h.size();
+
+    // 1: buffer sizes
+    __WRITE_VAL(len)
+    __WRITE_VAL(kc->kct_l)
+    __WRITE_VAL(kc->bd_l)
+    __WRITE_VAL(kc->ts_l)
+    __WRITE_VAL(kc->id_l)
+
+    // 2: next contig id's, because they are somewhat readable.
+    __WRITE_PTR(kc->id, kc->id_l)
+    __WRITE_PTR(kc->bd, kc->bd_l)
+
     for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
     {
         Hdr* h = *hit;
-        if (fhout->write(fhout, (const char*)&h->end_pos, sizeof(uint32_t)) < 0)
-            return ret;
-        uint32_t len = h->bnd.size();
-        if (fhout->write(fhout, (const char*)&len, sizeof(uint32_t)) < 0)
-            return ret;
-        for(std::list<uint32_t>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b)
-        {
-            if (fhout->write(fhout, (const char*)&*b, sizeof(uint32_t)) < 0)
-                return ret;
+        __WRITE_VAL(h->end_pos)
+        len = h->bnd.size();
+        __WRITE_VAL(len)
+        __WRITE_VAL(h->p_l)
+        for(std::list<uint32_t>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
+            val = *b; // NB: calls list's overloaded function: get stored value.
+            __WRITE_VAL(val)
         }
-        // sequence is not stored.
-        if (fhout->write(fhout, (const char*)&h->p_l, sizeof(uint8_t)) < 0)
-            return ret;
-        if (fhout->write(fhout, (const char*)h->part, h->p_l * sizeof(uint16_t)) < 0)
-            return ret;
-        // p_l is not needed anymore
+        // sequence, if read, is not stored.
+        __WRITE_PTR(h->part, h->p_l)
     }
-    if (fhout->write(fhout, (const char*)kc->kct, kc->kct_l * sizeof(uint64_t)) < 0)
-        return ret;
-    if (fhout->write(fhout, (const char*)&kc->ts_l, sizeof(kc->ts_l)) < 0)
-        return ret;
+    __WRITE_PTR(kc->kct, kc->kct_l)
     len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    if (fhout->write(fhout, (const char*)kc->ts, len) < 0)
-        return ret; // XXX
+    __WRITE_PTR(kc->ts, len)
     len = kc->kct_l * 2;
-    uint32_t* buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
+    buf = (uint32_t*)malloc(sizeof(uint32_t) * len);
     if (buf == NULL) return -ENOMEM;
-    uint32_t i = 0;
+    i = 0;
     // FIXME: may need 64 bit index.
     for (uint32_t ndx = 0u; i != len; ++ndx) {
         if (kc->kcsndx[ndx] >= kc->kct_l) {
@@ -68,94 +78,66 @@ int write1(struct gzfh_t* fhout, kct_t* kc)
             buf[i++] = kc->kcsndx[ndx];
         }
     }
-    if (fhout->write(fhout, (const char*)buf, sizeof(uint32_t) * len) < 0)
-        goto err;
-
-    len = kc->bd_l * sizeof(Bnd);
-    // when kc->bd is not packed, problem at 0th.
-    /*for (unsigned i = 0; i != kc->bd_l; ++i) {
-        Bnd* bd = &kc->bd[i];
-        EPR("%u:\t%u\t%u\t%u\t[%lu]", i, bd->s, bd->l, bd->i, sizeof(kc->bd[i]));
-        print_dnarc(bd->at_dna, bd->dna);
-    }*/
-    // kc->wlkr and kc->wbuf aren't filled yet.
-    if (fhout->write(fhout, (const char*)kc->bd, len) < 0)
-        return ret;
+    __WRITE_PTR(buf, len)
     ret = 0;
 err:
-    free(buf);
+    if (buf)
+        free(buf);
     return ret;
 }
 
 int restore1(struct gzfh_t* fhin, kct_t* kc)
 {
     int ret = -EFAULT;
-    kc->bd = NULL; kc->id = NULL; kc->kct = NULL;
-    if (fhin->read(fhin, (char*)&kc->bd_l, sizeof(kc->bd_l)) < 0)
+    uint32_t len, blen, val;
+    kc->bd = NULL;
+    kc->id = NULL;
+    kc->kct = NULL;
+
+    // 1: buffer sizes
+    __READ_VAL(len) // header size: how many contigs
+    __READ_VAL(kc->kct_l)
+    __READ_VAL(kc->bd_l)
+    __READ_VAL(kc->ts_l)
+    __READ_VAL(kc->id_l)
+
+    // 2: next contig id's.
+    __READ_PTR(kc->id, kc->id_l)
+
+    // special: we reserve more space than stored so we can continue using it.
+    kc->bd_m = __builtin_ctz(next_pow2(kc->bd_l + 2));
+    blen = kc->bd_l * sizeof(Bnd);
+    kc->bd = (Bnd*)malloc((1 << kc->bd_m) * sizeof(Bnd));
+    ASSERT(kc->bd != NULL, return -ENOMEM);
+    if (fhin->read(fhin, (char*)kc->bd, blen) < 0)
         return ret;
-    if (fhin->read(fhin, (char*)&kc->id_l, sizeof(kc->id_l)) < 0)
-        return ret;
-    uint32_t len = kc->id_l;
-    kc->id = (char*)malloc(len);
-    ASSERT(kc->id != NULL, return -ENOMEM);
-    if (fhin->read(fhin, (char*)kc->id, len) < 0)
-        return ret;
-    if (fhin->read(fhin, (char*)&kc->kct_l, sizeof(kc->kct_l)) < 0)
-        return ret;
-    uint32_t blen, val;
-    if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
-        return ret;
+
     for (uint32_t i=0; i != len; ++i) {
         Hdr *h = new Hdr;
-        h->s = NULL; h->s_l = 0u; // XXX: may be removed in future.
-        if (fhin->read(fhin, (char*)&h->end_pos, sizeof(uint32_t)) < 0)
-            return ret;
-        if (fhin->read(fhin, (char*)&blen, sizeof(uint32_t)) < 0)
-            return ret;
+        h->s = NULL; h->s_l = 0u;
+        __READ_VAL(h->end_pos)
+        __READ_VAL(blen)
+        __READ_VAL(h->p_l)
         for (uint32_t j=0; j != blen; ++j) {
-            if (fhin->read(fhin, (char*)&val, sizeof(uint32_t)) < 0)
-                return ret;
+            __READ_VAL(val)
             h->bnd.push_back(val);
         }
-        if (fhin->read(fhin, (char*)&h->p_l, sizeof(uint8_t)) < 0)
-            return ret;
-        blen = h->p_l * sizeof(uint16_t);
-        h->part = (uint16_t*)malloc(blen);
-        ASSERT(h->part != NULL, return -ENOMEM);
-        if (fhin->read(fhin, (char*)h->part, blen) < 0)
-            return ret;
+        __READ_PTR(h->part, h->p_l)
         kc->h.push_back(h);
         kc->hdr.insert(std::pair<char*, Hdr*>(kc->id + h->part[ID], kc->h.back()));
     }
-    len = kc->kct_l * sizeof(uint64_t);
-    kc->kct = (uint64_t*)malloc(len);
-    ASSERT(kc->kct != NULL, return -ENOMEM);
-    if (fhin->read(fhin, (char*)kc->kct, len) < 0)
-        return ret;
+    __READ_PTR(kc->kct, kc->kct_l);
 
-    if (fhin->read(fhin, (char*)&kc->ts_l, sizeof(kc->ts_l)) < 0)
-        return ret;
     len = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    kc->ts = (uint8_t*)malloc(len);
-    ASSERT(kc->ts != NULL, return -ENOMEM);
-    if (fhin->read(fhin, (char*)kc->ts, len) < 0)
-        return ret;
+    __READ_PTR(kc->ts, len);
 
     memset(kc->kcsndx, kc->kct_l, KEYNT_BUFSZ * sizeof(kc->kcsndx[0]));
     for (uint32_t i=0; i != kc->kct_l; ++i) {
-        if (fhin->read(fhin, (char*)&val, sizeof(uint32_t)) < 0)
-            return ret;
+        __READ_VAL(val)
         ASSERT(val < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
-        if (fhin->read(fhin, (char*)&len, sizeof(uint32_t)) < 0)
-            return ret;
+        __READ_VAL(len)
         kc->kcsndx[val] = len;
     }
-    kc->bd_m = __builtin_ctz(next_pow2(kc->bd_l + 2));
-    len = kc->bd_l * sizeof(Bnd);
-    kc->bd = (Bnd*)malloc((1 << kc->bd_m) * sizeof(Bnd));
-    ASSERT(kc->bd != NULL, return -ENOMEM);
-    if (fhin->read(fhin, (char*)kc->bd, len) < 0)
-        return ret;
     return 0;
 }
 

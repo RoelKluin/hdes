@@ -109,4 +109,7 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 
 make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
 
-
+# test reading 1st stored file
+rm hg19_GL_x{1,2}.gz; make clean && DEFINES="-DKEY_LENGTH=11" make &&
+ ./uqct hg19_GL.fa.gz -l 51 &> /dev/null && rm hg19_GL_x2.gz &&
+ valgrind ./uqct hg19_GL.fa.gz -l 51 -b 64 2>&1 | less
