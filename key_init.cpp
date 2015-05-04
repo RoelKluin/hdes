@@ -9,6 +9,7 @@
  *         Author:  Roel Kluin,
  */
 #include "fa.h"
+#include <ctype.h> // isspace()
 
 #define ENS_HDR_PARTCT 10
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
@@ -163,9 +164,8 @@ case 'A': case 'a':
         while (1) {
             if (isspace(c = gc(g))) continue;
             uint64_t *ct;
-            ndx = _get_ndx0(ndx, dna, rc);
+            _get_ndx(ndx, ndx, dna, rc);
             if (kc->kcsndx[ndx] != UNINITIALIZED) {
-                dbg = kc->kcsndx[ndx] == dbgndx ?  dbg | 4 : dbg & ~4;
                 ct = kc->kct + kc->kcsndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
                 if (*ct & FLAG_B2CT) {
@@ -203,7 +203,6 @@ case 'A': case 'a':
                     t &= 0x1f;
                 }
             } else {
-                dbg = kc->kct_l == dbgndx ?  dbg | 4 : dbg & ~4;
                 EPQ(dbg > 2, "new key 0x%lx at %u", ndx, pos);
                 _buf_grow(kc->kct, 1ul, 0);
                 kc->kcsndx[ndx] = kc->kct_l;

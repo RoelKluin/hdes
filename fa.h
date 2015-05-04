@@ -11,11 +11,19 @@
 
 #ifndef RK_FA_H
 #define RK_FA_H
+#include <errno.h> // ENOMEM
 #include <list>
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
 #define BUF_STACK (1 << 22)
+
+#define B2LEN_OFFS_SHFT 59
+#define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
+#define FLAG_B2CT  (1ul << 58)
+#define STRAND_SHFT 40
+#define INDEX_MASK ((1ul << STRAND_SHFT) - 1ul)
+
 
 #define __seq_le_n(b, dna, rc) ({\
     rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
@@ -44,11 +52,23 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_ndx0(ndx, dna, rc) ({\
-    ndx = (dna & KEYNT_STRAND) ? dna : rc;\
+#define _get_ndx(ndx, wx, dna, rc) ({\
+    wx = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
+    ndx = wx ? dna : rc;    /* strand. Excise it out since its always the same */\
     ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+    dbg = (ndx & INDEX_MASK) == dbgndx ? dbg | 4 : dbg & ~4;\
+});
+
+#define _update_kctndx(kc, ndx, wx, wi, dna, rc) ({\
+    _get_ndx(ndx, wx, dna, rc);\
+    wx <<= (STRAND_SHFT - KEY_WIDTH); /* strand orient. in position for storage*/\
+    wx = (kc)->kctndx[ndx] ^= wx & ~(1ul << STRAND_SHFT); /* flip that bit */\
+    wi = wx >> (STRAND_SHFT + 1); /* get this keys' inferiority */\
+    wx &= INDEX_MASK; /* all else is index */\
 })
-#define _get_ndx(kc, ndx, dna, rc) kc->kcsndx[_get_ndx0(ndx, dna, rc)]
+
+
+#define _update_ndx()
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = (dna & KEYNT_STRAND);\
@@ -81,11 +101,6 @@
     ++(buf ## _l)
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
-
-#define B2LEN_OFFS_SHFT 59
-#define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
-#define FLAG_B2CT  (1ul << 58)
-#define INDEX_MASK ((1ul << 40) - 1ul)
 
 #define INFERIORITY_BIT (1u<<31)
 #define ORIENTATION (1u<<30)
@@ -120,7 +135,6 @@ packed_struct kct_ext {
 packed_struct Walker {
     uint32_t count;
     uint32_t excise_ct;
-    uint32_t infior; //b2pos start and end of range
     uint32_t tmp_count;
 };
 
@@ -143,11 +157,11 @@ struct kct_t {
     kct_ext* kce; // early req
     Walker* wlkr; // later req
     uint32_t* wbuf; // later req
-    uint32_t *kcsndx;
+    uint32_t *kctndx;
     uint32_t bd_l, id_l, ext; // ext not stored
     uint32_t kce_l; //early req
     uint64_t ts_l, kct_l; // late req, continued req
-    uint8_t kct_m, kce_m, kcsndx_m, bd_m, id_m; // only bd_m is required, but not stored either
+    uint8_t kct_m, kce_m, kctndx_m, bd_m, id_m; // only bd_m is required, but not stored either
     std::list<Hdr*> h;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.

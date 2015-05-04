@@ -11,7 +11,6 @@
 #include <stdlib.h> // realloc()
 #include <ctype.h> // isspace()
 #include <stdio.h> // fprintf(), fseek();
-#include <errno.h> // ENOMEM
 #include <string.h> // memset()
 #include <limits.h> //INT_MAX
 #include <sys/types.h>
@@ -63,7 +62,7 @@ free_kc(kct_t* kc)
     _buf_free(kc->id);
     _buf_free(kc->ts);
     _buf_free(kc->kct);
-    _buf_free(kc->kcsndx);
+    _buf_free(kc->kctndx);
 }
 
 static int
@@ -143,13 +142,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
 
     uint64_t dna = last->dna; // first seq after skip
     uint64_t rc = revcmp(dna);
-    uint64_t ndx = _get_ndx(kc, ndx, (dna), (rc));
-    dbg = ndx == dbgndx ? dbg | 4 : dbg & ~4;
+    uint32_t this_infior;
+    uint64_t ndx, wx;
+    _update_kctndx(kc, ndx, wx, this_infior, dna, rc);
 
-    Walker* w = &kc->wlkr[ndx];
-    uint32_t infior = max(last->i + 1, w->infior); //XXX
-    if (dbg > 2)
-        show_list(kc, h->bnd);
+    uint32_t infior = max(last->i + 1, this_infior); //XXX
 
     // one extra must be available for inter.
     _buf_grow0(kc->bd, 2ul);
@@ -166,13 +163,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     print_dna(dna, dbg > 1);
 
     for (;pos < next->s;++pos) { // until next event
-        EPQ(ndx == dbgndx, "observed dbgndx at %u", pos);
-        ASSERT(ndx < kc->kct_l, return -print_dna(dna), "at %u, 0x%lx", pos, ndx);
+        EPQ(dbg & 4, "observed dbgndx at %u", pos);
         EPQ0(dbg > 2, "%u:\t", pos);
         print_2dna(dna, rc, dbg > 2);
 
-        w = &kc->wlkr[ndx];
-        if (left) { // keep filling the buffer
+        Walker* w = kc->wlkr + wx;
+        if (left) { // within uniq range: keep filling buffer
             if (left == ext) {
                 //EPR("position after 2nd unique, or each extended.");
                 // what we'll jump to, in subsequent iterations.
@@ -183,9 +179,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             }
             if (--left) {
                 ASSERT(kc->wbuf[left] == UNINITIALIZED, return -EFAULT, "[%u]", pos & print_dna(dna));
-                kc->wbuf[left] = ndx;
-                if (infior > w->infior)
-                    w->infior = infior;
+                kc->wbuf[left] = wx;
+                if (infior > this_infior) {
+                    // replace this inferiority
+                    kc->kctndx[ndx] &= INDEX_MASK;
+                    kc->kctndx[ndx] |= (uint64_t)infior << (STRAND_SHFT + 1);
+                }
             } else { // actually buf just became full, without extension(s not already handled)..
                 EPQ(inter->s > 0xfffffff, "%u", -inter->s);
                 infior = 0;
@@ -213,42 +212,38 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 }
             }
         }
-        uint64_t offs = ndx != 0 ? kc->kct[ndx-1] : 0;
-        unsigned ct = kc->kct[ndx] - offs - w->excise_ct;
+        uint64_t offs = wx != 0 ? kc->kct[wx-1] : 0;
+        unsigned ct = kc->kct[wx] - offs - w->excise_ct;
         offs += w->count + w->tmp_count;
 
         EPQ(dbg > 2, "offs:%lu\tend:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)ndx:0x%lx):",
-                offs, kc->kct[ndx], 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
+                offs, kc->kct[wx], 4 - (offs & 3), ct, offs >> 2, kc->ts[offs >> 2], ndx);
         print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 2);
 
+        // read next Nt from string
         uint8_t b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
 
-        if (h->s) { // not set after loading from disk.
+        if (h->s) { // compare to sequence string - not stored on disk.
             uint8_t sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
             ASSERT(b2 == sb2, return print_2dna(dna, rc),
                     "[%u]: expected %c, got %c for ndx 0x%lx, [%u, %u]",
                     pos,b6(sb2<<1), b6(b2<<1), ndx, w->count, w->tmp_count);
         }
         dna = _seq_next(b2, dna, rc);
-        ndx = _get_ndx(kc, ndx, dna, rc);
-        dbg = ndx == dbgndx ?  dbg | 4 : dbg & ~4;
+        // this always stores the central Nt state regardless of uniqueness
+        _update_kctndx(kc, ndx, wx, this_infior, dna, rc);
         if (ct > 1ul) {
             if (left == 0) ++w->count;
             else ++w->tmp_count;
             continue;
         }
         EPQ0(dbg > 1, "%u,", pos);
-        // found unique, store orientation of 2nd bit of central Nt.
-        // length is set to zero if the key is in the wrong orientation.
-        w->count = !(dna & KEYNT_STRAND);
+        w->count = 0;
         w->tmp_count = 0;
-
-        // in any case - before any revcmping, the central bit needs to be
-        // put back in to generate the sequence at the unique site.
 
         ++infior;
         if (left == 0) { EPQ(dbg > 2, "this is a first unique.");
-            *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = max(infior, w->infior + 1u)};
+            *inter = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = max(infior, this_infior + 1u)};
             left = ext;
             infior = inter->i + 1;
             continue;
@@ -345,7 +340,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
     char file[256];
     kct_t kc;
     kc.ext = seq->readlength - KEY_WIDTH;
-    kc.kcsndx = _buf_init_arr(kc.kcsndx, KEYNT_BUFSZ_SHFT);
+    kc.kctndx = _buf_init_arr(kc.kctndx, KEYNT_BUFSZ_SHFT);
 
     const char* ndxact[4] = {".fa", "_x1.gz", "_x2.gz"};
 
@@ -381,7 +376,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
 
             kc.id = _buf_init_err(kc.id, 5, goto out);
 
-            memset(kc.kcsndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kcsndx[0]));
+            memset(kc.kctndx, UNINITIALIZED, KEYNT_BUFSZ * sizeof(kc.kctndx[0]));
 
             if (is_gzfile) {
                 g = fhin->io;
