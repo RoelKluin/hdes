@@ -110,7 +110,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
-        kc->bd[kc->bd_l] = {.at_dna = dna, .dna = 0, .s = pos, .l = 0, .i = 0};
+        kc->bd[kc->bd_l].s = pos;
         if (c != '>') { // N-stretch
             t = KEY_WIDTH; // stretch length + shift required for new key
             do {
@@ -124,7 +124,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 }
                 c = gc(g);
             } while(c != -1);
-            if (c == -1) break;
+            if (c == '>' || c == -1) continue; // skip N's at end.
             kc->bd[kc->bd_l].l = t;
             ungc(c, g);
         } else { // header
@@ -150,13 +150,19 @@ case 'A': case 'a':
                     dna = _seq_next(b, dna, rc);
                     continue;
             }
-            EPR("key incomplete before next boundary - "
-                    "may cause enddna assertion failure");
             break;
         }
-        if_ever (t != KEY_WIDTH)// c == -1, 'N' or '>'
-            continue;
+        kc->bd[kc->bd_l].i = 0;
         pos = kc->bd[kc->bd_l].s + kc->bd[kc->bd_l].l;
+        if_ever (t != KEY_WIDTH) { // c == -1, 'N' or '>'
+            // we can get here if an N-stretch follows a new contig
+            if (t != 0) {
+                // or if two N-s(tretches) lie close to one anorther
+                EPQ(dbg > 1, "Key incomplete before next boundary - merging");
+            }
+            EPQ(dbg > 1, "jump at %u", pos);
+            continue; // join regions.
+        }
         // ndx (key) is 2nd cNt bit excised, rc or dna
         kc->bd[kc->bd_l].dna = dna;
         h->bnd.push_back(kc->bd_l);
