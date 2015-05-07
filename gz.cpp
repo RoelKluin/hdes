@@ -17,8 +17,8 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
 {
     while (l) {
         // last argument is unsigned
-        int c = gzwrite(fh->io, s, l > UINT_MAX ? UINT_MAX : l);
-        if (c < 0) {
+        int c = gzwrite(fh->io, s, l > INT_MAX ? INT_MAX : l);
+        if (c <= 0) {
             fprintf(stderr, "%s\n", gzerror(fh->io, &c));
             return c;
         }
@@ -34,7 +34,7 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
 {
     while (l) {
         // last argument is unsigned
-        int c = gzread(fh->io, s, l > UINT_MAX ? UINT_MAX : l);
+        int c = gzread(fh->io, s, l > INT_MAX ? INT_MAX : l);
         if (c < 0) {
             fprintf(stderr, "%s\n", gzerror(fh->io, &c));
             return c;
