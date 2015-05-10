@@ -11,7 +11,6 @@
 #include <stdlib.h> // realloc()
 #include <ctype.h> // isspace()
 #include <stdio.h> // fprintf(), fseek();
-#include <string.h> // memset()
 #include <limits.h> //INT_MAX
 #include <sys/types.h>
 #include <unistd.h>
@@ -281,6 +280,7 @@ static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     int uqct = 0;
+    EPR("Processing %s", kc->id + h->part[0]);
     kc->bdit = h->bnd.begin();
 
     for (Bnd *last = &kc->bd[*kc->bdit]; ++kc->bdit != h->bnd.end(); last = &kc->bd[*kc->bdit]) {
@@ -375,8 +375,8 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
             kc.bd = _buf_init_err(kc.bd, 1, goto out);
 
             kc.id = _buf_init_err(kc.id, 5, goto out);
-
-            memset(kc.kctndx, ~0ul, KEYNT_BUFSZ * sizeof(*kc.kctndx));
+            for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
+                kc.kctndx[i] = ~0ul;
 
             if (is_gzfile) {
                 g = fhin->io;
@@ -395,6 +395,7 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
             res = kct_convert(&kc);
             EPR("done converting keycounts");
             _buf_free(kc.kce);
+            EPR("freed kc.kce");
             ASSERT(res >= 0, goto out);
 
             res = write1(fhio, &kc);
@@ -409,18 +410,18 @@ int fa_index(struct seqb2_t* seq, uint32_t blocksize)
         res = rclose(fhio);
         ASSERT(res >= 0, goto out);
 
-        t = kc.kct_l * sizeof(Walker);
-        kc.wlkr = (Walker*)malloc(t);
-        ASSERT(kc.wlkr != NULL, goto out)
-        memset(kc.wlkr, 0ul, t);
+        t = kc.kct_l;
+        kc.wlkr = (Walker*)malloc(t * sizeof(Walker));
+        ASSERT(kc.wlkr != NULL, goto out);
+        while (t--) kc.wlkr[t] = {0u, 0u, 0u};
 
-        t = kc.ext * sizeof(uint64_t);
-        kc.wbuf = (uint64_t*)malloc(t);
+        t = kc.ext;
+        kc.wbuf = (uint64_t*)malloc(t * sizeof(uint64_t));
         if (kc.wbuf == NULL) {
             free(kc.wlkr);
             goto out;
         }
-        memset(kc.wbuf, ~0ul, t);
+        while (t--) kc.wbuf[t] = ~0ul;
 
         do { // until no no more new uniques
             res = ext_uq_iter(&kc);

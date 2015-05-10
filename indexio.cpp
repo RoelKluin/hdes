@@ -136,8 +136,9 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
     len64 = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
     __READ_PTR(kc->ts, len64);
 
-    memset(kc->kctndx, kc->kct_l, KEYNT_BUFSZ * sizeof(*kc->kctndx));
-    for (uint32_t i=0; i != kc->kct_l; ++i) {
+    for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
+        kc->kctndx[i] = kc->kct_l;
+    for (uint64_t i=0ul; i != kc->kct_l; ++i) {
         __READ_VAL(val64)
         ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%u/%lu: %u > KEYNT_BUFSZ", i, kc->kct_l, val);
         __READ_VAL(len64)

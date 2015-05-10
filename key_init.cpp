@@ -86,7 +86,7 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         kc->bd[kc->bd_l].l = KEY_WIDTH + atoi(kc->id + h->part[START]) - 1
             -kc->bd[kc->bd_l].s;
         h->end_pos = atoi(kc->id + h->part[END]);
-    } else {
+    } else { //TODO: hash lookup from fai
         kc->bd[kc->bd_l].l = -kc->bd[kc->bd_l].s;
         h->p_l = UNKNOWN_HDR;
         EPR("\nWARNING: non-ensembl reference.");
@@ -101,7 +101,7 @@ static const unsigned dof = 1;
 int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 {
-    uint64_t dna = 0, rc = 0, ndx, b = 0, t;
+    uint64_t dna = 0, rc = 0, ndx, b = 0, t = 0ul;
     uint32_t pos = 0u;
     int c;
     Hdr* h = NULL;
@@ -112,7 +112,6 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
     while (c >= 0) {
         kc->bd[kc->bd_l].s = pos;
         if (c != '>') { // N-stretch
-            t = KEY_WIDTH; // stretch length + shift required for new key
             do {
                 if (c != '\n') {
                     if (c != 'N') {
@@ -124,10 +123,20 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 }
                 c = gc(g);
             } while(c != -1);
-            if (c == '>' || c == -1) continue; // skip N's at end.
+            // TODO: handle single or a few N's differently.
+
+            EPR("=>\tN-stretch at Nt %u (%lu)", pos, t);
+            if (c == '>' || c == -1) { // skip N's at end.
+                EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
+                // pos += t - KEY_WIDTH;
+                // non-fatal for Y
+                EPQ(pos + t - KEY_WIDTH != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %u (+'ed:%u) == %u",
+                        pos, t, h->end_pos);
+                t = 0;
+                continue;
+            }
             kc->bd[kc->bd_l].l = t;
-            ungc(c, g);
-        } else { // header
+        } else {
             // Append the index of the next boundary to the last header.
             // The at_dna is of the last chromo. XXX if at_dna is removed
             // altogether we can stop at h->bnd.end() instead.
@@ -136,16 +145,23 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
             h = new_header(kc, g, gc);
             if (h == NULL) return -EFAULT;
+            c = gc(g);
+            if (!isb6(b6(c))) {
+                t = -pos + KEY_WIDTH;
+                continue;
+            }
         }
+        ungc(c, g);
         for (t = 0; t != KEY_WIDTH; ++t) {
             while (isspace(c = gc(g)));
             b ^= b;
             switch(c) {
+case '>':           break;
 case 'C': case 'c': b = 2;
 case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
-case 'A': case 'a':
+default: // include 'N's and such to make sure the key is completed.
                     _addtoseq(h->s, b);
                     dna = _seq_next(b, dna, rc);
                     continue;
@@ -226,6 +242,7 @@ case 'U': case 'u': b ^= 2;
 case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
                 *ct |= b << (t << 1);
+                EPQ0(dbg > 3, "%s\t%lu\t", kc->id + h->part[0], pos);
                 print_dna(*ct, dbg > 3, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
                 ++pos;
                 _addtoseq(h->s, b);
@@ -240,14 +257,15 @@ case 'A': case 'a':
             break;
         }
 
-        if (c == '>' || c == -1) {
-            EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
-            ASSERT (pos == h->end_pos, return -EFAULT, "pos != h->end_pos: %u == %u (%u)", pos, h->end_pos, kc->bd[t].l);
-        } else {
-            EPR("=>\tN-stretch at Nt %u", pos);
-        }
         kc->bd[kc->bd_l++].at_dna = dna;
         _buf_grow0(kc->bd, 2ul);
+        if (c == '>' || c == -1) {
+            EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
+            // non-fatal for Y
+            EPQ(pos != h->end_pos, "pos - KEY_WIDTH != h->end_pos: %u == %u",
+                    pos, h->end_pos);
+        }
+        t = KEY_WIDTH;
     }
     if (h == NULL)
         return -EFAULT;
