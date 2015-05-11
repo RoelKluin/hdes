@@ -145,6 +145,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
             h = new_header(kc, g, gc);
             if (h == NULL) return -EFAULT;
+            EPQ(dbg > 2, "header %s", kc->id + h->part[0]);
             c = gc(g);
             if (!isb6(b6(c))) {
                 t = -pos + KEY_WIDTH;

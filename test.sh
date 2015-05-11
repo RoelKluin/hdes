@@ -107,9 +107,34 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 ./faless hg19_GL.fa.gz --extend 10
 
 
-make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
 
 # test reading 1st stored file
 rm hg19_GL_x{1,2}.gz; make clean && DEFINES="-DKEY_LENGTH=11" make &&
  ./uqct hg19_GL.fa.gz -l 51 &> /dev/null && rm hg19_GL_x2.gz &&
  valgrind ./uqct hg19_GL.fa.gz -l 51 -b 64 2>&1 | less
+
+rm hg19_GL_x{1,2}.gz; make clean && DEFINES="-DKEY_LENGTH=15" make &&
+ ./uqct hg19_GL.fa.gz -l 51 &> /dev/null && rm hg19_GL_x2.gz &&
+ valgrind ./uqct hg19_GL.fa.gz -l 51 -b 64 2>&1 | less
+
+rm hg19_chr1_x1.gz; make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19_chr1.fa.gz -l 51 2>&1 | tee hg19_chr1_uqct.err
+
+bug bij 2e N stretch: niet gestopt voor stretch 
+
+./faless hg19_GL.fa.gz --extend 10
+
+
+
+# the real thing
+#rm hg19_x1.gz;
+make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee hg19_uqct.err
+
+
+zcat hg19.fa.gz | sed '/^>3/Q' | gzip --fast > hg19_chr1_2.fa.gz
+
+rm test_x*.gz; DEFINES="-DKEY_LENGTH=11" make && ./uqct test.fa.gz -l 51 2>&1 | tee test_uqct.err
+
+make clean && DEFINES="-DKEY_LENGTH=15" make && valgrind ./uqct hg19_chr1_2.fa.gz -l 51 2>&1 | tee hg19_1_2uqct.err
+
+
+

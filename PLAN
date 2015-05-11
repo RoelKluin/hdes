@@ -1,0 +1,90 @@
+
+indexing:
+determine mulitimapcount per odd(17) key for a window(51bp) - according to ref
+
+
+if a key, within a window is bounded by lower counts, it does not have to be increased
+determine for bounds 31+1+31
+
+
+
+Als 32e laagste is, vermeerder deze. (ook indien niet alle 63 gevuld. Gaat de laagste weg, zoek de 2-na laagste.
+
+from left tot right (chromosomes concatenated):
+keys with lowest mulitimapcount are preferred keys - they are more specific for a region.
+keys with a multimapcount of 1 are only specific for that region. If there are multiple with that
+count, select the rightmost one.
+
+start with leftmost position.
+within window search for lowest keyct (rightmost on equal counts). all keys that have a higher mapcount
+can have their mapcount decreased. 
+
+
+adjust multimapcount so that keys with the lowest counts are spread evenly. within boundaries 
+try to spread keys 
+
+if undecisive, determine dependent on sequence - seq specific but fairly random hopefully.
+could also load dbsnp to avoid keys with SNPs or correct for their presence
+
+would like to skip keys from storage: they are sequence.
+problems with this:
+overlapping keys
+offset of keys in seq.
+
+== Storage of reference sequence
+
+The reference ID (e.g. a chromosome ID) is stored, delimited by '\0'.
+
+Part of the sequence is used as key for sequence lookup - see below - the remaining trailing
+sequence and positions are stored.
+
+*--------+ +--------------+------+ +--------------+------+ +--------------+ ...
+| 'chr1\0' [ Orientation1 | Seq1 ] [ Orientation2 | Seq2 ] [ Orientation3 | ...
+
+Orientation:
+ * Nt position on genome or something alike. To reduce the required bytes,
+   this could be a sum of former positions or a amendment of the byte offset to get to the
+   exact Nt position.
+ * 2bit length of trailing sequence, not part of key
+ * strand of the key that points here, i.e. `lmax & KEYNT_STRAND'
+
+Seq: trailing sequence, not part of key, in twobit - last few 2bits may be empty.
+
+== access of reference sequence
+
+
+== sequence key
+
+`uint32_t key' is a chosen sequence on the reference or in the read. The choice is sequence
+and readlength dependent. The key is also an index for lookup to byte(s), each  pointing to
+a Pos in the storage of sequences.
+
+uint32_t lookup[KEY_MAX];
+...
+
+
+
+The choice:
+we want as few keys as possible to get as few sites per key as possible
+
+
+// small distances stored in less bytes
+i = *s++;
+uint64_t t = i;
+if (i == 0xff) {
+    i = *s++;
+    i <<= 8;
+    i |= *s++;
+    t += i;
+    if (i == 0xffff) {
+        i = *s++;
+        i <<= 8;
+        i |= *s++;
+        i <<= 8;
+        i |= *s++;
+        i <<= 8;
+        i |= *s++;
+        t += i;
+
+    }
+}

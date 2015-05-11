@@ -15,9 +15,11 @@
 // read write of 64 bits may require some more work.
 
 #define __WRITE_VAL(x) \
+    EPQ(dbg > 2, "writing value for " #x "");\
     if (fhout->write(fhout, (const char*)&(x), sizeof(x)) < 0)\
         goto err;
 #define __WRITE_PTR(x, l) \
+    EPQ(dbg > 2, "writing poiner " #x "");\
     if (fhout->write(fhout, (const char*)(x), (l) * sizeof(*(x))) < 0)\
         goto err;
 
@@ -144,6 +146,7 @@ int restore1(struct gzfh_t* fhin, kct_t* kc)
         __READ_VAL(len64)
         kc->kctndx[val64] = len64;
     }
+
     return 0;
 }
 

@@ -1,0 +1,97 @@
+version 0.010
+- move excised Nt upwards instead.
+- join fragmented next Nts in signel buffer.
+- store first round keys and next Nts on disk
+- load this from disk
+
+version 0.011
+- fix handling N-stretches before and after contig as well as single
+  N's shortly after another (before the key is completed).
+- the entire human genome is processed without error.
+- store final regions, keys and next Nts on disk.
+
+
+
+TODO:
+upon conversion: add
+
+version 0.011
+- header: store part value, not pointer to it.
+- put inferiority and final unique strand state above kct index,
+    remove from walker
+- put header ids string in single buffer after reading fasta
+- rename kct index (e.g. to keyndx)
+- move walker, wbuf out of kc, create walker struct with account and 
+buffer.
+- prepare to freeze format of written first buffer.
+
+- make solution for both even and odd keywidths, 
+
+version 0.012
+- store final regions, keys and next Nts on disk.
+- zoek uit of extension bij joining niet meegenomen moet worden.
+
+version 0.013
+- create reads testset without mismatches
+- investigate extended key storage for multimappers
+- check inferiority
+
+version 0.014+
+- create reads iterator and mapper - for perfect reads
+
+....
+######
+#hieronder old todo.
+
+version: 0.003
+
+- store/read count per key
+- store keycount per position (N's omitted)
+
+version: 0.004:
+
+- store keycounts above 0xff in khash
+- store/load khash
+- enable linking of multimappers in khash
+
+version:  0.005
+- count only non-N containing
+
+
+- create wig file
+
+
+parse fasta:
+- put 2bit sequence in buffer
+
+challenges
+* keep several windows of keys, sizes in decreasing powers of 2.
+
+analyse distribution of keys on genome
+
+version:
+
+link positional info from fasta to fastq using the keys
+
+version 0.005:
+
+write simple sam output. just name, simple flag, position, sequence and qualities
+
+version:
+
+assemble using fastqs. Search for secondary max sequences and link them to the first
+
+version:
+
+nucleotide mismatch correction for keys
+
+version:
+
+paired-end fastqs
+
+version:
+
+handle clippings / alternative alignment
+
+
+

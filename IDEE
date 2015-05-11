@@ -1,0 +1,146 @@
+
+Doel: map aan de hand van unieke keys, liefst eens per readlengte verdeeld.
+
+Indexing
+
+Neem een twobit schema, waarbij de tweede bit bij sequentie en reverse complement
+verschilt. De bit positie hiervan is, voor de middelste* nucleotide identiek in
+beide complementen, en kan dus bepalen of deze sequentie in de gewenste
+orientatie is, of daarin moet worden omgezet, bijvoorbeeld voor mapping.
+
+Een fragment van de read is vaak al uniek genoeg om deze met zekerheid genomisch
+te plaatsen. Als de orientatie zo'n sleutel wordt aangepast aan de hand van de
+centrale complement bit, en de potentiele sleutels op de referentie evengoed,
+dan halveert het aantal mogelijke sleutels, kunnen gelijke sleutels in beide
+strand orientaties tegelijk worden vergeleken.
+
+Bij het afwandelen van het genoom kan je telkens de volgende sleutel bepalen.
+Afhankelijk van de lengte zullen sleutels vaker of minder op het genoom voorkomen.
+Indien een sleutel slechts eens voorkomt, dan is, van een read met deze sleutel, de
+genomische locatie bepaald. Om later de orientatie van een read op het genoom te
+kunnen bevestigen moet, naast de locatie, voor zo'n unieke sleutel ook de orientatie
+van de tweede bit van de centrale nucleotide, op het referentie genoom, worden
+opgeslagen.
+
+Naast deze primair unieke sleutels, kunnen nabijgelegen sleutels, die bijna uniek
+zijn, in tweede instantie soms toch nog reads elders plaatsen. Liggen bijvoorbeeld
+op chromosoom 8 twee unieke sleutels, A en B, binnen de afstand read- min
+sleutellengte, dan hoeven, voor read plaatsing hierbinnen, de sleutels tussen A en B
+niet meer in ogenschouw genomen te worden. Indien tussenliggende sleutel C verder
+alleen nog maar op chromosoom X voorkomt, dan kan sleutel C als secundair uniek worden
+beschouwd: de reads met C, maar zonder sleutel A of B, kunnen reads toch nog op X
+plaatsen.
+
+De regio's waarbinnen er telkens een unieke sleutel binnen de afstand read- min
+sleutellengte ligt, kan een aaneenschakeling van unieke sleutels omvatten. Ook
+groeien deze unieke sleutelbossen met de secundair of later uniek geworden sleutels.
+Het vereist meer iteraties over het genoom om hierbij ook de sleutels toe te voegen
+die, op hun eerste genomische positie na, later telkens binnen unieke sleutelbossen
+liggen.
+
+Indien je op deze manier posities per sleutel probeert op te slaan, loop je tegen
+een practisch probleem aan. Voor een positie op het humane genoom is 32 bit al erg
+krap. Het opslaan van alle mogelijke posities per sleutel, naast de genomische
+sequentie, vergt teveel geheugen. Er is een efficientere manier.
+
+Sla je voor elke sleutel, per chromosoom/contig, in volgorde van voorkomen, telkens
+alleen een opvolgende nucleotide op, dan is het hiermee later mogelijk de hele
+genomische sequentie opnieuw af te wandelen. Naast de genomische positie, kunnen de
+volgende sequentie en reverse complement steeds worden bepaald, nodig om de sleutel
+te maken. Er moet per sleutel wel worden bijgehouden, bij welke van zijn opvolgende
+nucleotide we gebleven waren.
+
+Naast de sequentie is ook per sleutel het aantal repetities op het genoom bekend.
+Dit is namelijk de totale lengte van de opvolgende nucleotiden per sleutel.
+
+Om bij te houden waar we zijn op het genoom is het noodzakelijk rekening te houden
+met begrenzingen en stukken genoom die moeten worden overgeslagen. Aanvankelijk zijn
+dit alleen locaties van chromosoom eindes en N-reeksen. Als we bij een dergelijke
+positie aankomen, dan overbruggen we deze met de positie en sequentie erna,
+waarvan we het reverse complement bepalen en de sleutel zodat kunnen maken, de
+opvolgende base weer weten enzovoorts.
+
+Bij een tweede iteratie over het genoom kunnen de eerder al bewandelde delen van
+unieke sleutelbossen overgeslagen worden. Deze regio's worden daartoe bij de overige
+genomische begrenzingen (chromosoom eindes en N-reeksen) opgeslagen. Het overslaan
+van deze sleutelbossen betekent ook dat voor de nog niet unieke sleutels daarbinnen
+de repectievelijke volgende nucleotiden moeten worden verwijderd.
+
+
+[misschien hoeven boundaries niet per chromosoom.]
+
+
+
+de tussengelegen sleutels niet meer m
+
+Sterker nog,
+deze begrenzingen groeien hieraan vast.
+Dit gebeurt aan de hand van hun positie
+op het genoom, overgeslagen.
+
+
+In een aantal wandelingen over het genoom, kunnen sleutels zo alsmaar minder
+posities omvatten, en groeien daarmee de regios waarbinnen reads geplaatst kunnen
+worden. Deze regios hoeven bovendien maar een keer bekeken te worden, dan is het
+wel noodzakelijk de hiervoor opgeslagen opvolgende nucleotide te verwijderen
+of te verplaatsen.
+
+Tot zover bestaat de code.
+
+
+Bij de plaatsing van reads worden, van alle sleutels op de read, de
+uniekheidsrangordes vergeleken. De hoogste uniekheidsrangorde plaatst de read.
+
+Bij het plaatsen van reads met unieke keys is er telkens een of meerdere met een
+hoogste rangorde die de read kunnen plaatsen. In eerste instantie kunnen alleen de
+sleutel(s) en de opvolgende basen gecontroleerd worden zolang elke key uniek is. De
+positie en opvolgende basen voor niet unieke keys worden pas bekend bij iteratie
+over het genoom - als we weten bij welk van de opvolgende base we zijn.
+
+Waarschijnlijk loont het om regios te maken, waarbinnen elke voorkomende key uniek
+is, de opvolgende nucleotide offset bekend, evenals startpositie en startdna. 
+
+Het kan zijn dat geen sleutel uniek is.
+Het kan zijn dat de sleutel uniek is, maar de read verder geheel of gedeeltelijk
+niet klopt. Dit kunnen clipped reads zijn, reads met read error of variant. Een
+read met niet bestaande keys betekent een mismatch met de reference ergens op die
+key. Het 
+
+2) itereer over het genoom en snijd tussen unieke keys, binnen een onderlinge
+afstand van readlength min keylength, nucleotides weg van tussenliggende keys
+######
+#hieronder: oude idee
+
+1) count keys, sla laatste positie op.
+
+2) bepaal welke keys uniek zijn. sla voor deze het iteratienummer op.
+
+3) bepaal regios rond unieke keys, met readlength als window size.
+
+4) bepaal de (nog niet) unieke keys binnen deze readlength regios en verminder voor hun de counts.
+
+5) elke key die nu een count van 1 heeft gekregen, kan nu ook als uniek worden beschouwd.
+
+6) voor elke waarvan de opgeslagen laatste positie buiten de al bestaande unieke regios viel,
+kan deze behandeld worden, ga terug naar 2). Hun is het iteratienummer is wel een toegenomen.
+
+7) Als de positie niet de laatste was (en dus niet meer opgeslagen) moet deze opnieuw bepaald worden.
+het recursienummer slaan we op, maar we herbepalen de positie na de afhandeling van de voorgaande stappen.
+
+Dus Nu: heritereer het genoom, unieke regios en N's worden overgeslagen, let op referentie schijding.
+aangezien we nu weten dat deze posities uniek zijn, kunnen we meteen al binnen de regios hieromheen de
+stappen 3 tot 6 uitvoeren. Voor hun is het iteratienummer een hoger dan die van de unieke keys waarvan de
+positie herbepaald was.
+Indien hun positie weer niet de laatste was, kan deze ook in deze iteratie toegevoegd worden indien ze toch
+nog verderop liggen.
+
+Anders moet hun positie in een volgende iteratie herbepaald worden. etc. etc.
+
+
+voeg de regio rond de opgeslagen laatste positie toe aan de regios met unieke keys etc (ga naar 
+
+
+[De centrale bit, die hierna altijd dezelfde waarde heeft, hoeft niet
+in de sleutel te worden opgeslagen. Bij even readlengte kan er anderszins ook een
+complement onafhankelijke sleutel verkregen worden, maar dit hou ik hier buiten
+beschouwing.]

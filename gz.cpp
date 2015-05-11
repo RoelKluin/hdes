@@ -19,10 +19,10 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
         // last argument is unsigned
         int c = gzwrite(fh->io, s, l > INT_MAX ? INT_MAX : l);
         if (c <= 0) {
-            fprintf(stderr, "%s\n", gzerror(fh->io, &c));
+            EPR("%s", gzerror(fh->io, &c));
             return c;
         }
-        //fprintf(stderr, "==%d bytes written\n", c);
+        EPQ(dbg > 2, "==%d bytes written", c);
         l -= c, s += c;
     }
 
