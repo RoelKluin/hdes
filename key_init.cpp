@@ -193,13 +193,13 @@ default: // include 'N's and such to make sure the key is completed.
                 ct = kc->kct + kc->kctndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
                 if (*ct & FLAG_B2CT) {
-                    EPQ(dbg > 2, "sequence & length");
+                    EPQ(dbg > 3, "sequence & length");
                     t = *ct >> B2LEN_OFFS_SHFT;
 
                     if (t < 29ul) {
                         *ct += B2LEN_OFFS;
                     } else {
-                        EPQ(dbg > 2, "conversion to index:%c", c);
+                        EPQ(dbg > 3, "conversion to index:%c", c);
                         t = *ct;                                  // temp store 2bit dna
                         *ct = ndx = kc->kce_l;                    // conversion: set to index.
                         ct = (uint64_t*)malloc(sizeof(uint64_t)); // make room for 2bit dna
@@ -209,7 +209,7 @@ default: // include 'N's and such to make sure the key is completed.
                         t = 29;
                     }
                 } else {
-                    EPQ(dbg > 2, "in index format:%c", c);
+                    EPQ(dbg > 3, "in index format:%c", c);
                     ndx = *ct & INDEX_MASK;
 
                     t = kc->kce[ndx].l++;                // *ct is index to an extended keycount
@@ -227,7 +227,7 @@ default: // include 'N's and such to make sure the key is completed.
                     t &= 0x1f;
                 }
             } else {
-                EPQ(dbg > 2, "new key 0x%lx at %u", ndx, pos);
+                EPQ(dbg > 3, "new key 0x%lx at %u", ndx, pos);
                 _buf_grow(kc->kct, 1ul, 0);
                 kc->kctndx[ndx] = kc->kct_l;
                 ct = kc->kct + kc->kct_l++;

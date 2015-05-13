@@ -29,6 +29,7 @@
 // converted to 2bit indices to their respective next Nts: Below this bit.
 #define STRAND_SHFT 40
 #define INDEX_MASK ((1ul << STRAND_SHFT) - 1ul)
+#define INFERIORITY (1ul << (STRAND_SHFT + 1))
 
 // While some movement of next-NTs per key takes place - upwards
 // movement of next-NTs that lie within range of unique indices and can
@@ -71,19 +72,12 @@
     dbg = (ndx & INDEX_MASK) == dbgndx ? dbg | 4 : dbg & ~4;\
 });
 
-#define _update_kctndx(kc, ndx, wx, wi, dna, rc) ({\
+#define _update_kctndx(kc, ndx, wx, dna, rc) ({\
     _get_ndx(ndx, wx, dna, rc);\
     wx <<= (STRAND_SHFT - KEY_WIDTH); /* strand orient. in position for storage*/\
-    wx ^= (kc)->kctndx[ndx] & (1ul << STRAND_SHFT);\
-    (kc)->kctndx[ndx] ^= wx; /* flip that bit */\
-    wx = (kc)->kctndx[ndx];\
-    wi = wx >> (STRAND_SHFT + 1); /* get this keys' inferiority */\
-    ASSERT((wx & INDEX_MASK) < kc->kct_l, return -EFAULT, \
-        "wx:%lx >= kc->kct_l:%lx, ndx:%lx, kctndx_m:%u, kctndx[ndx]:%lx, dna:%lx",\
-        wx, kc->kct_l, ndx, (kc)->kctndx_m, (kc)->kctndx[ndx], dna);\
-    wx &= INDEX_MASK; /* all else is index */\
+    wx |= (kc)->kctndx[ndx] & ~INDEX_MASK;\
+    (kc)->kctndx[ndx] & INDEX_MASK;\
 })
-
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = (dna & KEYNT_STRAND);\
@@ -133,7 +127,7 @@ packed_struct Bnd {
     uint64_t dna; // dna after boundary
     uint32_t s; // start
     int32_t l; // correction for position
-    uint32_t i; // inferiority
+    uint64_t i; // left inferiority (low bits, high: right)
 };
 
 packed_struct kct_ext {
