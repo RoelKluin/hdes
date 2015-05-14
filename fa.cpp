@@ -208,22 +208,35 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 ASSERT(kc->wbuf[left] == ~0ul, return -EFAULT, "[%u]", pos & print_dna(dna));
                 kc->wbuf[left] = ndx;
                 if (ct > 1ul) {
+                    if ((infior + INFERIORITY) > wx) {
+                         // A non-unique keys' inferiority must be gt neighbouring
+                         // unique keys. Strand bit included, o well..
+                         wx ^= infior + INFERIORITY;
+                         kc->kctndx[ndx] ^= wx;
+                     }
                     ++w->tmp_count;
-                } else {
+                } else { // another unique, extend range
+                    if (infior > wx) {
+                         // A unique keys' inferiority must be ge neighbouring
+                         wx ^= infior; // unique keys, so update.
+                     } else {          // otherwise update inferiority,
+                         infior = wx & ~(1ul << (STRAND_SHFT + 1));
+                         wx ^= infior; // and only set strand bit below
+                     }
+                    kc->kctndx[ndx] ^= wx;
                     EPQ0(dbg > 2, "%u,", pos);
                     w->count = 0;
                     w->tmp_count = 0;
-                    // insert a new range.
                     ++uqct;
                     left = decr_excise(kc, ext, left);
                     if (left < 0) return left;
                     left = ext;
                 }
                 continue;
-            } // else buf just became full, without extension(s not already handled)..
+            }
+            // else buf just became full, without extensions.
             EPQ(inter->s > 0xfffffff, "%u", -inter->s);
             infior = 0;
-            // cannot extend this region in this iteration.
             for (left = ext; --left;) {
                 if (update_wlkr(kc, left) < 0)
                     return -EFAULT;
@@ -246,8 +259,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             }
         }
         if (ct > 1ul) {
-             ++w->count;
+            ++w->count;
         } else {
+            infior = wx & ~(1ul << (STRAND_SHFT + 1));
+            wx ^= infior; // and only set strand bit below
+
             EPQ0(dbg > 2, "%u,", pos);
             w->count = 0;
             w->tmp_count = 0;
