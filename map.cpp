@@ -14,4 +14,13 @@
 #include <string.h> // memset()
 #include "fa.h"
 
-
+int
+map_fq_se(struct seqb2_t* seq)
+{
+    // 1) open keyindex, infior and strand
+    
+    // 2) open seqb2 for verification of reads
+    // 3) open original boundaries
+    // 4) open fq for reading
+    return 0;
+}

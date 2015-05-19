@@ -43,6 +43,17 @@ if (!(cond)) { \
     action;\
 }
 
+#define _ACTION0(fun, msg, ...)\
+    res = fun;\
+    ASSERT(res >= 0, goto err, msg ".", ##__VA_ARGS__);\
+    EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
+
+
+#define _ACTION(fun, msg, ...)\
+    res = fun;\
+    ASSERT(res >= 0, goto err, msg ".", ##__VA_ARGS__);\
+    EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);
+
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define if_ever(err)    if (unlikely(err))

@@ -253,7 +253,7 @@ fq_b2(seqb2_t *fq)
         rev ^= KEYNT_MASK & 0xaaaaaaaaaaaaaaaa; // make reverse complement
 
         // seq or revcmp according to 2nd bit of central Nt
-        uint64_t lmax = (dna & KEYNT_STRAND) ? rev : dna;
+        uint64_t lmax = (dna & KEYNT_STRAND) ? dna : rev;
         uint64_t maxv = lmax ^ (lmax >> 2); // maximize on gray Nt sequence
         unsigned maxi = i = 0;
 
@@ -268,7 +268,7 @@ fq_b2(seqb2_t *fq)
             rev = ((uint64_t)(c ^ 2) << KEYNT_TOP) | (rev >> 2);
 
             // select a strand dependent on the central Nt
-            uint64_t key = (dna & KEYNT_STRAND) ? rev : dna;
+            uint64_t key = (dna & KEYNT_STRAND) ? dna : rev;
 
             // with gray Nt code, we may select a more sequence specific section.
             uint64_t Ntgc = key ^ (key >> 2);
@@ -290,7 +290,7 @@ fq_b2(seqb2_t *fq)
         i = seqphred(b, c);
         *b = 0xff;
         assert(i == b6('A'));
-        assert ((lmax & KEYNT_STRAND) == 0);
+        assert ((lmax & KEYNT_STRAND) == 1);
         lmax = ((lmax >> 1) & ~HALF_KEYNT_MASK) | (lmax & HALF_KEYNT_MASK); // excise out 2nd cNt bit
         lmax &= KEYNT_TRUNC_MASK; /* truncate to make keys more random */
 

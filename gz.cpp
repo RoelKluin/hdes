@@ -19,7 +19,9 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
         // last argument is unsigned
         int c = gzwrite(fh->io, s, l > INT_MAX ? INT_MAX : l);
         if (c <= 0) {
-            EPR("%s", gzerror(fh->io, &c));
+            int i;
+            fprintf(stderr, "ERROR:%s:%d:", gzerror(fh->io, &i), c);
+            fprintf(stderr, "%d\n", i);
             return c;
         }
         EPQ(dbg > 2, "==%d bytes written", c);
@@ -36,7 +38,10 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
         // last argument is unsigned
         int c = gzread(fh->io, s, l > INT_MAX ? INT_MAX : l);
         if (c < 0) {
-            fprintf(stderr, "%s\n", gzerror(fh->io, &c));
+            int i;
+            fprintf(stderr, "ERROR:%s:%d:", gzerror(fh->io, &i), c);
+            fprintf(stderr, "%d\n", i);
+
             return c;
         }
         //fprintf(stderr, "==%d bytes read\n", c);
@@ -57,7 +62,7 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
  * descriptor, so they need to have different file descriptors.
  */
 static int
-rgzopen(struct gzfh_t* fh, uint32_t blocksize)
+rgzopen(struct gzfh_t* fh)
 {
     /* wb1: 1 is for fast compression */
     fh->io = gzdopen(fileno(fh->fp), fh->write ? "wb1" : "rb");
@@ -67,7 +72,7 @@ rgzopen(struct gzfh_t* fh, uint32_t blocksize)
         return -EACCES;
     }
 
-    if (gzbuffer(fh->io, blocksize << 20) == -1) {
+    if (gzbuffer(fh->io, fh->blocksize << 20) == -1) {
         fputs("main: gzdopen failed to set blocksize\n", stderr);
         return -EINVAL;
     }
@@ -90,6 +95,16 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
 }
 
 int
+fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
+{
+    char* f = strstr(fhio->name, search);
+    ASSERT(f != NULL, return -EFAULT,
+            "Could not find extension %s (and convert to %s)", search, replace);
+    strncpy(f, replace, strlen(replace));
+    return 0;
+}
+
+int
 rclose(gzfh_t* fh)
 {
     int ret = 0;
@@ -109,10 +124,12 @@ rclose(gzfh_t* fh)
         fh->write = NULL;
         fh->io = NULL;
     } else if (fh->fp) {
-        EPR("closing fh->fp");
-        fclose(fh->fp);
+        if (fh->fp != stdout && fh->fp != stdin) {
+            EPR("closing fh->fp");
+            fclose(fh->fp);
+        }
     } else {
-        EPR("already seems closed: %s", fh->name ? fh->name : "<unknown>");
+        EPQ(dbg > 2, "already seems closed: %s", fh->name ? fh->name : "<unknown>");
     }
     fh->fp = NULL;
     return ret;
@@ -120,7 +137,7 @@ rclose(gzfh_t* fh)
 
 // a force of 2 forces read, return 0 for reading, for writing 1, else error.
 int
-set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
+set_io_fh(struct gzfh_t* fh, int force)
 {
     if (fh->fp == NULL)
         fh->fp = fopen(fh->name, "r"); // test whether file exists
@@ -144,7 +161,8 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         int ret = 1;
         if (t && t[3] == '\0') {/* '.gz' at _end_ */
             fh->write = b2gz_write;
-            ret = rgzopen(fh, blocksize);
+            fh->read = NULL;
+            ret = rgzopen(fh);
         }
         return ret;
     } else {
@@ -155,10 +173,26 @@ set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force)
         }
         if (t && t[3] == '\0') {
             fh->read = b2gz_read;
-            return rgzopen(fh, blocksize);
+            fh->write = NULL;
+            return rgzopen(fh);
         }
     }
     return 0;
+}
+
+// open file if it exists. Zero means ok, test fhio->fp to see whether file existed.
+int
+reopen(struct gzfh_t* fhio, const char* search, const char* replace)
+{
+    int res = rclose(fhio);
+    if (res < 0)
+        return res;
+    _ACTION(fn_convert(fhio, search, replace), "")
+
+    fhio->fp = fopen(fhio->name, "r");
+    res = 0;
+err:
+    return res;
 }
 
 

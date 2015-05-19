@@ -171,11 +171,12 @@ int main(int argc, char* const* argv)
 
     /* open files and allocate memory */
     for (i=0; i != fhsz; ++i) {
+        seq.fh[i].blocksize = blocksize;
         if (seq.fh[i].name == NULL) continue;
 
         c = set_stdio_fh(&seq.fh[i], &seq.mode);
         if (c == 0)
-            c = set_io_fh(&seq.fh[i], blocksize, (seq.mode & amopt('f')) != 0);
+            c = set_io_fh(&seq.fh[i], (seq.mode & amopt('f')) != 0);
 
         if (c < 0) {
             EPR("main: -%c [%s] failed.", dopt[i].val, dopt[i].name);
@@ -207,7 +208,7 @@ int main(int argc, char* const* argv)
 //                EPR("== Readlength needed for indexing.");
 //                goto out;
 //            }
-            c = fa_index(&seq, blocksize);
+            c = fa_index(&seq);
             if (c < 0) {
                 EPR("== failed to create keyct.");
                 goto out;
@@ -241,7 +242,8 @@ int main(int argc, char* const* argv)
     ret = EXIT_SUCCESS;
 out: /* cleanup */
     for (i=0; i != fhsz; ++i) {
-        if (seq.fh[i].fp == NULL) continue;
+        if (seq.fh[i].fp == NULL || seq.fh[i].fp == stdin || seq.fh[i].fp == stdout)
+            continue;
         EPR("closing %u\n", i);
         rclose(&seq.fh[i]);
     }

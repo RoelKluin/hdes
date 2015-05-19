@@ -75,7 +75,7 @@
 #define _update_kctndx(kc, ndx, wx, dna, rc) ({\
     _get_ndx(ndx, wx, dna, rc);\
     wx <<= (STRAND_SHFT - KEY_WIDTH); /* strand orient. in position for storage*/\
-    wx |= (kc)->kctndx[ndx] & ~INDEX_MASK;\
+    wx |= (kc)->kctndx[ndx] & ~INDEX_MASK; /* add inferiority */\
     (kc)->kctndx[ndx] & INDEX_MASK;\
 })
 
@@ -126,7 +126,7 @@ packed_struct Bnd {
 #endif
     uint64_t dna; // dna after boundary
     uint32_t s; // start
-    int32_t l; // correction for position
+    uint32_t l; // position correction within contig (entirely)
     uint64_t i; // left inferiority (low bits, high: right)
 };
 
@@ -142,21 +142,30 @@ packed_struct Walker {
     uint32_t tmp_count;
 };
 
+struct key_req {
+    uint64_t dna;
+    uint64_t rc;
+    uint32_t pos;
+    uint32_t infior;
+};
+
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 
 struct Hdr {
-    uint8_t* s;
-    uint32_t end_pos, s_l;
+    uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
-    uint8_t p_l, s_m;
+#ifdef DEBUG
+    uint32_t end_pos;
+#endif
+    uint8_t p_l;
 };
 
 struct kct_t {
     Bnd* bd;
     char* id;
-    uint8_t* ts; //later req
+    uint8_t* ts, *s; // next nts(nn), seqb2
     uint64_t* kct; // different meaning later.
     kct_ext* kce; // early req
     Walker* wlkr; // later req
@@ -164,17 +173,27 @@ struct kct_t {
     uint64_t *kctndx;
     uint32_t bd_l, id_l, ext; // ext not stored
     uint32_t kce_l; //early req
-    uint64_t ts_l, kct_l; // late req, continued req
-    uint8_t kct_m, kce_m, kctndx_m, bd_m, id_m; // only bd_m is required, but not stored either
+    uint64_t ts_l, s_l, kct_l; // late req, continued req
+    uint8_t kct_m, kce_m, kctndx_m, bd_m, id_m, s_m; // only bd_m is required, but not stored either
     std::list<Hdr*> h;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
 };
-int fa_kc(kct_t*, void*, int (*) (void*), int (*) (int, void*));
-int fa_index(seqb2_t*, uint32_t);
-int write1(struct gzfh_t*, kct_t*);
-int restore1(struct gzfh_t*, kct_t*);
-int kct_convert(kct_t*);
+int fa_read(struct seqb2_t*, kct_t*);
+int fa_index(seqb2_t*);
+
+int save_seqb2(struct gzfh_t*, kct_t*);
+int load_seqb2(struct gzfh_t*, kct_t*);
+int save_nextnts(struct gzfh_t*, kct_t*);
+int load_nextnts(struct gzfh_t*, kct_t*);
+int save_boundaries(struct gzfh_t*, kct_t*);
+int load_boundaries(struct gzfh_t*, kct_t*);
+
+int save_kc(struct gzfh_t*, kct_t*);
+int load_kc(struct gzfh_t*, kct_t*);
+
+int map_fq_se(struct seqb2_t*);
+
 #endif // RK_FA_H
 
 

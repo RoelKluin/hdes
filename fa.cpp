@@ -53,13 +53,13 @@ free_kc(kct_t* kc)
     std::list<Hdr*>::iterator it;
     for (it = kc->h.begin(); it != kc->h.end(); ++it) {
         Hdr* h = *it;
-        free(h->s);
         free(h->part);
         delete h;
     }
     _buf_free(kc->bd);
     _buf_free(kc->id);
     _buf_free(kc->ts);
+    _buf_free(kc->s);
     _buf_free(kc->kct);
     _buf_free(kc->kctndx);
 }
@@ -151,7 +151,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
     uint64_t dna = last->dna; // first seq after skip
     uint64_t rc = revcmp(dna);
     uint64_t infior = last->i & ~INDEX_MASK;
-
     // one extra must be available for inter.
     _buf_grow0(kc->bd, 2ul);
     Bnd *inter = &kc->bd[kc->bd_l]; // running storage.
@@ -189,8 +188,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
 
         b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
 
-        if (h->s) { // compare to sequence string - not stored on disk.
-            uint8_t sb2 = (h->s[pos>>2] >> ((pos & 3) << 1)) & 3;
+        if (kc->s) { // compare to sequence string - not stored on disk.
+            uint64_t p = h->s_s + pos;
+            uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
             ASSERT(b2 == sb2, return print_2dna(dna, rc),
                     "[%u]: expected %c, got %c for ndx 0x%lx, [%u, %u]",
                     pos,b6(sb2<<1), b6(b2<<1), ndx, w->count, w->tmp_count);
@@ -335,141 +335,109 @@ ext_uq_iter(kct_t* kc)
     return uqct;
 }
 
-int
-fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
+
+static int
+extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
 {
-    char* f = strstr(fhio->name, search);
-    if (f == NULL) return 0;
-    strncpy(f, replace, strlen(replace) + 1);
-    return 1;
+    int res = -ENOMEM;
+    size_t t = kc->kct_l;
+    kc->wlkr = (Walker*)malloc(t * sizeof(Walker));
+    ASSERT(kc->wlkr != NULL, return res);
+    while (t--) kc->wlkr[t] = {0u, 0u, 0u};
+
+    t = kc->ext;
+    kc->wbuf = (uint64_t*)malloc(t * sizeof(uint64_t));
+    ASSERT(kc->wbuf != NULL, goto err);
+
+    while (t--) kc->wbuf[t] = ~0ul;
+
+    do { // until no no more new uniques
+        res = ext_uq_iter(kc);
+    } while (res > 0);
+    _buf_free(kc->wbuf);
+    _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
+err:
+    _buf_free(kc->wlkr);
+    return res;
 }
 
-int fa_index(struct seqb2_t* seq, uint32_t blocksize)
+int
+fa_index(struct seqb2_t* seq)
 {
-    struct gzfh_t* fhio = seq->fh;
-    struct gzfh_t* fhin = seq->fh + 2; // init with ref
-    size_t t;
-    int res = -ENOMEM, ret = -1;
-    void* g;
-    int (*gc) (void*);
-    int (*ungc) (int, void*);
-    int is_gzfile = fhin->io != NULL;
-    char file[256];
-    kct_t kc;
+    struct gzfh_t* fhio[3] = { seq->fh, seq->fh + 1, seq->fh + 3};
+    int len, res = -ENOMEM;
+    char file[768];
+    kct_t kc = {0};
     kc.ext = seq->readlength - KEY_WIDTH;
+    unsigned mode;
+
+    const char* ext[6] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub"};
+
+    if (fhio[0]->name) {
+        len = strlen(fhio[0]->name);
+    } else {
+        ASSERT(seq->fh[2].name != NULL, return -EFAULT);
+        fhio[0]->name = file;
+
+        len = strlen(seq->fh[2].name);
+        strncpy(fhio[0]->name, seq->fh[2].name, ++len);
+        _ACTION0(reopen(fhio[0], ext[0], ext[5]), "")
+    }
+    ASSERT(len < 256, return -EFAULT, "filename too long: %s", fhio[0]->name);
+    for (int i=1; i != 3; ++i) {
+        if (fhio[i]->name == NULL)
+            fhio[i]->name = &file[len*i];
+
+        strncpy(fhio[i]->name, fhio[0]->name, len);
+    }
+
     kc.kctndx = _buf_init_arr(kc.kctndx, KEYNT_BUFSZ_SHFT);
-
-    const char* ndxact[4] = {".fa", "_x1.gz", "_x2.gz"};
-
-    if (fhio->name != NULL && ((res = strlen(fhio->name)) > 255)) {
-        strncpy(file, fhio->name, res);
+    // first check whether unique boundary is ok.
+    if (fhio[0]->fp) {
+        mode = 2;
     } else {
-        res = strlen(fhin->name);
-        ASSERT(strncmp(fhin->name, "stdin", res) != 0, return -1);
-        strcpy(file, fhin->name);
+         _ACTION0(reopen(fhio[0], ext[5], ext[4]), "trying to open %s instead", ext[4])
+        mode = fhio[0]->fp != NULL;
     }
-    fhio->name = &file[0];
+    if (mode) {
+        _ACTION(load_boundaries(fhio[0], &kc), "loading boundary file %s", fhio[0]->name)
+    }
 
-    // first check whether last file exists
-    if (!fn_convert(fhio, ndxact[0], ndxact[2]))
-        return -1;
-
-    fhio->fp = fopen(fhio->name, "r");
-    if (fhio->fp == NULL) {
-
-        // last file did not exist, check 2nd last.
-        if (!fn_convert(fhio, ndxact[2], ndxact[1]))
-            return -1;
-
-        fhio->fp = fopen(fhio->name, "r");
-
-        if (fhio->fp == NULL) { // write both first output file and last.
-            res = set_io_fh(fhio, blocksize, 0);
-            ASSERT(res >= 0, goto out);
-
-            kc.kct = _buf_init_err(kc.kct, 16, goto out);
-            kc.kce = _buf_init_err(kc.kce, 8, goto out);
-            kc.bd = _buf_init_err(kc.bd, 1, goto out);
-
-            kc.id = _buf_init_err(kc.id, 5, goto out);
-            for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-                kc.kctndx[i] = ~0ul;
-
-            if (is_gzfile) {
-                g = fhin->io;
-                gc = (int (*)(void*))&gzgetc;
-                ungc = (int (*)(int, void*))&gzungetc;
-            } else {
-                g = fhin->fp;
-                gc = (int (*)(void*))&fgetc;
-                ungc = (int (*)(int, void*))&ungetc;
+    // keycount file did not exist, check twobit file.
+    for (int i=0; i != 3; ++i) {
+        _ACTION0(reopen(fhio[i], ext[i || mode == 2 ? 5 : 4], ext[i+1]), 
+                    "%s does%s exist", ext[i+1], fhio[i]->fp ? "" : " not")
+    }
+    if (mode && fhio[0]->fp && fhio[1]->fp && fhio[2]->fp) {
+         _ACTION(load_seqb2(fhio[0], &kc), "loading twobit sequence file")
+         _ACTION(load_nextnts(fhio[1], &kc), "loading next Nts file")
+         _ACTION(load_kc(fhio[2], &kc), "loading keycounts file")
+    } else {
+        bool found = false;
+        for (int i=0; i != 3; ++i) {
+            if (fhio[i]->fp) {
+                found = true;
+                EPR("%s file present, refusing to overwrite.", fhio[i]->name);
+                rclose(fhio[i]);
             }
-            /* TODO: load dbSNP and known sites, and mark them. */
-            res = fa_kc(&kc, g, gc, ungc);
-            EPR("done reading and intializing keycounts");
-            ASSERT(res >= 0, goto out);
-
-            res = kct_convert(&kc);
-            EPR("done converting keycounts");
-            _buf_free(kc.kce);
-            EPR("freed kc.kce");
-            ASSERT(res >= 0, goto out);
-
-            res = write1(fhio, &kc);
-            EPR("done writing(1) %s to disk", fhio->name);
-        } else { // read first file, write last.
-            res = set_io_fh(fhio, blocksize, 2);
-            ASSERT(res >= 0, goto out);
-            res = restore1(fhio, &kc);
-            EPR("done loading(1) %s from disk", fhio->name);
         }
-        ASSERT(res >= 0, goto out);
-        res = rclose(fhio);
-        ASSERT(res >= 0, goto out);
-
-        t = kc.kct_l;
-        kc.wlkr = (Walker*)malloc(t * sizeof(Walker));
-        ASSERT(kc.wlkr != NULL, goto out);
-        while (t--) kc.wlkr[t] = {0u, 0u, 0u};
-
-        t = kc.ext;
-        kc.wbuf = (uint64_t*)malloc(t * sizeof(uint64_t));
-        if (kc.wbuf == NULL) {
-            free(kc.wlkr);
-            goto out;
+        if (mode) {
+            EPR("%s file present, refusing to overwrite.", ext[3+mode]);
+            found = true;
         }
-        while (t--) kc.wbuf[t] = ~0ul;
-
-        do { // until no no more new uniques
-            res = ext_uq_iter(&kc);
-        } while (res > 0);
-        _buf_free(kc.wlkr);
-        _buf_free(kc.wbuf);
-        ASSERT(res >= 0, goto out);
-
-        // reopen for writing processed boundaries (2nd file)
-        if (!fn_convert(fhio, ndxact[1], ndxact[2]))
-            return -1;
-        res = set_io_fh(fhio, blocksize, 0);
-        ASSERT(res >= 0, goto out, "failed to open %s", fhio->name);
-
-        res = write1(fhio, &kc);
-        EPR("done writing(2) %s to disk", fhio->name);
-
-    } else {
-        // read last file
-        res = set_io_fh(fhio, blocksize, 2);
-        ASSERT(res >= 0, goto out);
-
-        res = restore1(fhio, &kc);
-        EPR("done loading(2) %s from disk", fhio->name);
+        if (found) goto err;
+        EPR("starting from scratch.");
+        _ACTION(fa_read(seq, &kc), "reading fasta")
     }
-    ret = res != 0;
-out:
-    EPQ(ret, "an error occured:%d", res);
+    if (mode < 2) {
+        _ACTION(reopen(fhio[0], ext[1], ext[5]), "")
+        _ACTION(extd_uniqbnd(&kc, fhio[0]), "extending unique boundaries")
+    }
+    EPR("All seems fine.");
+err:
+    EPQ(res, "an error occured:%d", res);
     free_kc(&kc);
-    return ret;
-
+    return res;
 }
 
 

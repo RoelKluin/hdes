@@ -10,12 +10,15 @@ version 0.011
 - the entire human genome is processed without error.
 - store final regions, keys and next Nts on disk.
 
-
-
 TODO:
+- store:
+ - separate seqb2: better for verification of key.
+ - initial boundaries separately.
+- for unique enclosed unique keys, store pos instead of nextNt_index
+
 upon conversion: add
 
-version 0.011
+
 - header: store part value, not pointer to it.
 - put inferiority and final unique strand state above kct index,
     remove from walker
@@ -38,7 +41,7 @@ version 0.013
 
 version 0.014+
 - create reads iterator and mapper - for perfect reads
-
+- make use of non-used ndxs: for extended keys
 ....
 ######
 #hieronder old todo.

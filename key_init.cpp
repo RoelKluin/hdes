@@ -22,7 +22,6 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
     h->part = (uint32_t*)malloc(ENS_HDR_PARTCT * sizeof(uint32_t));
     ASSERT(h->part != NULL, return NULL);
 
-    h->s = _buf_init_err(h->s, 8, return NULL);
     kc->h.push_back(h);
 
     uint32_t p = ID;
@@ -93,19 +92,18 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
     }
     return h;
 }
-static const unsigned dof = 1;
 /*
  * process fasta, store 2bit string and count occurances and locations of keys.
  * store per key the count and the last position.
  */
-int
+static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 {
     uint64_t dna = 0, rc = 0, ndx, b = 0, t = 0ul;
     uint32_t pos = 0u;
     int c;
     Hdr* h = NULL;
-
+    kc->s_l = 0ul;
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -118,7 +116,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                         if (B6(b, c) || c == '>') break;
                         EPR("Ignoring strange nucleotide:%c\n", c);
                     }
-                    _addtoseq(h->s, 0);
+                    _addtoseq(kc->s, 0);
                     ++t;
                 }
                 c = gc(g);
@@ -130,7 +128,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
                 // pos += t - KEY_WIDTH;
                 // non-fatal for Y
-                EPQ(pos + t - KEY_WIDTH != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %u (+'ed:%u) == %u",
+                EPQ(pos + t - KEY_WIDTH != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %u (+'ed:%lu) == %u",
                         pos, t, h->end_pos);
                 t = 0;
                 continue;
@@ -144,6 +142,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 h->bnd.push_back(kc->bd_l);
 
             h = new_header(kc, g, gc);
+            h->s_s = kc->s_l; 
             if (h == NULL) return -EFAULT;
             EPQ(dbg > 2, "header %s", kc->id + h->part[0]);
             c = gc(g);
@@ -163,7 +162,7 @@ case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
 default: // include 'N's and such to make sure the key is completed.
-                    _addtoseq(h->s, b);
+                    _addtoseq(kc->s, b);
                     dna = _seq_next(b, dna, rc);
                     continue;
             }
@@ -243,10 +242,10 @@ case 'U': case 'u': b ^= 2;
 case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
                 *ct |= b << (t << 1);
-                EPQ0(dbg > 3, "%s\t%lu\t", kc->id + h->part[0], pos);
+                EPQ0(dbg > 3, "%s\t%u\t", kc->id + h->part[0], pos);
                 print_dna(*ct, dbg > 3, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
                 ++pos;
-                _addtoseq(h->s, b);
+                _addtoseq(kc->s, b);
                 dna = _seq_next(b, dna, rc);
                 continue;
             }
@@ -278,11 +277,10 @@ case 'A': case 'a':
 
 // concatenate 2bits, byte aligned, for each key in buffer kc->ts,
 // store lengths in kc->kct;
-int kct_convert(kct_t* kc)
+static int
+kct_convert(kct_t* kc)
 {
-    kc->ts_l = 0ul;
-    for (std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h)
-	kc->ts_l += (*h)->s_l;
+    kc->ts_l = kc->s_l; // about as many next NTs as Nts.
 
     const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
     uint8_t *dest = (uint8_t*)malloc(ts_end);
@@ -373,5 +371,50 @@ int kct_convert(kct_t* kc)
     // TODO: convert kctndx to nextnt index here.
 
     return 0;
+}
+
+int
+fa_read(struct seqb2_t* seq, kct_t* kc)
+{
+    int res = -ENOMEM;
+    void* g;
+    int (*gc) (void*);
+    int (*ungc) (int, void*);
+    struct gzfh_t* fhin = seq->fh + 2; // init with ref
+    struct gzfh_t* fhio[3] = { seq->fh, seq->fh + 1, seq->fh + 3};
+    int is_gzfile = fhin->io != NULL;
+
+    kc->kct = _buf_init_err(kc->kct, 16, goto err);
+    kc->kce = _buf_init_err(kc->kce, 8, goto err);
+    kc->bd = _buf_init_err(kc->bd, 1, goto err);
+    kc->id = _buf_init_err(kc->id, 5, goto err);
+    kc->s = _buf_init_err(kc->s, 8, goto err);
+
+    for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
+        kc->kctndx[i] = ~0ul;
+
+    if (is_gzfile) {
+        g = fhin->io;
+        gc = (int (*)(void*))&gzgetc;
+        ungc = (int (*)(int, void*))&gzungetc;
+    } else {
+        g = fhin->fp;
+        gc = (int (*)(void*))&fgetc;
+        ungc = (int (*)(int, void*))&ungetc;
+    }
+    /* TODO: load dbSNP and known sites, and mark them. */
+    _ACTION(fa_kc(kc, g, gc, ungc), "read and intialized keycounts");
+    _ACTION(kct_convert(kc), "converting keycounts");
+    _ACTION(save_seqb2(fhio[0], kc), "writing seqb2: %s", fhio[0]->name);
+    _ACTION(save_nextnts(fhio[1], kc), "writing next Nts file: %s", fhio[1]->name);
+    _ACTION(save_kc(fhio[2], kc), "writing keycounts file: %s", fhio[2]->name);
+    _ACTION(reopen(fhio[1], ".nn", ".bd"), "")
+    _ACTION(save_boundaries(fhio[1], kc), "writing boundaries: %s", fhio[1]->name);
+
+    res = 0;
+err:
+    //fclose occurs in main()
+    _buf_free(kc->kce);
+    return res;
 }
 

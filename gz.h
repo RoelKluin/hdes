@@ -18,14 +18,16 @@
 typedef struct gzfh_t {
     char* name;
     FILE *fp;
-    int fd;
     gzFile io;
     int (*read) (const gzfh_t *fh, char*, size_t);
     int (*write) (const gzfh_t *fh, const char*, size_t);
+    int fd;
+    uint16_t blocksize;
 } gzfh;
 
 int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
-int set_io_fh(struct gzfh_t* fh, uint32_t blocksize, int force);
+int set_io_fh(struct gzfh_t* fh, int force);
 int rclose(gzfh_t *fh);
-
+int fn_convert(struct gzfh_t*, const char*, const char*);
+int reopen(struct gzfh_t*, const char*, const char*);
 #endif //RK_GZ_H
