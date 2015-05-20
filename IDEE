@@ -3,24 +3,25 @@ Doel: map aan de hand van unieke keys, liefst eens per readlengte verdeeld.
 
 Indexing
 
-Neem een twobit schema, waarbij de tweede bit bij sequentie en reverse complement
-verschilt. De bit positie hiervan is, voor de middelste* nucleotide identiek in
-beide complementen, en kan dus bepalen of deze sequentie in de gewenste
-orientatie is, of daarin moet worden omgezet, bijvoorbeeld voor mapping.
+In een twobit schema, waarbij een bit verschilt bij reverse complement, is de
+bitpositie hiervan voor de middelste nucleotide, in een sequentie met oneven
+lengte, identiek in beide complementen. Om slechts een van twee orientaties in
+behandeling te nemen, kan er naar deze bit gekeken worden, die altijd maar een
+van twee markeert. Indien in de andere orientatie, kan de sequentie eerst
+reverse gecomplementeerd worden.
 
 Een fragment van de read is vaak al uniek genoeg om deze met zekerheid genomisch
-te plaatsen. Als de orientatie zo'n sleutel wordt aangepast aan de hand van de
-centrale complement bit, en de potentiele sleutels op de referentie evengoed,
-dan halveert het aantal mogelijke sleutels, kunnen gelijke sleutels in beide
-strand orientaties tegelijk worden vergeleken.
+te kunnen plaatsen. Als de orientatie hiervan wordt aangepast, aan de hand van
+deze centrale complement bit, en evenlange referentie secties net zo, dan
+halveert het aantal mogelijke sleutels. De centrale complement bit is namelijk
+altijd identiek.
 
-Bij het afwandelen van het genoom kan je telkens de volgende sleutel bepalen.
-Afhankelijk van de lengte zullen sleutels vaker of minder op het genoom voorkomen.
-Indien een sleutel slechts eens voorkomt, dan is, van een read met deze sleutel, de
-genomische locatie bepaald. Om later de orientatie van een read op het genoom te
-kunnen bevestigen moet, naast de locatie, voor zo'n unieke sleutel ook de orientatie
-van de tweede bit van de centrale nucleotide, op het referentie genoom, worden
-opgeslagen.
+Bij het afwandelen van het genoom kan je telkens de sleutel bepalen. Afhankelijk
+van de lengte zullen sleutels vaker of minder op het genoom voorkomen. Indien een
+sleutel slechts eenmaal voorkomt, dan is de genomische locatie bepaald voor elke
+read met deze sleutel. Voor verdere read alignment moet de de originele centrale
+complement bit waarde - voor de orientatie - en de positie op het reference genoom
+worden opgeslagen.
 
 Naast deze primair unieke sleutels, kunnen nabijgelegen sleutels, die bijna uniek
 zijn, in tweede instantie soms toch nog reads elders plaatsen. Liggen bijvoorbeeld

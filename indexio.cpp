@@ -235,7 +235,8 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
         kc->kctndx[i] = kc->kct_l;
     for (uint64_t i=0ul; i != kc->kct_l; ++i) {
         __READ_VAL(val64)
-        ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%lu/%lu: %lu > KEYNT_BUFSZ", i, kc->kct_l, val64);
+        ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%lu/%lu: %lu > KEYNT_BUFSZ(%lu)",
+                i, kc->kct_l, val64, KEYNT_BUFSZ);
         __READ_VAL(len64)
         kc->kctndx[val64] = len64;
     }

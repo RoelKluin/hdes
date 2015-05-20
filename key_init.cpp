@@ -114,7 +114,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
                 if (c != '\n') {
                     if (c != 'N') {
                         if (B6(b, c) || c == '>') break;
-                        EPR("Ignoring strange nucleotide:%c\n", c);
+                        EPR("Strange nucleotide:%c, treated as N\n", c);
                     }
                     _addtoseq(kc->s, 0);
                     ++t;
@@ -123,7 +123,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             } while(c != -1);
             // TODO: handle single or a few N's differently.
 
-            EPR("=>\tN-stretch at Nt %u (%lu)", pos, t);
+            EPR("=>\tN-stretch at Nt %u (%lu)", pos, t - KEY_WIDTH);
             if (c == '>' || c == -1) { // skip N's at end.
                 EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
                 // pos += t - KEY_WIDTH;

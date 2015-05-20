@@ -50,9 +50,9 @@ typedef struct seqb2_t {
         uint32_t nr, key_ct, maxreads;
         uint16_t readlength, blocksize;
         uint8_t phred_offset, s_m; //XXX: bitfields?
-        struct gzfh_t fh[4]; /* reader and writer */
+        struct gzfh_t fh[5]; /* reader and writer */
 } seqb2;
 
-unsigned get_fastx_type(char* f, const unsigned last_fq, const unsigned fhsz);
+unsigned get_fastx_type(char*, const unsigned);
 
 #endif //RK_SEQ_H

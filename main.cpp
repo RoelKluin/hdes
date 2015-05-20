@@ -64,11 +64,12 @@ typedef struct option_description
 } option_description_t;
 
 // order matters and should first be input, then output, then integer args, then etc.
-static const char optstr[] = "1:2:r:o:m:l:b:p:fh";
+static const char optstr[] = "1:2:r:L:o:m:l:b:p:fh";
 static struct option_description dopt[] = {
     {"fastq", required_argument, NULL, '1', "<FILE>\t[first] input fastq"},
     {"2nd-fastq", required_argument, NULL, '2', "<FILE>\t2nd input fastq (optional)"},
     {"ref", required_argument, NULL, 'r', "<FILE>\tinput fasta reference (optional)"},
+    {"bed", required_argument, NULL, 'L', "<FILE>\ttarget regions bed file (optional)"},
     {"out", required_argument, NULL, 'o', "<FILE>\toutput file prefix"},
     {"maxreads", required_argument, NULL, 'm', "<INT>\tonly this many reads (optional)"},
     {"readlength", required_argument, NULL, 'l', "<INT>\treadlength (optional)"},
@@ -85,7 +86,7 @@ static int usage()
     EPR("Program: %s\n"
         "Version: %s\n"
         "Contact: Roel Kluin <r.kluin@nki.nl>\n\n"
-        "Usage:   %s [options] <in.fq> [in2.fq] [ref] <prefix> \n",
+        "Usage:   %s [options] [in.fq] [in2.fq] [ref] [bed] [output]\n",
             PROGRAM_NAME, PROGRAM_VERSION, PROGRAM_NAME);
     for (i = 0; dopt[i].name != NULL; ++i)
         EPR("\t-%c|--%s\t%s", dopt[i].val, dopt[i].name, dopt[i].descr);
@@ -115,6 +116,7 @@ int main(int argc, char* const* argv)
         i ^= i;
         switch (c) {
             case 'o': ++i;
+            case 'L': ++i;
             case 'r': ++i;
             case '2': ++i;
             case '1':
@@ -152,7 +154,7 @@ int main(int argc, char* const* argv)
     /* options without a flag */
     while (optind != argc) {
         char* f = (char*)argv[optind++];
-        i = get_fastx_type(f, 2, fhsz);
+        i = get_fastx_type(f, fhsz);
         if ((i < 2) && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
 
         if ((i >= fhsz) || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.

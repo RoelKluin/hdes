@@ -47,7 +47,7 @@ print_ndx(uint64_t dna, bool dbg = true)
     return -1;
 }
 
-static void
+void
 free_kc(kct_t* kc)
 {
     std::list<Hdr*>::iterator it;
@@ -192,7 +192,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             uint64_t p = h->s_s + pos;
             uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
             ASSERT(b2 == sb2, return print_2dna(dna, rc),
-                    "[%u]: expected %c, got %c for ndx 0x%lx, [%u, %u]",
+                    "[%u]: sb2:%c, got %c for ndx 0x%lx, [%u, %u]",
                     pos,b6(sb2<<1), b6(b2<<1), ndx, w->count, w->tmp_count);
         }
         if (left) { // within uniq range: keep filling buffer
@@ -254,6 +254,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
                 } else { // join - may be undesirable for certain boundary types in the future
                     merge(last, inter);
                 }
+                ASSERT(*kc->bdit < kc->bd_l, return -EFAULT);
                 next = &kc->bd[*kc->bdit];
                 inter->l = 0;
             }
@@ -271,7 +272,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, Bnd *last)
             left = ext;
         }
     }
-    ASSERT(pos == next->s, return -EFAULT);
+    ASSERT(pos == next->s, return -EFAULT, "%u, %u", pos, next->s);
     if (left) {
         ASSERT((inter->s + inter->l + ext) >= next->s, return -EFAULT);
         EPQ0(dbg > 1, "\nExtending %u-%u til %u\t(next:%u-%u)\t", last->s, last->s+last->l, inter->s+inter->l, next->s, next->s+next->l); print_2dna(last->dna, inter->at_dna, dbg > 1);
@@ -391,7 +392,7 @@ fa_index(struct seqb2_t* seq)
         strncpy(fhio[i]->name, fhio[0]->name, len);
     }
 
-    kc.kctndx = _buf_init_arr(kc.kctndx, KEYNT_BUFSZ_SHFT);
+    kc.kctndx = _buf_init_arr_err(kc.kctndx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // first check whether unique boundary is ok.
     if (fhio[0]->fp) {
         mode = 2;

@@ -114,17 +114,9 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
     valgrind ./uqct hg19_GL.fa.gz -l 51)  2>&1 | tee hg19_GL_part1.err
 
 
-rm hg19_GL.{2b,nn,bd,ub,kc}.gz; make clean && DEFINES="-DKEY_LENGTH=11" make &&
+rm hg19_GL.{2b,nn,bd,ub,kc}.gz; make clean && DEFINES="-DKEY_LENGTH=15" make &&
     ./uqct hg19_GL.fa.gz -l 51 && rm hg19_GL.ub.gz &&
     valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_part1.err
-
-rm hg19_GL.x{1,2}.gz; make clean && DEFINES="-DKEY_LENGTH=11" make &&
- ./uqct hg19_GL.fa.gz -l 51 &> /dev/null && rm hg19_GL.x2.gz &&
- valgrind ./uqct hg19_GL.fa.gz -l 51 -b 64 2>&1 | less
-
-rm hg19_GL.x{1,2}.gz; make clean && DEFINES="-DKEY_LENGTH=15" make &&
- ./uqct hg19_GL.fa.gz -l 51 &> /dev/null && rm hg19_GL.x2.gz &&
- valgrind ./uqct hg19_GL.fa.gz -l 51 -b 64 2>&1 | less
 
 rm hg19_chr1.x1.gz; make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19_chr1.fa.gz -l 51 2>&1 | tee hg19_chr1_uqct.err
 

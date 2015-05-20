@@ -15,10 +15,10 @@
 
 
 /**
- * Return type of extension. 0:fq, 2:fa
+ * Return type of extension. 0:fq, 2:fa, -ge fhsz => unrecognized.
  */
 unsigned
-get_fastx_type(char* f, const unsigned ref_i, const unsigned fhsz)
+get_fastx_type(char* f, const unsigned fhsz)
 {
     unsigned i = 0, c = strlen(f) - 1;
     f += c; // parse extension from right
@@ -30,17 +30,20 @@ get_fastx_type(char* f, const unsigned ref_i, const unsigned fhsz)
     }
     if (*f == 't') { // .txt(.gz)?
         if (((c -= 4) < 0) || *--f != 'x' || *--f != 't') return fhsz + 1;
+    } else if (*f == 'd'){
+        if (((c -= 4) < 0) || *--f != 'e' || *--f != 'b') return fhsz + 2;
+        return 3;
     } else {
-        if (*f == 'a') i = ref_i;
-        else if (*f != 'q') return fhsz + 2;
+        if (*f == 'a') i = 2;
+        else if (*f != 'q') return fhsz + 3;
 
         if (*--f == 't') { // .fast[aq](.gz)??
-            if (((c -= 3) < 3) || *--f != 's' || *--f != 'a') return fhsz + 3;
+            if (((c -= 3) < 3) || *--f != 's' || *--f != 'a') return fhsz + 4;
             --f;
         }
-        if (*f != 'f') return fhsz + 4;
+        if (*f != 'f') return fhsz + 5;
     }
-    return *--f == '.' ? i : fhsz + 5;
+    return *--f == '.' ? i : fhsz + 6;
 }
 
 

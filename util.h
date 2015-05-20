@@ -80,24 +80,17 @@ if (!(cond)) { \
 })
 #define _buf_init(buf, sz) _buf_init_err(buf, sz, return -ENOMEM)
 
-#define _buf_init_arr(buf, sz) ({\
+#define _buf_init_arr_err(buf, sz, error_action) ({\
     buf##_m = sz;\
     /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
-    if_ever (__t == NULL) return -ENOMEM;\
+    if_ever (__t == NULL) error_action;\
     __t;\
 })
 
-#define _buf_grow_err_print(buf, step, error_action) \
-if (buf##_l + step >= (1ul << buf##_m)) {\
-    fprintf(stderr, #buf " realloc, %lu\n", sizeof(*(buf)) << (buf##_m + 1));fflush(NULL);\
-    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++(buf##_m));\
-    if_ever (__t == NULL) error_action;\
-    buf = __t;\
-}
-
 #define _buf_grow_err_m(buf, step, m, shft, error_action) \
 if (((buf##_l + step) >> shft) >= (1ul << m)) {\
+    EPQ(dbg < 0, #buf " realloc, %lu", sizeof(*(buf)) << (buf##_m + 1));\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
     if_ever (__t == NULL) error_action;\
     buf = __t;\

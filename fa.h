@@ -126,7 +126,7 @@ packed_struct Bnd {
 #endif
     uint64_t dna; // dna after boundary
     uint32_t s; // start
-    uint32_t l; // position correction within contig (entirely)
+    int32_t l; // position correction within contig (entirely)
     uint64_t i; // left inferiority (low bits, high: right)
 };
 
@@ -171,14 +171,15 @@ struct kct_t {
     Walker* wlkr; // later req
     uint64_t* wbuf; // later req
     uint64_t *kctndx;
-    uint32_t bd_l, id_l, ext; // ext not stored
+    uint32_t id_l, ext; // ext not stored
     uint32_t kce_l; //early req
-    uint64_t ts_l, s_l, kct_l; // late req, continued req
+    uint64_t bd_l, ts_l, s_l, kct_l; // late req, continued req
     uint8_t kct_m, kce_m, kctndx_m, bd_m, id_m, s_m; // only bd_m is required, but not stored either
     std::list<Hdr*> h;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
 };
+void free_kc(kct_t* kc);
 int fa_read(struct seqb2_t*, kct_t*);
 int fa_index(seqb2_t*);
 
