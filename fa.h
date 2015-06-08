@@ -29,7 +29,10 @@
 // converted to 2bit indices to their respective next Nts: Below this bit.
 #define STRAND_SHFT 40
 #define INDEX_MASK ((1ul << STRAND_SHFT) - 1ul)
-#define INFERIORITY (1ul << (STRAND_SHFT + 1))
+#define INFIOR_SHFT (STRAND_SHFT + 1)
+#define INFERIORITY (1ul << INFIOR_SHFT)
+#define L_INFIOR (INFERIORITY - 1ul)
+#define R_INFIOR (~(INFERIORITY - 1ul))
 
 // While some movement of next-NTs per key takes place - upwards
 // movement of next-NTs that lie within range of unique indices and can
@@ -54,7 +57,6 @@
 # define _seq_prev __seq_le_n
 #endif
 
-
 #define read_b2(s, p) ((s[(p)>>2] >> (((p) & 3) << 1)) & 3)
 
 #define __rdsq(direction, b, s, b2pos, dna, rc) ({\
@@ -69,7 +71,8 @@
     ndx = wx ? dna : rc;    /* strand. Excise it out since its always the same */\
     ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
-    dbg = (ndx & INDEX_MASK) == dbgndx ? dbg | 4 : dbg & ~4;\
+    dbg = ndx == dbgndx || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx ? dbg | 8 : dbg & ~8;\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx %lu", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
 });
 
 #define _update_kctndx(kc, ndx, wx, dna, rc) ({\
@@ -109,6 +112,16 @@
     buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
     ++(buf ## _l)
 
+#define _verify_seq(b2pos, h, ks, msg, action, ...) \
+    if (kc->s) {\
+        uint64_t p = b2pos + h->s_s;\
+        uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;\
+        if (b2 != sb2) {\
+            WARN("assertion 'b2 != sb2' failed " msg, __VA_ARGS__);\
+            action;\
+        }\
+    }
+
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define ULL(x) ((unsigned __int128)(x))
@@ -124,10 +137,10 @@ packed_struct Bnd {
 #ifdef DEBUG
     uint64_t at_dna; // dna before boundary (to check)
 #endif
-    uint64_t dna; // dna after boundary
-    uint32_t s; // start
-    int32_t l; // position correction within contig (entirely)
-    uint64_t i; // left inferiority (low bits, high: right)
+    uint64_t dna; // dna after boundary, where we `jump' to
+    uint32_t s;   // position at which we jump.
+    uint32_t l;   // length of jump or real position correction.
+    uint64_t i;   // left and right[high bits] inferiority. if zero bnd is a correction
 };
 
 packed_struct kct_ext {
@@ -140,13 +153,6 @@ packed_struct Walker {
     uint32_t count;
     uint32_t excise_ct;
     uint32_t tmp_count;
-};
-
-struct key_req {
-    uint64_t dna;
-    uint64_t rc;
-    uint32_t pos;
-    uint32_t infior;
 };
 
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
@@ -179,6 +185,7 @@ struct kct_t {
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
 };
+void show_list(kct_t*, std::list<uint32_t> &bnd);
 void free_kc(kct_t* kc);
 int fa_read(struct seqb2_t*, kct_t*);
 int fa_index(seqb2_t*);

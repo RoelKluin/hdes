@@ -15,10 +15,10 @@
 #include <assert.h>
 #include "b6.h"
 
-static const unsigned long dbgndx = ~0ul;//0x1c27012; //~0ul;
+static const unsigned long dbgndx = 0xc662;// 0x1d03c;//0x1c27012; //~0ul;
 static const unsigned long dbgoffs = ~0ul;//10892664; //~0ul;
-
-static int dbg = 1;
+static const unsigned long dbgkctndx = 0x7641; //0x2028;
+static int dbg = 4;
 
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
@@ -205,6 +205,29 @@ print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true, unsigned len = KEY_WIDT
     }
     return -1;
 }
+
+// to get array size of array member of t
+#define FIELD_SIZEOF(t, f) (sizeof(((t*)0)->f))
+
+// Internal Macros
+#define HEX__(n) 0x##n##LU
+#define B8__(x) ((x&0x0000000FLU)?1:0) \
+  +((x&0x000000F0LU)?2:0) \
+  +((x&0x00000F00LU)?4:0) \
+  +((x&0x0000F000LU)?8:0) \
+  +((x&0x000F0000LU)?16:0) \
+  +((x&0x00F00000LU)?32:0) \
+  +((x&0x0F000000LU)?64:0) \
+  +((x&0xF0000000LU)?128:0)
+
+// User-visible Macros
+#define B8(d) ((unsigned char)B8__(HEX__(d)))
+#define B16(dmsb,dlsb) (((unsigned short)B8(dmsb)<<8) + B8(dlsb))
+#define B32(dmsb,db2,db3,dlsb) \
+  (((unsigned long)B8(dmsb)<<24) \
+  + ((unsigned long)B8(db2)<<16) \
+  + ((unsigned long)B8(db3)<<8) \
+  + B8(dlsb))
 
 #define DEBUG 1
 #endif // RK_UTIL_H

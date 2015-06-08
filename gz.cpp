@@ -24,7 +24,7 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
             fprintf(stderr, "%d\n", i);
             return c;
         }
-        EPQ(dbg > 2, "==%d bytes written", c);
+        EPQ(dbg > 4, "==%d bytes written", c);
         l -= c, s += c;
     }
 

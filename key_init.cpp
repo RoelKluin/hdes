@@ -78,15 +78,14 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         }
         break;
     }
-
+    kc->bd[kc->bd_l].s = kc->bd[kc->bd_l].l = 0;
+    kc->bd[kc->bd_l].l = KEY_WIDTH;
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bd[kc->bd_l].l = KEY_WIDTH + atoi(kc->id + h->part[START]) - 1
-            -kc->bd[kc->bd_l].s;
+        kc->bd[kc->bd_l].l += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
     } else { //TODO: hash lookup from fai
-        kc->bd[kc->bd_l].l = -kc->bd[kc->bd_l].s;
         h->p_l = UNKNOWN_HDR;
         EPR("\nWARNING: non-ensembl reference.");
     }
@@ -100,7 +99,7 @@ static int
 fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 {
     uint64_t dna = 0, rc = 0, ndx, b = 0, t = 0ul;
-    uint32_t pos = 0u;
+    uint32_t corr = 0u;
     int c;
     Hdr* h = NULL;
     kc->s_l = 0ul;
@@ -108,46 +107,52 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
-        kc->bd[kc->bd_l].s = pos;
         if (c != '>') { // N-stretch
+            kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
+            t = KEY_WIDTH;
             do {
                 if (c != '\n') {
                     if (c != 'N') {
                         if (B6(b, c) || c == '>') break;
                         EPR("Strange nucleotide:%c, treated as N\n", c);
                     }
-                    _addtoseq(kc->s, 0);
                     ++t;
                 }
                 c = gc(g);
             } while(c != -1);
             // TODO: handle single or a few N's differently.
 
-            EPR("=>\tN-stretch at Nt %u (%lu)", pos, t - KEY_WIDTH);
+            EPR("=>\tN-stretch at Nt %lu (%lu)", kc->s_l - h->s_s + corr, t);
+            corr += t;
+            kc->bd[kc->bd_l].l = corr;
             if (c == '>' || c == -1) { // skip N's at end.
-                EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
-                // pos += t - KEY_WIDTH;
+                EPR("processed %lu Nts for %s", kc->s_l - h->s_s, kc->id + h->part[0]);
                 // non-fatal for Y
-                EPQ(pos + t - KEY_WIDTH != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %u (+'ed:%lu) == %u",
-                        pos, t, h->end_pos);
+                EPQ(kc->s_l - h->s_s + corr != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%lu) == %u",
+                        kc->s_l - h->s_s, t, h->end_pos);
                 t = 0;
                 continue;
             }
-            kc->bd[kc->bd_l].l = t;
         } else {
             // Append the index of the next boundary to the last header.
             // The at_dna is of the last chromo. XXX if at_dna is removed
             // altogether we can stop at h->bnd.end() instead.
-            if (h != NULL)
-                h->bnd.push_back(kc->bd_l);
+            if (h != NULL) {
+                kc->bd[kc->bd_l].i = 0;
+                kc->bd[kc->bd_l].l = corr;
+                kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
+                kc->bd[kc->bd_l].dna = 0ul;
+                h->bnd.push_back(kc->bd_l++);
+            }
+            kc->bd[kc->bd_l].at_dna = 0u;
 
             h = new_header(kc, g, gc);
+            corr = kc->bd[kc->bd_l].l;
             h->s_s = kc->s_l; 
             if (h == NULL) return -EFAULT;
-            EPQ(dbg > 2, "header %s", kc->id + h->part[0]);
+            EPQ(dbg > 5, "header %s", kc->id + h->part[0]);
             c = gc(g);
             if (!isb6(b6(c))) {
-                t = -pos + KEY_WIDTH;
                 continue;
             }
         }
@@ -162,26 +167,24 @@ case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
 default: // include 'N's and such to make sure the key is completed.
-                    _addtoseq(kc->s, b);
                     dna = _seq_next(b, dna, rc);
                     continue;
             }
             break;
         }
         kc->bd[kc->bd_l].i = 0;
-        pos = kc->bd[kc->bd_l].s + kc->bd[kc->bd_l].l;
         if_ever (t != KEY_WIDTH) { // c == -1, 'N' or '>'
             // we can get here if an N-stretch follows a new contig
             if (t != 0) {
                 // or if two N-s(tretches) lie close to one anorther
                 EPQ(dbg > 1, "Key incomplete before next boundary - merging");
             }
-            EPQ(dbg > 1, "jump at %u", pos);
+            EPQ(dbg > 1, "jump at %lu", kc->s_l - h->s_s + corr);
             continue; // join regions.
         }
         // ndx (key) is 2nd cNt bit excised, rc or dna
         kc->bd[kc->bd_l].dna = dna;
-        h->bnd.push_back(kc->bd_l);
+        h->bnd.push_back(kc->bd_l++);
 
         while (1) {
             if (isspace(c = gc(g))) continue;
@@ -192,13 +195,13 @@ default: // include 'N's and such to make sure the key is completed.
                 ct = kc->kct + kc->kctndx[ndx];
                 // TODO: using a length - based conversion, we could cram in 30th bit.
                 if (*ct & FLAG_B2CT) {
-                    EPQ(dbg > 3, "sequence & length");
+                    EPQ(dbg > 7, "sequence & length");
                     t = *ct >> B2LEN_OFFS_SHFT;
 
                     if (t < 29ul) {
                         *ct += B2LEN_OFFS;
                     } else {
-                        EPQ(dbg > 3, "conversion to index:%c", c);
+                        EPQ(dbg > 7, "conversion to index:%c", c);
                         t = *ct;                                  // temp store 2bit dna
                         *ct = ndx = kc->kce_l;                    // conversion: set to index.
                         ct = (uint64_t*)malloc(sizeof(uint64_t)); // make room for 2bit dna
@@ -208,7 +211,7 @@ default: // include 'N's and such to make sure the key is completed.
                         t = 29;
                     }
                 } else {
-                    EPQ(dbg > 3, "in index format:%c", c);
+                    EPQ(dbg > 7, "in index format:%c", c);
                     ndx = *ct & INDEX_MASK;
 
                     t = kc->kce[ndx].l++;                // *ct is index to an extended keycount
@@ -226,7 +229,7 @@ default: // include 'N's and such to make sure the key is completed.
                     t &= 0x1f;
                 }
             } else {
-                EPQ(dbg > 3, "new key 0x%lx at %u", ndx, pos);
+                EPQ(dbg > 5, "new key 0x%lx at %lu", ndx, kc->s_l - h->s_s + corr);
                 _buf_grow(kc->kct, 1ul, 0);
                 kc->kctndx[ndx] = kc->kct_l;
                 ct = kc->kct + kc->kct_l++;
@@ -242,9 +245,8 @@ case 'U': case 'u': b ^= 2;
 case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
                 *ct |= b << (t << 1);
-                EPQ0(dbg > 3, "%s\t%u\t", kc->id + h->part[0], pos);
-                print_dna(*ct, dbg > 3, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
-                ++pos;
+                EPQ0(dbg > 6, "%s\t%lu\t", kc->id + h->part[0], kc->s_l - h->s_s + corr);
+                print_dna(*ct, dbg > 6, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
                 _addtoseq(kc->s, b);
                 dna = _seq_next(b, dna, rc);
                 continue;
@@ -257,21 +259,22 @@ case 'A': case 'a':
             break;
         }
 
-        kc->bd[kc->bd_l++].at_dna = dna;
+        kc->bd[kc->bd_l].at_dna = dna;
         _buf_grow0(kc->bd, 2ul);
         if (c == '>' || c == -1) {
-            EPR("processed %u Nts for %s", pos, kc->id + h->part[0]);
+            EPR("processed %lu Nts for %s", kc->s_l - h->s_s + corr, kc->id + h->part[0]);
             // non-fatal for Y
-            EPQ(pos != h->end_pos, "pos - KEY_WIDTH != h->end_pos: %u == %u",
-                    pos, h->end_pos);
+            EPQ(kc->s_l - h->s_s + corr != h->end_pos, "pos != h->end_pos: %lu == %u",
+                    kc->s_l - h->s_s + corr, h->end_pos);
         }
-        t = KEY_WIDTH;
     }
     if (h == NULL)
         return -EFAULT;
-    kc->bd[0].l -= pos;
-    kc->bd[0].s = pos;
-    h->bnd.push_back(0);
+    kc->bd[kc->bd_l].i = 0;
+    kc->bd[kc->bd_l].l = corr;
+    kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
+    kc->bd[kc->bd_l].at_dna = kc->bd[kc->bd_l].dna = 0ul;
+    h->bnd.push_back(kc->bd_l++);
     return 0;
 }
 
@@ -281,8 +284,8 @@ static int
 kct_convert(kct_t* kc)
 {
     kc->ts_l = kc->s_l; // about as many next NTs as Nts.
-
-    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
+    // XXX: requirement of + 1 below is strangely needed.
+    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 1;
     uint8_t *dest = (uint8_t*)malloc(ts_end);
     ASSERT(dest != NULL, return -ENOMEM);
     kc->ts = dest;
@@ -303,14 +306,14 @@ kct_convert(kct_t* kc)
             x <<= t << 1;                // prealign 2bits for appending to dest
             offs += l;                   // update offs for next round.
 
-            dbg = offs == dbgoffs ?  dbg | 4 : dbg & ~4;
-            EPQ0(dbg > 3, "orig seq (%lu, %lu), %u\t", l, dest - kc->ts, t);
-            print_2dna(*dest, x, dbg > 3, 4);
+            dbg = offs == dbgoffs ?  dbg | 8 : dbg & ~8;
+            EPQ0(dbg > 6, "orig seq (%lu, %lu), %u\t", l, dest - kc->ts, t);
+            print_2dna(*dest, x, dbg > 6, 4);
 
             *dest |= x & 0xff;
             x >>= 8;
 
-            print_dna(*dest, dbg > 3, '.', 4);
+            print_dna(*dest, dbg > 6, '.', 4);
 
         } else {
             kct_ext* ke = kc->kce + x;   // x was an index to a extended keycount.
@@ -320,49 +323,49 @@ kct_convert(kct_t* kc)
             uint64_t *s = ke->b2;
             x = *s;
 
-            dbg = (offs + l) == dbgoffs ?  dbg | 4 : dbg & ~4;
-            EPQ0(dbg > 3, "orig seqndx (%lu, %lu), %u\t", l, dest - kc->ts, t);
-            print_2dna(*dest, x, dbg > 3, 4);
+            dbg = (offs + l) == dbgoffs ?  dbg | 8 : dbg & ~8;
+            EPQ0(dbg > 6, "orig seqndx (%lu, %lu), %u\t", l, dest - kc->ts, t);
+            print_2dna(*dest, x, dbg > 6, 4);
             t <<= 1;
             *dest |= (x << t) & 0xff;
             x >>= 8 - t;
             offs += l;                  // update offs for next.
 
-            print_dna(*dest, dbg > 3, '.', 4);
+            print_dna(*dest, dbg > 6, '.', 4);
 
             while (l > 32) {
                 *++dest = x & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = (x >>= 8) & 0xff;
-                print_dna(*dest, dbg > 3, '.', 4);
+                print_dna(*dest, dbg > 6, '.', 4);
                 *++dest = x >>= 8; // zero if t == 0
-                print_dna(*dest, dbg > 3, '\n', 4);
+                print_dna(*dest, dbg > 6, '\n', 4);
                 x = *++s;
                 *dest |= (x << t) & 0xff;
                 x >>= 8 - t;
                 l -= 32;
             }
-            print_dna(x, dbg > 3, '.', 4);
+            print_dna(x, dbg > 6, '.', 4);
             free(ke->b2);
 	}
         while (l >= 4) { // first is already written.
             *++dest = x & 0xff;
-            print_dna(*dest, dbg > 3, '.', 4);
+            print_dna(*dest, dbg > 6, '.', 4);
             x >>= 8;
             l -= 4;
         }
         *++dest = x; // if l == 0, pre-empty next.
-        print_dna(*dest, dbg > 3, '\n', 4);
+        //print_dna(*dest, dbg > 6, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }
     // why not true, boundaries?
