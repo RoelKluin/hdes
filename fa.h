@@ -140,7 +140,7 @@ packed_struct Bnd {
     uint64_t dna; // dna after boundary, where we `jump' to
     uint32_t s;   // position at which we jump.
     uint32_t l;   // length of jump or real position correction.
-    uint64_t i;   // left and right[high bits] inferiority. if zero bnd is a correction
+    uint32_t corr;
 };
 
 packed_struct kct_ext {

@@ -78,12 +78,12 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         }
         break;
     }
-    kc->bd[kc->bd_l].s = kc->bd[kc->bd_l].l = 0;
-    kc->bd[kc->bd_l].l = KEY_WIDTH;
+    kc->bd[kc->bd_l].s = 0;
+    kc->bd[kc->bd_l].corr = KEY_WIDTH;
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bd[kc->bd_l].l += atoi(kc->id + h->part[START]) - 1;
+        kc->bd[kc->bd_l].corr += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
@@ -124,7 +124,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
 
             EPR("=>\tN-stretch at Nt %lu (%lu)", kc->s_l - h->s_s + corr, t);
             corr += t;
-            kc->bd[kc->bd_l].l = corr;
+            kc->bd[kc->bd_l].corr = corr;
             if (c == '>' || c == -1) { // skip N's at end.
                 EPR("processed %lu Nts for %s", kc->s_l - h->s_s, kc->id + h->part[0]);
                 // non-fatal for Y
@@ -138,8 +138,8 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             // The at_dna is of the last chromo. XXX if at_dna is removed
             // altogether we can stop at h->bnd.end() instead.
             if (h != NULL) {
-                kc->bd[kc->bd_l].i = 0;
-                kc->bd[kc->bd_l].l = corr;
+                kc->bd[kc->bd_l].l = 0;
+                kc->bd[kc->bd_l].corr = corr;
                 kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
                 kc->bd[kc->bd_l].dna = 0ul;
                 h->bnd.push_back(kc->bd_l++);
@@ -147,7 +147,7 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             kc->bd[kc->bd_l].at_dna = 0u;
 
             h = new_header(kc, g, gc);
-            corr = kc->bd[kc->bd_l].l;
+            corr = kc->bd[kc->bd_l].corr;
             h->s_s = kc->s_l; 
             if (h == NULL) return -EFAULT;
             EPQ(dbg > 5, "header %s", kc->id + h->part[0]);
@@ -172,7 +172,7 @@ default: // include 'N's and such to make sure the key is completed.
             }
             break;
         }
-        kc->bd[kc->bd_l].i = 0;
+        kc->bd[kc->bd_l].l = 0;
         if_ever (t != KEY_WIDTH) { // c == -1, 'N' or '>'
             // we can get here if an N-stretch follows a new contig
             if (t != 0) {
@@ -270,8 +270,8 @@ case 'A': case 'a':
     }
     if (h == NULL)
         return -EFAULT;
-    kc->bd[kc->bd_l].i = 0;
-    kc->bd[kc->bd_l].l = corr;
+    kc->bd[kc->bd_l].l = 0;
+    kc->bd[kc->bd_l].corr = corr;
     kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
     kc->bd[kc->bd_l].at_dna = kc->bd[kc->bd_l].dna = 0ul;
     h->bnd.push_back(kc->bd_l++);
