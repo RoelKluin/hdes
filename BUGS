@@ -1,0 +1,7 @@
+
+boundaries
+
+for (u32 b2pos = last->s; b2pos != bd[i+1]->s; ++b2pos) {
+
+  u32 genomic_pos == b2pos + bd->l;
+}

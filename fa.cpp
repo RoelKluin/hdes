@@ -283,7 +283,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ASSERT(inter != next, return -EFAULT);
         merge(inter, next);
         kc->bdit = h->bnd.erase(kc->bdit);
-        ASSERT(*kc->bdit < kc->bd_l, return -EFAULT);
+        ASSERT(*kc->bdit < kc->bd_l, return -EFAULT, "%lu >= %lu?", *kc->bdit, kc->bd_l);
         next = &kc->bd[*kc->bdit];
     }
     return uqct;
