@@ -67,6 +67,10 @@ Print manual page
 
 highlight this regular expression
 
+=item B<-e|--extend> = u
+
+Extend line with this many nucleotides of next line, to facilitate searching.
+
 =back
 
 =head1 DESCRIPTION
