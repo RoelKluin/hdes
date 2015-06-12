@@ -65,11 +65,12 @@ free_kc(kct_t* kc)
 }
 
 static int
-decr_excise(kct_t const *const kc, unsigned i, const unsigned left)
+decr_excise(kct_t const *const kc, const unsigned left)
 {
     Walker* wlkr = kc->wlkr;
     uint64_t* wbuf = kc->wbuf;
-    while (--i > left) {
+    unsigned i = kc->ext;
+    while (i-- > left) {
 
         // current bit pos and pending offsets are stored in walker.
         ASSERT(wbuf[i] != ~0ul, return -EFAULT, "%u/%u", i, left);
@@ -123,6 +124,7 @@ static unsigned iter = 0;
 static inline int update_wlkr(kct_t* kc, int left)
 {
     uint64_t ndx = kc->wbuf[left];
+    ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%lx", left, kc->ext, ndx)
     ASSERT(kc->wlkr[ndx].tmp_count > 0, return -EFAULT);
     ++kc->wlkr[ndx].count;
     --kc->wlkr[ndx].tmp_count;
@@ -172,6 +174,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     // if we find a 2nd, we really want to extend this region
     const int ext = kc->ext;
     int left = ext;
+    kc->wbuf[left-1] = ndx;
+    ++kc->wlkr[ndx].tmp_count;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"",hdr,
             b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
@@ -203,15 +207,13 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         if (left) { // within uniq range: keep filling buffer
             if (--left) {
                 if (left == ext - 1) {
-                    //EPR("position after 2nd unique, or each extended.");
-                    // what we'll jump to, in subsequent iterations.
-                    // This is inserted (once) when region is complete (left becomes 0) -
-                    // otherwise it's overwritten successively.
+                    EPQ(dbg > 6, "setting uniq jump destination");
+                    // Sucessively overwritten until region completed - left became 0.
                     inter->dna = dna;
                     inter->l = b2pos - inter->s;
                 }
-                ASSERT(kc->wbuf[left] == ~0ul, return -EFAULT, "[%u]", b2pos & print_dna(dna));
-                kc->wbuf[left] = ndx;
+                ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1,ext);
+                kc->wbuf[left-1] = ndx;
                 if (ct > 1ul) {
                     if ((infior + INFERIORITY) > wx) {
                          // A non-unique keys' inferiority must be gt neighbouring
@@ -222,18 +224,15 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                     ++w->tmp_count;
                 } else {
                     EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, infior >> INFIOR_SHFT);
-                    if (infior > wx) {
-                         // A unique keys' inferiority must be ge neighbouring
-                         wx ^= infior; // unique keys, so update.
-                     } else {          // otherwise update inferiority,
-                         infior = wx & R_INFIOR;
-                         wx ^= infior; // and only set strand bit below
-                     }
+                    if (infior <= wx)
+                         infior = wx & R_INFIOR; // only set strand bit below
+                    // A uniqs' inferior must be ge neighbouring uniqs' infior.
+                    wx ^= infior;
                     kc->kctndx[ndx] ^= wx;
                     w->count = 0;
                     w->tmp_count = 0;
                     ++uqct;
-                    left = decr_excise(kc, ext, left);
+                    left = decr_excise(kc, left);
                     ASSERT(left >= 0, return -EFAULT, "left? %d", left);
                     if ((last->s + ext) >= inter->s) {
                         // join - may be undesirable for certain boundary types in the future
@@ -243,12 +242,13 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                             .l = 0, .corr = last->corr};
                     }
                     left = ext;
+	            kc->wbuf[left-1] = ndx;
+                    ++kc->wlkr[ndx].tmp_count;
                 }
                 continue;
             } else { //buf just became full, without extensions.
-                // XXX: how does infior influence b2 / sb2 decrepancy ???
                 infior = INFERIORITY;
-                while (++left < ext) {
+                for (left = 0; left != ext; ++left) {
                     if (update_wlkr(kc, left) < 0)
                         return -EFAULT;
                 }
@@ -265,16 +265,18 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             w->tmp_count = 0;
             inter->at_dna = dna;
             left = ext;
+	    kc->wbuf[left-1] = ndx;
+            ++kc->wlkr[ndx].tmp_count;
         }
     }
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
-    if (left--) { // decrement or w->tmp_count == 0 assertion err.
+    if (left--) { // now also last uniq must be included.
         inter->l = next->s - inter->s;
         ASSERT((inter->s + inter->l + ext) >= next->s, return -EFAULT, "%u %u", inter->s + inter->l, next->s);
         EPQ(dbg > 3, "[%u]\t%u - %u...\t", uqct, inter->s, next->s + next->l);
         print_2dna(last->dna, inter->at_dna, dbg > 1);
 
-        left = decr_excise(kc, ext, left);
+        left = decr_excise(kc, left);
         if (left < 0)
             return left;
         // if last and next have now become adjoining, merge
@@ -283,9 +285,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ASSERT(inter != next, return -EFAULT);
         merge(inter, next);
         kc->bdit = h->bnd.erase(kc->bdit);
-        ASSERT(*kc->bdit < kc->bd_l, return -EFAULT, "%lu >= %lu?", *kc->bdit, kc->bd_l);
+        ASSERT(*--kc->bdit < kc->bd_l, return -EFAULT, "%lu >= %lu?", *kc->bdit, kc->bd_l);
         next = &kc->bd[*kc->bdit];
     }
+    EPR(":::END:::");
+    show_list(kc, h->bnd);
     return uqct;
 }
 
