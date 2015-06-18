@@ -129,7 +129,7 @@ rclose(gzfh_t* fh)
             fclose(fh->fp);
         }
     } else {
-        EPQ(dbg > 2, "already seems closed: %s", fh->name ? fh->name : "<unknown>");
+        EPQ(dbg > 6, "already seems closed: %s", fh->name ? fh->name : "<unknown>");
     }
     fh->fp = NULL;
     return ret;

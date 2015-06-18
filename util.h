@@ -15,9 +15,9 @@
 #include <assert.h>
 #include "b6.h"
 
-static const unsigned long dbgndx = 0xc662;// 0x1d03c;//0x1c27012; //~0ul;
+static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static const unsigned long dbgoffs = ~0ul;//10892664; //~0ul;
-static const unsigned long dbgkctndx = 0x7641; //0x2028;
+static const unsigned long dbgkctndx = 0x48f0f;//~0ul; //1099511627775; //0x2028;
 static int dbg = 4;
 
 #ifndef kroundup32

@@ -28,7 +28,8 @@
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
 #define STRAND_SHFT 40
-#define INDEX_MASK ((1ul << STRAND_SHFT) - 1ul)
+#define STRAND_BIT (1ul << STRAND_SHFT)
+#define INDEX_MASK (STRAND_BIT - 1ul)
 #define INFIOR_SHFT (STRAND_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
 #define L_INFIOR (INFERIORITY - 1ul)
@@ -66,27 +67,27 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_ndx(ndx, wx, dna, rc) ({\
-    wx = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
-    ndx = wx ? dna : rc;    /* strand. Excise it out since its always the same */\
-    ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
-    ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
-    dbg = ndx == dbgndx || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx %lu", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
-});
+#define _incr_at_ndx(kc, left, ndx)\
+    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1, kc->ext);\
+    kc->wbuf[left-1] = ndx;\
+    ++kc->wlkr[ndx].tmp_count;
 
-#define _update_kctndx(kc, ndx, wx, dna, rc) ({\
-    _get_ndx(ndx, wx, dna, rc);\
-    wx <<= (STRAND_SHFT - KEY_WIDTH); /* strand orient. in position for storage*/\
-    wx |= (kc)->kctndx[ndx] & ~INDEX_MASK; /* add inferiority */\
-    (kc)->kctndx[ndx] & INDEX_MASK;\
-})
+#define _extd_uq(kc, left, ndx)\
+    left = kc->ext;\
+    _incr_at_ndx(kc, left, ndx);
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
-    b = (dna & KEYNT_STRAND);\
-    ndx = b ? dna : rc;\
+    b = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
+    ndx = b ? dna : rc;    /* strand. Excise it out since its always the same */\
     ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
 })
+
+#define _get_ndx(ndx, wx, dna, rc) ({\
+    ndx = _get_ndx_and_strand(ndx, wx, dna, rc);\
+    ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
+    dbg = ((ndx == dbgndx) || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx) ? dbg | 8 : dbg & ~8;\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx %lu", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
+});
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
     dna = __rdsq(direction, b, s, b2pos, dna, rc);\
@@ -112,9 +113,9 @@
     buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
     ++(buf ## _l)
 
-#define _verify_seq(b2pos, h, ks, msg, action, ...) \
+#define _verify_seq(b2pos, offs, ks, msg, action, ...) \
     if (kc->s) {\
-        uint64_t p = b2pos + h->s_s;\
+        uint64_t p = b2pos + offs;\
         uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;\
         if (b2 != sb2) {\
             WARN("assertion 'b2 != sb2' failed " msg, __VA_ARGS__);\
@@ -141,6 +142,12 @@ packed_struct Bnd {
     uint32_t s;   // position at which we jump.
     uint32_t l;   // length of jump or real position correction.
     uint32_t corr;
+};
+
+packed_struct running {
+    uint64_t infior;
+    int left, uqct;
+    unsigned ct;
 };
 
 packed_struct kct_ext {
