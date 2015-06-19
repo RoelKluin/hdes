@@ -74,17 +74,17 @@ decr_excise(kct_t const *const kc, const unsigned left)
     while(i--> left) {
 
         // current next_Nt pos and pending offsets are stored in walker.
-        ASSERT(wbuf[i] != ~0ul, return -EFAULT, "%u/%u", i, left);
-        dbg = wbuf[i] == dbgkctndx ?  dbg | 8 : dbg & ~8;
-        Walker* Next_nts = wlkr + wbuf[i];
-        ASSERT(Next_nts->tmp_count > 0, return -EFAULT);
+        uint64_t ndx = wbuf[i];
+        ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, left);
+        dbg = ndx == dbgkctndx ?  dbg | 8 : dbg & ~8;
+        Walker* Next_nts = wlkr + ndx;
+        ASSERT(Next_nts->count > 0, return -EFAULT);
 
         // get ts offset
         uint64_t* kct = kc->kct;
-        uint64_t nt = wbuf[i] != 0 ? kct[wbuf[i] - 1] : 0;
-        nt += Next_nts->count;
-        --Next_nts->tmp_count;
-        uint64_t offs = kct[wbuf[i]] - ++Next_nts->excise_ct;
+        uint64_t nt = ndx != 0 ? kct[ndx - 1] : 0;
+        nt += --Next_nts->count;
+        uint64_t offs = kct[ndx] - ++Next_nts->excise_ct;
 
         // excise out twobits, i.e. shift 2bits above current 2bit down.
         uint8_t* q = &kc->ts[nt >> 2];
@@ -126,9 +126,6 @@ static inline int update_wlkr(kct_t* kc, int left)
 {
     uint64_t ndx = kc->wbuf[left];
     ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%lx", left, kc->ext, ndx)
-    ASSERT(kc->wlkr[ndx].tmp_count > 0, return -EFAULT);
-    ++kc->wlkr[ndx].count;
-    --kc->wlkr[ndx].tmp_count;
     kc->wbuf[left] = ~0ul;
     return 0;
 }
@@ -163,15 +160,15 @@ static inline uint64_t eval_ndx(kct_t* kc, running *r, Bnd *inter,
     ndx = kc->kctndx[ndx] & INDEX_MASK;
 
     Walker* Next_nts = kc->wlkr + ndx;
-    unsigned add = Next_nts->count + Next_nts->tmp_count;
+    unsigned add = Next_nts->count;
 
+    EPQ(dbg > 6, "path ct:%u", r->ct);
     switch(r->ct) { //(ct == 1) | ((left > 0) << 1);
-case 0: ++Next_nts->count;
-        break;
 case 1: EPQ(dbg > 5, "1st unique at %u", b2pos);
         inter->s = b2pos;
         inter->at_dna = dna;
-        _extd_uq(kc, r->left, ndx);
+        r->left = kc->ext;
+        _incr_at_ndx(kc, r->left, ndx);
         break;
 case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
@@ -184,7 +181,7 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
 case 3: EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, r->infior >> INFIOR_SHFT);
         // A uniqs' inferior must be ge neighbouring uniqs' infior.
         wx ^= r->infior;
-        kc->kctndx[ndx] ^= wx;
+        kc->kctndx[ndx] ^= wx; // XXX: why no -ge test before infior replacement?
         ++r->uqct;
         r->left = decr_excise(kc, r->left);
         ASSERT(r->left >= 0, return ~0ul, "[%lu] left? %d", b2pos, r->left);
@@ -192,8 +189,10 @@ case 3: EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, r->inf
             // special case 4 is for initialization
 case 4:     r->infior = wx & R_INFIOR; // only set strand bit below
         }
-        _extd_uq(kc, r->left, ndx);
+        r->left = kc->ext;
+        _incr_at_ndx(kc, r->left, ndx);
     }
+    ++Next_nts->count;
     uint64_t offs = ndx ? kc->kct[ndx-1] : 0;
 
     // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
@@ -311,10 +310,6 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
         uqct += ret;
     }
 #ifdef DEBUG
-    for (unsigned t = 0; t != kc->kct_l; ++t) {
-        Walker* w = kc->wlkr + t;
-        ASSERT(w->tmp_count == 0u, return -EFAULT, "%u/%lu:%lu", t, kc->kct_l, w->tmp_count);
-    }
     if (dbg > 5)
         show_list(kc, h->bnd);
 #endif
@@ -334,10 +329,9 @@ ext_uq_iter(kct_t* kc)
     }
     EPR("extended %u unique ranges in iteration %u", uqct, iter++);
     //dbg = 7;
-    for (Walker *w = kc->wlkr; w != kc->wlkr + kc->kct_l; ++w) {
-        ASSERT(w->tmp_count == 0u, return -EFAULT, "%lu", w->tmp_count);
+    for (Walker *w = kc->wlkr; w != kc->wlkr + kc->kct_l; ++w)
         w->count = 0u;
-    }
+
     return uqct;
 }
 
@@ -349,7 +343,7 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
     size_t t = kc->kct_l;
     kc->wlkr = (Walker*)malloc(t * sizeof(Walker));
     ASSERT(kc->wlkr != NULL, return res);
-    while (t--) kc->wlkr[t] = {0u, 0u, 0u};
+    while (t--) kc->wlkr[t] = {0u, 0u};
 
     t = kc->ext;
     kc->wbuf = (uint64_t*)malloc(t * sizeof(uint64_t));

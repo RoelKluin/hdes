@@ -69,12 +69,7 @@
 
 #define _incr_at_ndx(kc, left, ndx)\
     ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1, kc->ext);\
-    kc->wbuf[left-1] = ndx;\
-    ++kc->wlkr[ndx].tmp_count;
-
-#define _extd_uq(kc, left, ndx)\
-    left = kc->ext;\
-    _incr_at_ndx(kc, left, ndx);
+    kc->wbuf[left-1] = ndx;
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
     b = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
@@ -159,7 +154,6 @@ packed_struct kct_ext {
 packed_struct Walker {
     uint32_t count;
     uint32_t excise_ct;
-    uint32_t tmp_count;
 };
 
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
