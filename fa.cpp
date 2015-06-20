@@ -145,15 +145,15 @@ static inline void merge(Bnd *dest, Bnd *next)
  * scope - keylength minus keywidth distance - triggers an region insertion or
  * update. Also retrieve for this index the offset stored in kctndx high bits.
  */
-static inline uint64_t eval_ndx(kct_t* kc, running *r, uint64_t ndx, uint64_t wx, unsigned ct)
+static inline uint64_t eval_ndx(kct_t* kc, running *r, uint64_t t, uint64_t wx, unsigned ct)
 {
 
     // store strand orientation and inferiority in wx
     wx <<= STRAND_SHFT - KEY_WIDTH;
-    wx |= kc->kctndx[ndx] & ~INDEX_MASK;
+    wx |= kc->kctndx[t] & ~INDEX_MASK;
 
     // get keycount index.
-    ndx = kc->kctndx[ndx] & INDEX_MASK;
+    t = kc->kctndx[t] & INDEX_MASK;
 
     EPQ(dbg > 6, "path ct:%u", ct);
     switch(ct) { //(ct == 1) | ((left > 0) << 1);
@@ -161,22 +161,22 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
              // unique keys. Strand bit included, but that shouldn't matter.
              wx ^= r->infior + INFERIORITY;
-             kc->kctndx[ndx] ^= wx;
+             kc->kctndx[t] ^= wx;
         }
-        _store_ndx(kc, r->left, ndx, ~0ul)
+        _store_ndx(kc, r->left, t, ~0ul)
         break;
 case 3: // A uniqs' inferior must be ge neighbouring uniqs' infior.
         wx ^= r->infior;
-        kc->kctndx[ndx] ^= wx; // XXX: no -ge test before infior replacement?
+        kc->kctndx[t] ^= wx; // XXX: no -ge test before infior replacement?
 
         if (r->infior <= wx) {
 case 4:     // special case 4 is for initialization TODO: merge with case 3.
             r->infior = wx & R_INFIOR; // only set strand bit below
         }
 case 1: r->left = kc->ext;
-        _store_ndx(kc, r->left, ndx, ~0ul);
+        _store_ndx(kc, r->left, t, ~0ul);
     }
-    return ndx ? kc->kct[ndx-1] : 0;
+    return t;
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
@@ -213,9 +213,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         }
         uint64_t t, ndx;
         _get_ndx(ndx, t, dna, rc);
-        // get offset to next Nt
         t = eval_ndx(kc, &r, ndx, t, ct);
         ASSERT(t != ~0ul, return -EFAULT);
+
+        // offset to next Nt
+        if (t) t = kc->kct[t-1];
         ndx = kc->kctndx[ndx] & INDEX_MASK;
 
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.

@@ -133,7 +133,6 @@ packed_struct Bnd {
 packed_struct running {
     uint64_t infior;
     int left;
-    unsigned ct;
 };
 
 packed_struct kct_ext {
