@@ -145,11 +145,8 @@ static inline void merge(Bnd *dest, Bnd *next)
  * scope - keylength minus keywidth distance - triggers an region insertion or
  * update. Also retrieve for this index the offset stored in kctndx high bits.
  */
-static inline uint64_t eval_ndx(kct_t* kc, running *r, Bnd *inter,
-        uint64_t dna, uint64_t rc, uint32_t b2pos)
+static inline uint64_t eval_ndx(kct_t* kc, running *r, uint64_t ndx, uint64_t wx, unsigned ct)
 {
-    uint64_t wx, ndx;
-    _get_ndx(ndx, wx, dna, rc);
 
     // store strand orientation and inferiority in wx
     wx <<= STRAND_SHFT - KEY_WIDTH;
@@ -158,14 +155,8 @@ static inline uint64_t eval_ndx(kct_t* kc, running *r, Bnd *inter,
     // get keycount index.
     ndx = kc->kctndx[ndx] & INDEX_MASK;
 
-    EPQ(dbg > 6, "path ct:%u", r->ct);
-    switch(r->ct) { //(ct == 1) | ((left > 0) << 1);
-case 1: EPQ(dbg > 5, "1st unique at %u", b2pos);
-        inter->s = b2pos;
-        inter->at_dna = dna;
-        r->left = kc->ext;
-        _store_ndx(kc, r->left, ndx, ~0ul);
-        break;
+    EPQ(dbg > 6, "path ct:%u", ct);
+    switch(ct) { //(ct == 1) | ((left > 0) << 1);
 case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
              // unique keys. Strand bit included, but that shouldn't matter.
@@ -174,29 +165,18 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
         }
         _store_ndx(kc, r->left, ndx, ~0ul)
         break;
-case 3: EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, r->infior >> INFIOR_SHFT);
-        // A uniqs' inferior must be ge neighbouring uniqs' infior.
+case 3: // A uniqs' inferior must be ge neighbouring uniqs' infior.
         wx ^= r->infior;
-        kc->kctndx[ndx] ^= wx; // XXX: why no -ge test before infior replacement?
-        ++r->uqct;
-        r->left = decr_excise(kc, r->left);
-        ASSERT(r->left >= 0, return ~0ul, "[%lu] left? %d", b2pos, r->left);
+        kc->kctndx[ndx] ^= wx; // XXX: no -ge test before infior replacement?
+
         if (r->infior <= wx) {
-            // special case 4 is for initialization
-case 4:     r->infior = wx & R_INFIOR; // only set strand bit below
+case 4:     // special case 4 is for initialization TODO: merge with case 3.
+            r->infior = wx & R_INFIOR; // only set strand bit below
         }
-        r->left = kc->ext;
+case 1: r->left = kc->ext;
         _store_ndx(kc, r->left, ndx, ~0ul);
     }
-    uint64_t offs = ndx ? kc->kct[ndx-1] : 0;
-
-    // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
-    Walker* Next_nts = kc->wlkr + ndx;
-    r->ct = (kc->kct[ndx] - offs - Next_nts->excise_ct);
-    ASSERT(r->ct != 0, return ~0ul);
-    r->ct = r->ct == 1ul; // if only one, the key has become uniq
-
-    return offs + Next_nts->count++; // return offset to next_nt.
+    return ndx ? kc->kct[ndx-1] : 0;
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
@@ -216,8 +196,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint32_t b2pos = last->s + last->l;
     uint64_t dna = last->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
+    unsigned uqct = 0, ct = 4; // treat last boundary as a first unique
     running r = {0};
-    r.ct = 4;                   // treat last boundary as a first unique
 
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
@@ -226,25 +206,42 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
     //dbg = 7 * !strncmp(hdr, "GL000207.1", strlen(hdr));
     for(;b2pos < next->s;++b2pos) { // until next event
+        if (ct == 1) {
+            EPQ(dbg > 5, "1st unique at %u", b2pos);
+            inter->s = b2pos;
+            inter->at_dna = dna;
+        }
+        uint64_t t, ndx;
+        _get_ndx(ndx, t, dna, rc);
         // get offset to next Nt
-        uint64_t offs = eval_ndx(kc, &r, inter, dna, rc, b2pos);
-        ASSERT(offs != ~0ul, return -EFAULT);
+        t = eval_ndx(kc, &r, ndx, t, ct);
+        ASSERT(t != ~0ul, return -EFAULT);
+        ndx = kc->kctndx[ndx] & INDEX_MASK;
+
+        // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
+        Walker* Next_nts = kc->wlkr + ndx;
+        ct = (kc->kct[ndx] - t - Next_nts->excise_ct);
+        ASSERT(ct != 0, return ~0ul);
+        ct = ct == 1ul; // if only one, the key has become uniq
+
+        t += Next_nts->count++; // offset to next_nt.
+
 
         EPQ(dbg > 6, "offs:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)):",
-            offs, 4 - (offs & 3), r.ct, offs >> 2, kc->ts[offs >> 2]);
-        print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 6);
+            t, 4 - (t & 3), ct, t >> 2, kc->ts[t >> 2]);
+        print_2dna(kc->ts[t >> 2], kc->ts[t >> 2] >> ((t & 3) << 1), dbg > 6);
 
-        uint8_t next_b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
+        t = (kc->ts[t >> 2] >> ((t & 3) << 1)) & 3;
         if (kc->s) {
             uint64_t p = b2pos + h->s_s;
-            uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
-            if (next_b2 != sb2) {
+            p = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
+            if (t != p) {
                 WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, kctndx 0x%lx",
-                    b2pos,b6(sb2<<1), b6(next_b2<<1), kc->kctndx[_get_ndx_and_strand(offs, offs, dna, rc)]);
+                    b2pos,b6(p<<1), b6(t<<1), ndx);
                 return print_2dna(dna, rc);
             }
         }
-        dna = _seq_next(next_b2, dna, rc);
+        dna = _seq_next(t, dna, rc);
 
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
@@ -256,7 +253,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                     inter->dna = dna;
                     inter->l = b2pos - inter->s;
                 }
-                r.ct |= 2;
+                if (ct) {
+                    ++uqct;
+                    r.left = decr_excise(kc, r.left);
+                    ASSERT(r.left >= 0, return ~0ul, "[%lu] left? %d", b2pos, r.left);
+                }
+                ct |= 2;
             } else { //buf just became full, without extensions.
                 EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
                 if (inter->l && inter != last) {
@@ -293,7 +295,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         next->corr += inter->corr;
  
     }
-    return r.uqct;
+    return uqct;
 }
 
 static int
