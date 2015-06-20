@@ -70,12 +70,11 @@ decr_excise(kct_t const *const kc, const unsigned left)
 {
     Walker* wlkr = kc->wlkr;
     uint64_t* wbuf = kc->wbuf;
-    unsigned i = kc->ext;
-    while(i--> left) {
+    for(unsigned i = kc->ext; i --> left ;) {
 
         // current next_Nt pos and pending offsets are stored in walker.
         uint64_t ndx = wbuf[i];
-        ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, left);
+        ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgkctndx ?  dbg | 8 : dbg & ~8;
         Walker* Next_nts = wlkr + ndx;
         ASSERT(Next_nts->count > 0, return -EFAULT);
@@ -116,7 +115,7 @@ decr_excise(kct_t const *const kc, const unsigned left)
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
         EPQ0(dbg > 5, "after append:");print_dna(*q, dbg > 5);
     }
-    return left;
+    return 0;
 }
 
 static unsigned iter = 0;
@@ -159,9 +158,6 @@ static inline uint64_t eval_ndx(kct_t* kc, running *r, Bnd *inter,
     // get keycount index.
     ndx = kc->kctndx[ndx] & INDEX_MASK;
 
-    Walker* Next_nts = kc->wlkr + ndx;
-    unsigned add = Next_nts->count;
-
     EPQ(dbg > 6, "path ct:%u", r->ct);
     switch(r->ct) { //(ct == 1) | ((left > 0) << 1);
 case 1: EPQ(dbg > 5, "1st unique at %u", b2pos);
@@ -192,15 +188,15 @@ case 4:     r->infior = wx & R_INFIOR; // only set strand bit below
         r->left = kc->ext;
         _incr_at_ndx(kc, r->left, ndx);
     }
-    ++Next_nts->count;
     uint64_t offs = ndx ? kc->kct[ndx-1] : 0;
 
     // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
+    Walker* Next_nts = kc->wlkr + ndx;
     r->ct = (kc->kct[ndx] - offs - Next_nts->excise_ct);
     ASSERT(r->ct != 0, return ~0ul);
     r->ct = r->ct == 1ul; // if only one, the key has become uniq
 
-    return offs + add; // return offset to next_nt.
+    return offs + Next_nts->count++; // return offset to next_nt.
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
