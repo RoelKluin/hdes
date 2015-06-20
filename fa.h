@@ -67,8 +67,8 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _store_ndx(kc, left, ndx, err)\
-    ASSERT(kc->wbuf[left-1] == ~0ul, return err, "[%u/%u]", left-1, kc->ext);\
+#define _store_ndx(kc, left, ndx)\
+    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1, kc->ext);\
     kc->wbuf[left-1] = ndx;
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
@@ -82,6 +82,12 @@
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
     dbg = ((ndx == dbgndx) || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx) ? dbg | 8 : dbg & ~8;\
     EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx %lu", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
+});
+
+#define _kctndx_and_infior(ndx, wx, dna, rc) ({\
+    _get_ndx(ndx, wx, dna, rc);\
+    wx <<= STRAND_SHFT - KEY_WIDTH;/*store orient and infior in wx*/\
+    wx | (kc->kctndx[ndx] & ~INDEX_MASK);\
 });
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\

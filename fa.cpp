@@ -73,7 +73,7 @@ decr_excise(kct_t const *const kc, const unsigned left)
     for(unsigned i = kc->ext; i --> left ;) {
 
         // current next_Nt pos and pending offsets are stored in walker.
-        uint64_t ndx = wbuf[i];
+        uint64_t ndx = wbuf[i] & INDEX_MASK;
         ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgkctndx ?  dbg | 8 : dbg & ~8;
         Walker* Next_nts = wlkr + ndx;
@@ -123,7 +123,7 @@ static unsigned iter = 0;
 // if we cannot extend a range, update temporarily stored offsets.
 static inline int update_wlkr(kct_t* kc, int left)
 {
-    uint64_t ndx = kc->wbuf[left];
+    uint64_t ndx = kc->wbuf[left] & INDEX_MASK;
     ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%lx", left, kc->ext, ndx)
     kc->wbuf[left] = ~0ul;
     return 0;
@@ -145,38 +145,31 @@ static inline void merge(Bnd *dest, Bnd *next)
  * scope - keylength minus keywidth distance - triggers an region insertion or
  * update. Also retrieve for this index the offset stored in kctndx high bits.
  */
-static inline uint64_t eval_ndx(kct_t* kc, running *r, uint64_t t, uint64_t wx, unsigned ct)
+static inline int eval_ndx(kct_t* kc, running *r, uint64_t *kctndx,
+        uint64_t wx, unsigned ct)
 {
-
-    // store strand orientation and inferiority in wx
-    wx <<= STRAND_SHFT - KEY_WIDTH;
-    wx |= kc->kctndx[t] & ~INDEX_MASK;
-
-    // get keycount index.
-    t = kc->kctndx[t] & INDEX_MASK;
-
     EPQ(dbg > 6, "path ct:%u", ct);
     switch(ct) { //(ct == 1) | ((left > 0) << 1);
 case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
              // unique keys. Strand bit included, but that shouldn't matter.
              wx ^= r->infior + INFERIORITY;
-             kc->kctndx[t] ^= wx;
+             *kctndx ^= wx;
         }
-        _store_ndx(kc, r->left, t, ~0ul)
+        _store_ndx(kc, r->left, *kctndx);
         break;
 case 3: // A uniqs' inferior must be ge neighbouring uniqs' infior.
         wx ^= r->infior;
-        kc->kctndx[t] ^= wx; // XXX: no -ge test before infior replacement?
+        *kctndx ^= wx; // XXX: no -ge test before infior replacement?
 
         if (r->infior <= wx) {
 case 4:     // special case 4 is for initialization TODO: merge with case 3.
             r->infior = wx & R_INFIOR; // only set strand bit below
         }
 case 1: r->left = kc->ext;
-        _store_ndx(kc, r->left, t, ~0ul);
+        _store_ndx(kc, r->left, *kctndx);
     }
-    return t;
+    return *kctndx;
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
@@ -211,35 +204,33 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             inter->s = b2pos;
             inter->at_dna = dna;
         }
-        uint64_t t, ndx;
-        _get_ndx(ndx, t, dna, rc);
-        t = eval_ndx(kc, &r, ndx, t, ct);
-        ASSERT(t != ~0ul, return -EFAULT);
+        uint64_t ndx, t = _kctndx_and_infior(ndx, t, dna, rc);
 
-        // offset to next Nt
-        if (t) t = kc->kct[t-1];
-        ndx = kc->kctndx[ndx] & INDEX_MASK;
+        // get offset to first of keys' next Nt
+        int kct_i = eval_ndx(kc, &r, kc->kctndx + ndx, t, ct);
+        ASSERT(kct_i >= 0, return -EFAULT);
+        t = kct_i ? kc->kct[kct_i-1] : 0;
 
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
-        Walker* Next_nts = kc->wlkr + ndx;
-        ct = (kc->kct[ndx] - t - Next_nts->excise_ct);
+        Walker* Next_nts = kc->wlkr + kct_i;
+        ct = kc->kct[kct_i] - (t - Next_nts->excise_ct);
         ASSERT(ct != 0, return ~0ul);
         ct = ct == 1ul; // if only one, the key has become uniq
 
-        t += Next_nts->count++; // offset to next_nt.
+        t += Next_nts->count++; // offset to current next Nt.
 
 
         EPQ(dbg > 6, "offs:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)):",
-            t, 4 - (t & 3), ct, t >> 2, kc->ts[t >> 2]);
-        print_2dna(kc->ts[t >> 2], kc->ts[t >> 2] >> ((t & 3) << 1), dbg > 6);
+            t, 4 - (t&3), ct, t >> 2, kc->ts[t>>2]);
+        print_2dna(kc->ts[t>>2], kc->ts[t>>2] >> ((t&3) << 1), dbg > 6);
 
-        t = (kc->ts[t >> 2] >> ((t & 3) << 1)) & 3;
+        t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3;
         if (kc->s) {
             uint64_t p = b2pos + h->s_s;
-            p = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
+            p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
             if (t != p) {
-                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, kctndx 0x%lx",
-                    b2pos,b6(p<<1), b6(t<<1), ndx);
+                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, kctndx 0x%x",
+                    b2pos,b6(p<<1), b6(t<<1), kct_i);
                 return print_2dna(dna, rc);
             }
         }
