@@ -164,7 +164,7 @@ case 1: EPQ(dbg > 5, "1st unique at %u", b2pos);
         inter->s = b2pos;
         inter->at_dna = dna;
         r->left = kc->ext;
-        _incr_at_ndx(kc, r->left, ndx);
+        _store_ndx(kc, r->left, ndx, ~0ul);
         break;
 case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
@@ -172,7 +172,7 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
              wx ^= r->infior + INFERIORITY;
              kc->kctndx[ndx] ^= wx;
         }
-        _incr_at_ndx(kc, r->left, ndx)
+        _store_ndx(kc, r->left, ndx, ~0ul)
         break;
 case 3: EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, r->infior >> INFIOR_SHFT);
         // A uniqs' inferior must be ge neighbouring uniqs' infior.
@@ -186,7 +186,7 @@ case 3: EPQ(dbg > 4, "2nd+ unique, extend range at %u, infior %u", b2pos, r->inf
 case 4:     r->infior = wx & R_INFIOR; // only set strand bit below
         }
         r->left = kc->ext;
-        _incr_at_ndx(kc, r->left, ndx);
+        _store_ndx(kc, r->left, ndx, ~0ul);
     }
     uint64_t offs = ndx ? kc->kct[ndx-1] : 0;
 
@@ -234,12 +234,17 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             offs, 4 - (offs & 3), r.ct, offs >> 2, kc->ts[offs >> 2]);
         print_2dna(kc->ts[offs >> 2], kc->ts[offs >> 2] >> ((offs & 3) << 1), dbg > 6);
 
-        uint8_t b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
-        _verify_seq(b2pos, h->s_s, kc, "[%u]: sb2:%c, got %c, kctndx 0x%lx",
-                return print_2dna(dna, rc), b2pos,b6(sb2<<1), b6(b2<<1),
-                kc->kctndx[_get_ndx_and_strand(offs, offs, dna, rc)])
-
-        dna = _seq_next(b2, dna, rc);
+        uint8_t next_b2 = (kc->ts[offs >> 2] >> ((offs & 3) << 1)) & 3;
+        if (kc->s) {
+            uint64_t p = b2pos + h->s_s;
+            uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;
+            if (next_b2 != sb2) {
+                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, kctndx 0x%lx",
+                    b2pos,b6(sb2<<1), b6(next_b2<<1), kc->kctndx[_get_ndx_and_strand(offs, offs, dna, rc)]);
+                return print_2dna(dna, rc);
+            }
+        }
+        dna = _seq_next(next_b2, dna, rc);
 
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 

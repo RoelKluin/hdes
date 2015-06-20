@@ -67,8 +67,8 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _incr_at_ndx(kc, left, ndx)\
-    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1, kc->ext);\
+#define _store_ndx(kc, left, ndx, err)\
+    ASSERT(kc->wbuf[left-1] == ~0ul, return err, "[%u/%u]", left-1, kc->ext);\
     kc->wbuf[left-1] = ndx;
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
@@ -108,15 +108,6 @@
     buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
     ++(buf ## _l)
 
-#define _verify_seq(b2pos, offs, ks, msg, action, ...) \
-    if (kc->s) {\
-        uint64_t p = b2pos + offs;\
-        uint8_t sb2 = (kc->s[p>>2] >> ((p & 3) << 1)) & 3;\
-        if (b2 != sb2) {\
-            WARN("assertion 'b2 != sb2' failed " msg, __VA_ARGS__);\
-            action;\
-        }\
-    }
 
 KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
