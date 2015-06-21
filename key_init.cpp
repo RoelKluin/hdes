@@ -122,17 +122,21 @@ fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
             } while(c != -1);
             // TODO: handle single or a few N's differently.
 
-            EPR("=>\tN-stretch at Nt %lu (%lu)", kc->s_l - h->s_s + corr, t);
+            EPR("=>\tN-stretch at Nt %lu (%lu/%lu)", kc->s_l - h->s_s + corr, t, corr);
             corr += t;
-            kc->bd[kc->bd_l].corr = corr;
             if (c == '>' || c == -1) { // skip N's at end.
+                corr -= 2 * KEY_WIDTH;
+                kc->bd[kc->bd_l].corr = corr;
+
                 EPR("processed %lu Nts for %s", kc->s_l - h->s_s, kc->id + h->part[0]);
                 // non-fatal for Y
-                EPQ(kc->s_l - h->s_s + corr != h->end_pos, "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%lu) == %u",
-                        kc->s_l - h->s_s, t, h->end_pos);
+                EPQ(kc->s_l - h->s_s + corr != h->end_pos,
+                        "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%lu) == %u",
+                        kc->s_l - h->s_s, corr, h->end_pos);
                 t = 0;
                 continue;
             }
+            kc->bd[kc->bd_l].corr = corr;
         } else {
             // Append the index of the next boundary to the last header.
             // The at_dna is of the last chromo. XXX if at_dna is removed
@@ -264,7 +268,8 @@ case 'A': case 'a':
         if (c == '>' || c == -1) {
             EPR("processed %lu Nts for %s", kc->s_l - h->s_s + corr, kc->id + h->part[0]);
             // non-fatal for Y
-            EPQ(kc->s_l - h->s_s + corr != h->end_pos, "pos != h->end_pos: %lu == %u",
+            EPQ(kc->s_l - h->s_s + corr != h->end_pos,
+                    "pos != h->end_pos: %lu == %u",
                     kc->s_l - h->s_s + corr, h->end_pos);
         }
     }
