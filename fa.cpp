@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
+#include <math.h>
 //#include <glib.h>
 //#include <pcre.h>
 #include "fa.h"
@@ -223,7 +224,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
         Walker* Next_nts = kc->wlkr + kct_i;
         ct = kc->kct[kct_i] - t - Next_nts->excise_ct;
-        ASSERT(ct != 0, return ~0ul);
+        ASSERT(ct != 0, return -EFAULT);
         ct = ct == 1ul; // if only one, the key has become uniq
 
         t += Next_nts->count++; // offset to current next Nt.
@@ -253,15 +254,16 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                 if (ct) {
                     ++uqct;
                     r.left = decr_excise(kc, r.left);
-                    ASSERT(r.left >= 0, return ~0ul, "[%u] left? %d", b2pos, r.left);
+                    ASSERT(r.left >= 0, return -EFAULT, "[%u] left? %d", b2pos, r.left);
                     dbg |= r.left;
                     EPQ (dbg > 7, "[%u]:dbg excision", b2pos);
                     r.left = 0;
                 }
                 ct |= 2;
             } else { //buf just became full, without extensions.
-                EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
+                EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
                 if (inter->l && inter != last) {
+                    h->covered += inter->l;
                     inter->corr = last->corr;
                     _buf_grow0(kc->bd, 2ul);
                     h->bnd.insert(kc->bdit, kc->bd_l++);
@@ -279,12 +281,15 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         }
         dna = _seq_next(t, dna, rc);
     }
+    h->covered += last->l;
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
     if (r.left || ct == 3) {
         EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
-        if (r.left)
+        if (r.left) {
+            ++uqct;
             decr_excise(kc, r.left);
+        }
 
         inter->dna = dna;
         inter->l = b2pos - inter->s;
@@ -292,6 +297,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             EPQ(dbg > 4, "Removing boundary after loop at %u", b2pos);
             EPQ(dbg > 6, "last:%u +%u &%u, inter:%u +%u &%u next:%u +%u &%u", last->s, last->l, last->corr, inter->s, inter->l, inter->corr, next->s, next->l, next->corr);
             // TODO: return *kc->bdit to a pool of to be inserted boundaries
+            h->covered -= last->l;
             last->l += next->l;
             last->dna = next->dna;
             last->corr = next->corr;
@@ -317,15 +323,17 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 }
 
 static int
-ext_uq_hdr(kct_t* kc, Hdr* h)
+ext_uq_hdr(kct_t* kc, Hdr* h, uint64_t* covered, uint64_t* totNts)
 {
     int uqct = 0;
-    EPR("Processing %s (%lu)", kc->id + h->part[0],
-            kc->bd[h->bnd.back()].s + kc->bd[h->bnd.back()].l);
+    uint32_t lastx = h->bnd.back();
+    lastx = kc->bd[lastx].s + kc->bd[lastx].l;
+    EPR("Processing %s (%u)", kc->id + h->part[0], lastx);
+    totNts += lastx;
     kc->bdit = h->bnd.begin();
-    uint32_t corr = kc->bd[*kc->bdit].corr;
+    h->covered = 0u;
 
-    for (uint32_t lastx = *kc->bdit; ++kc->bdit != h->bnd.end(); lastx = *kc->bdit) {
+    for (lastx = *kc->bdit; ++kc->bdit != h->bnd.end(); lastx = *kc->bdit) {
         int ret = ext_uq_bnd(kc, h, lastx);
         if (ret < 0) return ret;
         uqct += ret;
@@ -334,6 +342,9 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
     if (dbg > 4)
         show_list(kc, h->bnd);
 #endif
+    EPQ(dbg > 2, "%s: extended %u unique ranges, (%u/%u => %.2f%% covered)",
+            kc->id + h->part[0], uqct, h->covered, h->end_pos,
+            h->end_pos ? 100.0f * h->covered / h->end_pos : nanf("NAN"));
 
     return uqct;
 }
@@ -342,13 +353,19 @@ static int
 ext_uq_iter(kct_t* kc)
 {
     int uqct = 0;
+    uint64_t covered = 0ul;
+    uint64_t totNts = 0ul;
     for (std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
-        int ret = ext_uq_hdr(kc, *h);
+        int ret = ext_uq_hdr(kc, *h, &covered, &totNts);
+        covered += (*h)->covered;
+        totNts += (*h)->end_pos;
         if (ret < 0) return ret;
         uqct += ret;
     }
-    EPR("extended %u unique ranges in iteration %u, using %u boundaries", uqct, iter++, kc->bd_l);
+    EPQ(dbg > 0, "extended %u unique ranges in iteration %u, using %lu boundaries\n"
+            "\t%lu/%lu => %.2f%% covered", uqct, iter++, kc->bd_l, covered, totNts,
+            totNts ? 100.0f * covered / totNts : nanf("NAN"));
     //dbg = 7;
     for (Walker *w = kc->wlkr; w != kc->wlkr + kc->kct_l; ++w)
         w->count = 0u;
