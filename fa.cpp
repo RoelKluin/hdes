@@ -26,7 +26,7 @@ show_list(kct_t* kc, std::list<uint32_t> &bnd)
     unsigned i = 0;
     for (it = bnd.begin(); it != bnd.end(); ++it) {
         Bnd* bd = &kc->bd[*it];
-        EPR0("[%u (%u)]:\t%u\t+%u\t", i++, *it, bd->s, bd->l);
+        EPR0("[%u (%u)]:\t%u\t+%u\t(+%u)\t", i++, *it, bd->s, bd->l, bd->corr);
         print_2dna(bd->at_dna, bd->dna);
     }
 }
@@ -279,42 +279,34 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         }
         dna = _seq_next(t, dna, rc);
     }
-    EPQ(dbg > 3, "Last inter: s:%u, l:%u", inter->s, inter->l);
+    EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
     if (r.left || ct == 3) {
+        EPQ (dbg > 4, "Post loop boundary handling at %lu", b2pos);
         if (r.left)
             decr_excise(kc, r.left);
 
         inter->dna = dna;
         inter->l = b2pos - inter->s;
-        if (inter->l && inter != last) {
-            EPQ (dbg > 2, "Post loop excision occurred at %lu", b2pos);//XXX
+        if (last->s + last->l == next->s) {
+            EPQ (dbg > 2, "Removing boundary after loop at %lu", b2pos);
+            kc->bdit = h->bnd.erase(kc->bdit);
+            --kc->bdit;
+        } else if (inter != last) {
             inter->corr = last->corr;
-            _buf_grow0(kc->bd, 2ul);
-            h->bnd.insert(kc->bdit, kc->bd_l++);
-            last = kc->bd + lastx;
-            next = kc->bd + *kc->bdit;
+            if (inter->s + inter->l != next->s) {
+                EPQ (dbg > 3, "Boundary insertion after loop at %lu", b2pos);
+                _buf_grow0(kc->bd, 2ul);
+                h->bnd.insert(kc->bdit, kc->bd_l++);
+            } else {
+                EPQ (dbg > 2, "Next boundary joined after loop at %lu", b2pos);
+                next->at_dna = inter->at_dna;
+                next->l += next->s - inter->s;
+                next->s = inter->s;
+                next->corr += inter->corr;
+            }
         }
     }
-    /*if (kc->wbuf[kc->ext-1] != ~0ul) {
-        EPQ(dbg > 3, "[%u]\t%u - %u...\t", kc->bd_l, inter->s, next->s + next->l);
-        print_2dna(last->dna, inter->at_dna, dbg > 1);
-        ASSERT(inter != last, return -EFAULT, "TODO: remove boundary");
-
-        decr_excise(kc, r.left);
-        kc->wbuf[kc->ext-1] = ~0ul;
-
-        ASSERT(r.left >= 0, return -EFAULT, "[%lu] left? %d", b2pos, r.left);
-        EPQ (r.left > 7, "Post loop excision occurred at %lu", b2pos);
-        // if last and next have now become adjoining, merge
-        EPQ(dbg > 3, "joining %u(-%u) til %u\t", inter->s,
-            inter->s + inter->l, next->s + next->l);
-        next->at_dna = inter->at_dna;
-        next->l += next->s - inter->s;
-        next->s = inter->s;
-        next->corr += inter->corr;
- 
-    }*/
     return uqct;
 }
 
