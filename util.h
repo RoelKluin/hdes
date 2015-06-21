@@ -17,8 +17,8 @@
 
 static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static const unsigned long dbgoffs = ~0ul;//10892664; //~0ul;
-static const unsigned long dbgkctndx = 0x48f0f;//~0ul; //1099511627775; //0x2028;
-static int dbg = 4;
+static const unsigned long dbgkctndx = ~0ul; //1099511627775; //0x2028;
+static int dbg = 3;
 
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))

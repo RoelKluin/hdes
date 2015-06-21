@@ -146,7 +146,7 @@ static inline void merge(Bnd *dest, Bnd *next)
 }
 
 /*
- * Update strand and next_nt offset, if in scope of an uniq key - keylength minus
+ * Update strand and next_nt offset, when in scope of an uniq key - keylength minus
  * keywidth distance, ct==2 - keep this keys' inferiority above that infior.
  * A first uniq marks a potential start of a region, a 2nd or later uniq, within
  * scope - keylength minus keywidth distance - triggers an region insertion or
@@ -199,12 +199,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     unsigned uqct = 0, ct = 4; // treat last boundary as a first unique
     running r = {0};
 
+    if (dbg > 5) show_list(kc, h->bnd);
+    //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
-    if (dbg > 5) show_list(kc, h->bnd);
 
-    dbg = 5 * !strncmp(hdr, "MT", strlen(hdr));
     for(;b2pos < next->s;++b2pos) { // until next event
         EPQ(dbg > 6, "next path ct:%u", ct);
         if (ct == 1) {
@@ -222,7 +222,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
         Walker* Next_nts = kc->wlkr + kct_i;
-        ct = kc->kct[kct_i] - (t - Next_nts->excise_ct);
+        ct = kc->kct[kct_i] - t - Next_nts->excise_ct;
         ASSERT(ct != 0, return ~0ul);
         ct = ct == 1ul; // if only one, the key has become uniq
 
@@ -253,9 +253,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                 if (ct) {
                     ++uqct;
                     r.left = decr_excise(kc, r.left);
-                    ASSERT(r.left >= 0, return ~0ul, "[%lu] left? %d", b2pos, r.left);
+                    ASSERT(r.left >= 0, return ~0ul, "[%u] left? %d", b2pos, r.left);
                     dbg |= r.left;
-                    EPQ (dbg > 7, "[%lu]:dbg excision", b2pos);
+                    EPQ (dbg > 7, "[%u]:dbg excision", b2pos);
                     r.left = 0;
                 }
                 ct |= 2;
@@ -282,24 +282,30 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
     if (r.left || ct == 3) {
-        EPQ (dbg > 4, "Post loop boundary handling at %lu", b2pos);
+        EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
         if (r.left)
             decr_excise(kc, r.left);
 
         inter->dna = dna;
         inter->l = b2pos - inter->s;
         if (last->s + last->l == next->s) {
-            EPQ (dbg > 2, "Removing boundary after loop at %lu", b2pos);
+            EPQ(dbg > 4, "Removing boundary after loop at %u", b2pos);
+            EPQ(dbg > 6, "last:%u +%u &%u, inter:%u +%u &%u next:%u +%u &%u", last->s, last->l, last->corr, inter->s, inter->l, inter->corr, next->s, next->l, next->corr);
+            // TODO: return *kc->bdit to a pool of to be inserted boundaries
+            last->l += next->l;
+            last->dna = next->dna;
+            last->corr = next->corr;
             kc->bdit = h->bnd.erase(kc->bdit);
-            --kc->bdit;
+            next = kc->bd + *--kc->bdit;
+            EPQ(dbg > 5, "next became:%u +%u &%u", next->s, next->l, next->corr);
         } else if (inter != last) {
             inter->corr = last->corr;
             if (inter->s + inter->l != next->s) {
-                EPQ (dbg > 3, "Boundary insertion after loop at %lu", b2pos);
+                EPQ (dbg > 5, "Boundary insertion after loop at %u", b2pos);
                 _buf_grow0(kc->bd, 2ul);
                 h->bnd.insert(kc->bdit, kc->bd_l++);
             } else {
-                EPQ (dbg > 2, "Next boundary joined after loop at %lu", b2pos);
+                EPQ (dbg > 4, "Next boundary joined after loop at %u", b2pos);
                 next->at_dna = inter->at_dna;
                 next->l += next->s - inter->s;
                 next->s = inter->s;
@@ -342,7 +348,7 @@ ext_uq_iter(kct_t* kc)
         if (ret < 0) return ret;
         uqct += ret;
     }
-    EPR("extended %u unique ranges in iteration %u", uqct, iter++);
+    EPR("extended %u unique ranges in iteration %u, using %u boundaries", uqct, iter++, kc->bd_l);
     //dbg = 7;
     for (Walker *w = kc->wlkr; w != kc->wlkr + kc->kct_l; ++w)
         w->count = 0u;
