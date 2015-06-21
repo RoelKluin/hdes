@@ -66,16 +66,18 @@ free_kc(kct_t* kc)
 
 //FIXME also keep infior above a uniq keys' infior after this key.
 static int
-decr_excise(kct_t const *const kc, const unsigned left)
+decr_excise(kct_t const *const kc, const int left)
 {
     Walker* wlkr = kc->wlkr;
     uint64_t* wbuf = kc->wbuf;
-    for(unsigned i = kc->ext; i --> left ;) {
+    unsigned keep_dbg = 0;
+    for(int i = kc->ext; i --> left ;) {
 
         // current next_Nt pos and pending offsets are stored in walker.
         uint64_t ndx = wbuf[i] & INDEX_MASK;
         ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgkctndx ?  dbg | 8 : dbg & ~8;
+        keep_dbg |= dbg;
         Walker* Next_nts = wlkr + ndx;
         ASSERT(Next_nts->count > 0, return -EFAULT);
 
@@ -115,7 +117,8 @@ decr_excise(kct_t const *const kc, const unsigned left)
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
         EPQ0(dbg > 5, "after append:");print_dna(*q, dbg > 5);
     }
-    return 0;
+    //if(left != kc->ext) wbuf[left] = ~0ul;
+    return keep_dbg;
 }
 
 static unsigned iter = 0;
@@ -124,6 +127,10 @@ static unsigned iter = 0;
 static inline int update_wlkr(kct_t* kc, int left)
 {
     uint64_t ndx = kc->wbuf[left] & INDEX_MASK;
+    if (ndx == dbgkctndx) {
+        EPR("-- cleared dbgkctndx 0x%lx --", dbgkctndx);
+        dbg |= 8;
+    }
     ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%lx", left, kc->ext, ndx)
     kc->wbuf[left] = ~0ul;
     return 0;
@@ -195,20 +202,22 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
-    if (dbg > 6) show_list(kc, h->bnd);
+    if (dbg > 5) show_list(kc, h->bnd);
 
-    //dbg = 7 * !strncmp(hdr, "GL000207.1", strlen(hdr));
+    dbg = 5 * !strncmp(hdr, "MT", strlen(hdr));
     for(;b2pos < next->s;++b2pos) { // until next event
+        EPQ(dbg > 6, "next path ct:%u", ct);
         if (ct == 1) {
             EPQ(dbg > 5, "1st unique at %u", b2pos);
             inter->s = b2pos;
             inter->at_dna = dna;
         }
         uint64_t ndx, t = _kctndx_and_infior(ndx, t, dna, rc);
+        EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
         // get offset to first of keys' next Nt
         int kct_i = eval_ndx(kc, &r, kc->kctndx + ndx, t, ct);
-        ASSERT(kct_i >= 0, return -EFAULT);
+        ASSERT(kct_i >= 0, return -EFAULT, "(%s:%u)", hdr, b2pos);
         t = kct_i ? kc->kct[kct_i-1] : 0;
 
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
@@ -218,7 +227,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ct = ct == 1ul; // if only one, the key has become uniq
 
         t += Next_nts->count++; // offset to current next Nt.
-
 
         EPQ(dbg > 6, "offs:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)):",
             t, 4 - (t&3), ct, t >> 2, kc->ts[t>>2]);
@@ -234,10 +242,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                 return print_2dna(dna, rc);
             }
         }
-        dna = _seq_next(t, dna, rc);
-
-        EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
-
         if (r.left) { // within uniq range: keep filling buffer
             if (--r.left) {
                 if (r.left == kc->ext - 1) {
@@ -250,6 +254,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                     ++uqct;
                     r.left = decr_excise(kc, r.left);
                     ASSERT(r.left >= 0, return ~0ul, "[%lu] left? %d", b2pos, r.left);
+                    dbg |= r.left;
+                    EPQ (dbg > 7, "[%lu]:dbg excision", b2pos);
+                    r.left = 0;
                 }
                 ct |= 2;
             } else { //buf just became full, without extensions.
@@ -261,24 +268,49 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                     last = kc->bd + lastx;
                     next = kc->bd + *kc->bdit;
                 }
-                inter = kc->bd + kc->bd_l; // no longer last at least
-                inter->l = 0;
-                r.infior = 0;
-
                 for (unsigned i = kc->ext; i--> 0 ;) {
                     if (update_wlkr(kc, i) < 0)
                         return -EFAULT;
                 }
+                inter = kc->bd + kc->bd_l; // no longer last at least
+                inter->l = inter->s = 0;
+                r.infior = 0;
+            }
+        }
+        dna = _seq_next(t, dna, rc);
+    }
+    EPQ(dbg > 3, "Last inter: s:%u, l:%u", inter->s, inter->l);
+    ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
+    if (r.left || ct == 3) {
+        if (ct == 3) {
+            inter->dna = dna;
+            inter->l = b2pos - inter->s;
+        }
+        if (inter->l && inter != last) {
+            EPQ (dbg > 2, "Post loop excision occurred at %lu", b2pos);//XXX
+            inter->corr = last->corr;
+            _buf_grow0(kc->bd, 2ul);
+            h->bnd.insert(kc->bdit, kc->bd_l++);
+            last = kc->bd + lastx;
+            next = kc->bd + *kc->bdit;
+        }
+        if (ct != 3) {
+            for (unsigned i = kc->ext; i--> r.left;) {
+                if (update_wlkr(kc, i) < 0)
+                    return -EFAULT;
             }
         }
     }
-    ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
-    if (r.left) {
+    /*if (kc->wbuf[kc->ext-1] != ~0ul) {
         EPQ(dbg > 3, "[%u]\t%u - %u...\t", kc->bd_l, inter->s, next->s + next->l);
         print_2dna(last->dna, inter->at_dna, dbg > 1);
+        ASSERT(inter != last, return -EFAULT, "TODO: remove boundary");
 
-        r.left = decr_excise(kc, r.left);
+        decr_excise(kc, r.left);
+        kc->wbuf[kc->ext-1] = ~0ul;
+
         ASSERT(r.left >= 0, return -EFAULT, "[%lu] left? %d", b2pos, r.left);
+        EPQ (r.left > 7, "Post loop excision occurred at %lu", b2pos);
         // if last and next have now become adjoining, merge
         EPQ(dbg > 3, "joining %u(-%u) til %u\t", inter->s,
             inter->s + inter->l, next->s + next->l);
@@ -287,7 +319,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         next->s = inter->s;
         next->corr += inter->corr;
  
-    }
+    }*/
     return uqct;
 }
 
@@ -306,7 +338,7 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
         uqct += ret;
     }
 #ifdef DEBUG
-    if (dbg > 5)
+    if (dbg > 4)
         show_list(kc, h->bnd);
 #endif
 

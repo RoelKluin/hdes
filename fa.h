@@ -68,7 +68,10 @@
 })
 
 #define _store_ndx(kc, left, ndx)\
-    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]", left-1, kc->ext);\
+    if (ndx == dbgkctndx) {\
+        EPR("-- storing dbgkctndx in kc->wbuf[%u/%u] --", left - 1, kc->ext);\
+    }\
+    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]:0x%lx", left-1, kc->ext, kc->wbuf[left-1]);\
     kc->wbuf[left-1] = ndx;
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
@@ -81,7 +84,7 @@
     ndx = _get_ndx_and_strand(ndx, wx, dna, rc);\
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
     dbg = ((ndx == dbgndx) || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx %lu", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx 0x%lx", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
 });
 
 #define _kctndx_and_infior(ndx, wx, dna, rc) ({\
