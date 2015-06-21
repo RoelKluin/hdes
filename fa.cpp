@@ -282,10 +282,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ(dbg > 3, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
     if (r.left || ct == 3) {
-        if (ct == 3) {
-            inter->dna = dna;
-            inter->l = b2pos - inter->s;
-        }
+        if (r.left)
+            decr_excise(kc, r.left);
+
+        inter->dna = dna;
+        inter->l = b2pos - inter->s;
         if (inter->l && inter != last) {
             EPQ (dbg > 2, "Post loop excision occurred at %lu", b2pos);//XXX
             inter->corr = last->corr;
@@ -293,12 +294,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             h->bnd.insert(kc->bdit, kc->bd_l++);
             last = kc->bd + lastx;
             next = kc->bd + *kc->bdit;
-        }
-        if (ct != 3) {
-            for (unsigned i = kc->ext; i--> r.left;) {
-                if (update_wlkr(kc, i) < 0)
-                    return -EFAULT;
-            }
         }
     }
     /*if (kc->wbuf[kc->ext-1] != ~0ul) {
