@@ -176,10 +176,8 @@ case 3: // A uniqs' inferior must be ge neighbouring uniqs' infior.
         *kctndx ^= wx; // XXX: no -ge test before infior replacement?
         ++kc->uqct;
 
-        if (r->infior <= wx) {
-case 4:     // special case 4 is for initialization TODO: merge with case 3.
+        if (r->infior <= wx)
             r->infior = wx & R_INFIOR; // only set strand bit below
-        }
 case 1: r->left = kc->ext;
         _store_ndx(kc, r->left, *kctndx);
     }
@@ -203,7 +201,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint32_t b2pos = last->s + last->l;
     uint64_t dna = last->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
-    unsigned uqct = 0, ct = 4; // treat last boundary as a first unique
+    unsigned uqct = 0, ct = 1; // treat last boundary as a first unique
     running r = {0};
 
     if (dbg > 5) show_list(kc, h->bnd);
@@ -212,13 +210,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
 
-    for(;b2pos < next->s;++b2pos) { // until next event
+    while(b2pos < next->s) { // until next event
         EPQ(dbg > 6, "next path ct:%u", ct);
-        if (ct == 1) {
-            EPQ(dbg > 5, "1st unique at %u", b2pos);
-            inter->s = b2pos;
-            inter->at_dna = dna;
-        }
         uint64_t ndx, t = _kctndx_and_infior(ndx, t, dna, rc);
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
@@ -278,6 +271,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             }
         }
         dna = _seq_next(t, dna, rc);
+        ++b2pos;
+        if (ct == 1) {
+            EPQ(dbg > 5, "1st unique at %u", b2pos);
+            inter->s = b2pos;
+            inter->at_dna = dna;
+        }
     }
     h->mapable += last->l;
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
