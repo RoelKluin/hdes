@@ -162,7 +162,7 @@ struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<uint32_t> bnd; //
-    uint32_t end_pos, covered; // covered is only used in fa.cpp
+    uint32_t end_pos, mapable; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 
@@ -175,7 +175,7 @@ struct kct_t {
     Walker* wlkr; // later req
     uint64_t* wbuf; // later req
     uint64_t *kctndx;
-    uint32_t id_l;
+    uint32_t id_l, uqct;
     int ext; // not stored
     uint32_t kce_l; //early req
     uint64_t bd_l, ts_l, s_l, kct_l; // late req, continued req
