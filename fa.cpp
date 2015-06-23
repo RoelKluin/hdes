@@ -200,6 +200,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
+    ASSERT(b2pos < next->s, return -EFAULT); // I guess this shouldn't happen?
 
     while(b2pos < next->s) { // until next event
         EPQ(dbg > 6, "next path ct:%u", ct);
@@ -234,14 +235,13 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             }
         }
         switch(r.left) {
-case 0:     break; // otherwise within uniq range: keep filling buffer
 case 1:     EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
+            h->mapable += inter->l;
             if (inter != last) {
-                h->mapable += inter->l;
                 inter->corr = last->corr;
                 _buf_grow0(kc->bd, 2ul);
-                h->bnd.insert(kc->bdit, kc->bd_l++);
-                last = kc->bd + lastx;
+                h->bnd.insert(kc->bdit, kc->bd_l);
+                last = kc->bd + kc->bd_l++;
                 next = kc->bd + *kc->bdit;
             }
             for (unsigned i = kc->ext; i--> 0 ;) {
@@ -252,7 +252,7 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, int
             inter->l = inter->s = 0;
             r.infior = 0;
             --r.left;
-            break;
+case 0:     break;
 default:    if (r.left-- == kc->ext) {
                 EPQ(dbg > 6, "setting uniq jump destination");
                 // Sucessively overwritten until region completed - left became 0.
@@ -265,11 +265,12 @@ default:    if (r.left-- == kc->ext) {
         ++b2pos;
         if (ct == 1) {
             EPQ(dbg > 5, "1st unique at %u", b2pos);
+            h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
+            h->mapable += kc->ext;
             inter->s = b2pos;
             inter->at_dna = dna;
         }
     }
-    h->mapable += last->l;
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
     if (r.left || ct == 3) {
@@ -281,11 +282,11 @@ default:    if (r.left-- == kc->ext) {
 
         inter->dna = dna;
         inter->l = b2pos - inter->s;
-        if (last->s + last->l == next->s) {
+        ASSERT(inter->s + inter->l == next->s, return -EFAULT)
+        if (inter == last) {
             EPQ(dbg > 4, "Removing boundary after loop at %u", b2pos);
             EPQ(dbg > 6, "last:%u +%u &%u, inter:%u +%u &%u next:%u +%u &%u", last->s, last->l, last->corr, inter->s, inter->l, inter->corr, next->s, next->l, next->corr);
             // TODO: return *kc->bdit to a pool of to be inserted boundaries
-            h->mapable -= last->l; // it will again be added later.
             last->l += next->l;
             last->dna = next->dna;
             last->corr = next->corr;
@@ -293,20 +294,15 @@ default:    if (r.left-- == kc->ext) {
             next = kc->bd + *--kc->bdit;
             EPQ(dbg > 5, "next became:%u +%u &%u", next->s, next->l, next->corr);
         } else {
-            ASSERT(inter != last, return -EFAULT);
             inter->corr = last->corr;
-            if (inter->s + inter->l != next->s) {
-                EPQ (dbg > 5, "Boundary insertion after loop at %u", b2pos);
-                _buf_grow0(kc->bd, 2ul);
-                h->bnd.insert(kc->bdit, kc->bd_l++);
-            } else {
-                EPQ (dbg > 4, "Next boundary joined after loop at %u", b2pos);
-                next->at_dna = inter->at_dna;
-                next->l += next->s - inter->s;
-                next->s = inter->s;
-                next->corr += inter->corr;
-            }
+            EPQ (dbg > 4, "Next boundary joined after loop at %u", b2pos);
+            next->at_dna = inter->at_dna;
+            next->l += next->s - inter->s;
+            next->s = inter->s;
+            next->corr += inter->corr;
         }
+    } else {
+        h->mapable -= max(last->s + last->l + kc->ext, b2pos) - b2pos;
     }
     return 0;
 }
