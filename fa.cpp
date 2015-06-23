@@ -236,7 +236,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         switch(r.left) {
 case 0:     break; // otherwise within uniq range: keep filling buffer
 case 1:     EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
-            if (inter->l && inter != last) {
+            if (inter != last) {
                 h->mapable += inter->l;
                 inter->corr = last->corr;
                 _buf_grow0(kc->bd, 2ul);
