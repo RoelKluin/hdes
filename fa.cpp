@@ -192,7 +192,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint32_t b2pos = last->s + last->l;
     uint64_t dna = last->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
-    unsigned uqct = 0, ct = 1; // treat last boundary as a first unique
+    unsigned ct = 1; // treat last boundary as a first unique
     running r = {0};
 
     if (dbg > 5) show_list(kc, h->bnd);
@@ -233,33 +233,33 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
                 return print_2dna(dna, rc);
             }
         }
-        if (r.left) { // within uniq range: keep filling buffer
-            if (--r.left) {
-                if (r.left == kc->ext - 1) {
-                    EPQ(dbg > 6, "setting uniq jump destination");
-                    // Sucessively overwritten until region completed - left became 0.
-                    inter->dna = dna;
-                    inter->l = b2pos - inter->s;
-                }
-                ct |= 2;
-            } else { //buf just became full, without extensions.
-                EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
-                if (inter->l && inter != last) {
-                    h->mapable += inter->l;
-                    inter->corr = last->corr;
-                    _buf_grow0(kc->bd, 2ul);
-                    h->bnd.insert(kc->bdit, kc->bd_l++);
-                    last = kc->bd + lastx;
-                    next = kc->bd + *kc->bdit;
-                }
-                for (unsigned i = kc->ext; i--> 0 ;) {
-                    if (update_wlkr(kc, i) < 0)
-                        return -EFAULT;
-                }
-                inter = kc->bd + kc->bd_l; // no longer last at least
-                inter->l = inter->s = 0;
-                r.infior = 0;
+        switch(r.left) {
+case 0:     break; // otherwise within uniq range: keep filling buffer
+case 1:     EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
+            if (inter->l && inter != last) {
+                h->mapable += inter->l;
+                inter->corr = last->corr;
+                _buf_grow0(kc->bd, 2ul);
+                h->bnd.insert(kc->bdit, kc->bd_l++);
+                last = kc->bd + lastx;
+                next = kc->bd + *kc->bdit;
             }
+            for (unsigned i = kc->ext; i--> 0 ;) {
+                if (update_wlkr(kc, i) < 0)
+                    return -EFAULT;
+            }
+            inter = kc->bd + kc->bd_l; // no longer last at least
+            inter->l = inter->s = 0;
+            r.infior = 0;
+            --r.left;
+            break;
+default:    if (r.left-- == kc->ext) {
+                EPQ(dbg > 6, "setting uniq jump destination");
+                // Sucessively overwritten until region completed - left became 0.
+                inter->dna = dna;
+                inter->l = b2pos - inter->s;
+            }
+            ct |= 2;
         }
         dna = _seq_next(t, dna, rc);
         ++b2pos;
