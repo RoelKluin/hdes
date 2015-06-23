@@ -292,7 +292,8 @@ default:    if (r.left-- == kc->ext) {
             kc->bdit = h->bnd.erase(kc->bdit);
             next = kc->bd + *--kc->bdit;
             EPQ(dbg > 5, "next became:%u +%u &%u", next->s, next->l, next->corr);
-        } else if (inter != last) {
+        } else {
+            ASSERT(inter != last, return -EFAULT);
             inter->corr = last->corr;
             if (inter->s + inter->l != next->s) {
                 EPQ (dbg > 5, "Boundary insertion after loop at %u", b2pos);
