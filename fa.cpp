@@ -137,15 +137,6 @@ static inline int update_wlkr(kct_t* kc, int left)
     return 0;
 }
 
-static inline void merge(Bnd *dest, Bnd *next)
-{
-    EPQ0(dbg > 4, "Extending %u(-%u)", dest->s, dest->s + dest->l);
-    dest->l = next->s - dest->s + next->l;
-    dest->corr += next->corr;
-    dest->dna = next->dna;
-    EPQ(dbg > 4," to %u", dest->s + dest->l);
-}
-
 /*
  * Update strand and next_nt offset, when in scope of an uniq key - keylength minus
  * keywidth distance, ct==2 - keep this keys' inferiority above that infior.
@@ -166,18 +157,18 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
         }
         _store_ndx(kc, r->left, *kctndx);
         break;
-case 3: // A uniqs' inferior must be ge neighbouring uniqs' infior.
-        r->left = decr_excise(kc, r->left);
-        ASSERT(r->left >= 0, return -EFAULT, "left:%d", r->left);
-        dbg |= r->left;
+case 3:{// A uniqs' inferior must be ge neighbouring uniqs' infior.
+        int ret  = decr_excise(kc, r->left);
+        ASSERT(ret >= 0, return -EFAULT, "left:%d", ret);
+        dbg |= ret;
         EPQ (dbg > 7, "dbg excision");
-        r->left = 0;
         wx ^= r->infior;
         *kctndx ^= wx; // XXX: no -ge test before infior replacement?
         ++kc->uqct;
 
         if (r->infior <= wx)
             r->infior = wx & R_INFIOR; // only set strand bit below
+       }
 case 1: r->left = kc->ext;
         _store_ndx(kc, r->left, *kctndx);
     }
