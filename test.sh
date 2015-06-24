@@ -116,6 +116,8 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 ./tst hg19_chr1_2.fa.gz -c -m 15
 ./tst hg19_chr1_2.fa.gz -p -m 15
 
+./tst hg19.fa.gz -p -m 15
+
 (rm hg19_GL.{2b,nn,bd,ub,kc}.gz; make clean && DEFINES="-DKEY_LENGTH=9" make &&
     valgrind ./uqct hg19_GL.fa.gz -l 51; rm hg19_GL.ub.gz; 
     valgrind ./uqct hg19_GL.fa.gz -l 51)  2>&1 | tee hg19_GL_part1.err | less

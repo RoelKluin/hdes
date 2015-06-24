@@ -200,7 +200,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
-    ASSERT(b2pos < next->s, return -EFAULT); // I guess this shouldn't happen?
+    EPQ(b2pos >= next->s, "boundary %lu >= %lu ??", b2pos, next->s); // I guess this shouldn't happen?
 
     while(b2pos < next->s) { // until next event
         EPQ(dbg > 6, "next path ct:%u", ct);
@@ -265,6 +265,7 @@ default:    if (r.left-- == kc->ext) {
         ++b2pos;
         if (ct == 1) {
             EPQ(dbg > 5, "1st unique at %u", b2pos);
+            //XXX: make sure this is not off by one or two.
             h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
             h->mapable += kc->ext;
             inter->s = b2pos;
