@@ -28,6 +28,5 @@ typedef struct gzfh_t {
 int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
 int set_io_fh(struct gzfh_t* fh, int force);
 int rclose(gzfh_t *fh);
-int fn_convert(struct gzfh_t*, const char*, const char*);
 int reopen(struct gzfh_t*, const char*, const char*);
 #endif //RK_GZ_H

@@ -94,7 +94,7 @@ set_stdio_fh(struct gzfh_t* fh, uint64_t* mode)
     return 1;
 }
 
-int
+static int
 fn_convert(struct gzfh_t* fhio, const char* search, const char* replace)
 {
     char* f = strstr(fhio->name, search);

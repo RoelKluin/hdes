@@ -199,12 +199,12 @@ int main(int argc, char* const* argv)
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
             EPR("== Single-end alignment");
-            /*if ((c = fq_b2(&seq)) != 0) {
-                EPR("ERROR: fq_b2() returned %d", c);
+            if ((c = map_fq_se(&seq)) != 0) {
+                EPR("ERROR: map_fq_se() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
-            fq_print(&seq);*/
+            fq_print(&seq);
         } else {
 //            if (seq.readlength == 0) {
 //                EPR("== Readlength needed for indexing.");
