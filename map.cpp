@@ -36,7 +36,7 @@ map_fq_se(struct seqb2_t* seq)
         if (fhio[i]->name == NULL) {
             fhio[i]->name = &file[len*i];
             strncpy(fhio[i]->name, fhio[1]->name, len);
-            _ACTION0(reopen(fhio[i], ext[0], ext[i]), 
+            _ACTION0(reopen(fhio[i], ext[1], ext[i]), 
                     "%s %s", ext[i], fhio[i]->fp ? "exists" : "does not exist")
         }
     }
@@ -45,8 +45,8 @@ map_fq_se(struct seqb2_t* seq)
     kc.kctndx = _buf_init_arr_err(kc.kctndx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
-    _ACTION(load_seqb2(fhio[0], &kc), "loading twobit sequence file")
-    _ACTION(load_kc(fhio[1], &kc), "loading keycounts file")
+    _ACTION(load_kc(fhio[0], &kc), "loading keycounts file")
+    _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file")
     _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file")
     
     // 4) open fq for reading
