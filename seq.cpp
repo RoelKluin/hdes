@@ -30,6 +30,9 @@ get_fastx_type(char* f, const unsigned fhsz)
     }
     if (*f == 't') { // .txt(.gz)?
         if (((c -= 4) < 0) || *--f != 'x' || *--f != 't') return fhsz + 1;
+    } else if (*f == 'b'){
+        i=2;
+        if (((c -= 3) < 0) || *--f != '2') return fhsz + 7;
     } else if (*f == 'd'){
         if (((c -= 4) < 0) || *--f != 'e' || *--f != 'b') return fhsz + 2;
         return 3;
