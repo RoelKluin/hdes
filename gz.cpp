@@ -51,6 +51,19 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
     return gzeof(fh->io) ? -EIO : 0;
 }
 
+void set_readfunc(struct gzfh_t* fhin, void** g, int (**gc)(void*),
+        int (**ungc)(int, void*))
+{
+    if (fhin->io == NULL) {
+        *g = fhin->fp;
+        *gc = (int (*)(void*))&fgetc;
+        *ungc = (int (*)(int, void*))&ungetc;
+    } else {
+        *g = fhin->io;
+        *gc = (int (*)(void*))&gzgetc;
+        *ungc = (int (*)(int, void*))&gzungetc;
+    }
+}
 /* from: http://www.zlib.net/manual.html at gzdopen:
  * gzclose on the gzopen-returned gzFile will also close the file descriptor fd.
  *

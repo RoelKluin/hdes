@@ -204,7 +204,7 @@ int main(int argc, char* const* argv)
                 goto out;
             }
             fputc('\n', stderr);
-            fq_print(&seq);
+            //fq_print(&seq);
         } else {
 //            if (seq.readlength == 0) {
 //                EPR("== Readlength needed for indexing.");

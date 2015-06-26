@@ -96,13 +96,17 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
  * store per key the count and the last position.
  */
 static int
-fa_kc(kct_t* kc, void* g, int (*gc) (void*), int (*ungc) (int, void*))
+fa_kc(kct_t* kc, struct gzfh_t* fhin)
 {
+    void* g;
+    int (*gc) (void*);
+    int (*ungc) (int, void*);
     uint64_t dna = 0, rc = 0, ndx, b = 0, t = 0ul;
     uint32_t corr = 0u;
     int c;
     Hdr* h = NULL;
     kc->s_l = 0ul;
+    set_readfunc(fhin, &g, &gc, &ungc);
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -384,13 +388,8 @@ kct_convert(kct_t* kc)
 int
 fa_read(struct seqb2_t* seq, kct_t* kc)
 {
-    int res = -ENOMEM;
-    void* g;
-    int (*gc) (void*);
-    int (*ungc) (int, void*);
-    struct gzfh_t* fhin = seq->fh + 2; // init with ref
     struct gzfh_t* fhio[3] = { seq->fh, seq->fh + 1, seq->fh + 3};
-    int is_gzfile = fhin->io != NULL;
+    int res = -ENOMEM;
 
     kc->kct = _buf_init_err(kc->kct, 16, goto err);
     kc->kce = _buf_init_err(kc->kce, 8, goto err);
@@ -401,17 +400,8 @@ fa_read(struct seqb2_t* seq, kct_t* kc)
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->kctndx[i] = ~0ul;
 
-    if (is_gzfile) {
-        g = fhin->io;
-        gc = (int (*)(void*))&gzgetc;
-        ungc = (int (*)(int, void*))&gzungetc;
-    } else {
-        g = fhin->fp;
-        gc = (int (*)(void*))&fgetc;
-        ungc = (int (*)(int, void*))&ungetc;
-    }
     /* TODO: load dbSNP and known sites, and mark them. */
-    _ACTION(fa_kc(kc, g, gc, ungc), "read and intialized keycounts");
+    _ACTION(fa_kc(kc, seq->fh + 2), "read and intialized keycounts");
     _ACTION(kct_convert(kc), "converting keycounts");
     _ACTION(save_seqb2(fhio[0], kc), "writing seqb2: %s", fhio[0]->name);
     _ACTION(save_nextnts(fhio[1], kc), "writing next Nts file: %s", fhio[1]->name);

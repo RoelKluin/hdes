@@ -14,23 +14,33 @@
 #include <string.h> // memset()
 #include "fa.h"
 
+static int
+fq_read(kct_t* kc, seqb2_t *seq)
+{
+    void* g;
+    int (*gc) (void*);
+    int (*ungc) (int, void*);
+    struct gzfh_t* fhin = seq->fh;
+    register int c;
+    set_readfunc(fhin, &g, &gc, &ungc);
+    c = 0;
+    return c;
+}
+
 int
 map_fq_se(struct seqb2_t* seq)
 {
+    int res = -ENOMEM;
+
     // 1) open keyindex, infior and strand
     struct gzfh_t* fhio[3] = { seq->fh + 1, seq->fh + 2, seq->fh + 3};
     const char* ext[4] = {".kc",".2b",".bd", ".fa"};
     char file[768];
-    int res = -ENOMEM;
     kct_t kc = {0};
     kc.ext = seq->readlength - KEY_WIDTH;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
-    char* f = strstr(fhio[1]->name, ext[3]);
-    if (f != NULL)
-        strncpy(f, ext[1], strlen(ext[1]));
-    else
-        ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
+    ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
 
     for (int i=0; i != 3; ++i) {
         if (fhio[i]->name == NULL) {
