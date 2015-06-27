@@ -16,8 +16,8 @@
 #include "b6.h"
 
 static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
-static const unsigned long dbgoffs = ~0ul;//10892664; //~0ul;
-static const unsigned long dbgkctndx = ~0ul; //1099511627775; //0x2028;
+static unsigned dbgkct = 0x25d034; //~0u;
+static const uint32_t dbgndxkct = ~0u; //1099511627775; //0x2028;
 static int dbg = 3;
 
 #ifndef kroundup32
@@ -36,6 +36,7 @@ static int dbg = 3;
 
 // the comma before the ## is deleted in absense of an argument
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
+#define QARN(d, msg, ...) EPQ(d, "Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 
 #define ASSERT(cond, action, ...) \
 if (!(cond)) { \

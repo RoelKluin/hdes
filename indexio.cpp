@@ -184,7 +184,7 @@ err:
 
 int save_kc(struct gzfh_t* fhout, kct_t* kc)
 {
-    uint64_t* buf = NULL;
+    uint32_t* buf = NULL;
     int res = -EFAULT;
     uint32_t i;
     uint64_t len64;
@@ -194,20 +194,18 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
 
     __WRITE_VAL(kc->kct_l)
     __WRITE_PTR(kc->kct, kc->kct_l)
-    len64 = kc->kct_l * 2;
-    buf = (uint64_t*)malloc(sizeof(uint64_t) * len64);
+    len64 = kc->kct_l;
+    buf = (uint32_t*)malloc(sizeof(uint32_t) * len64);
     ASSERT(buf != NULL, return -ENOMEM);
     i = 0;
-    // TODO: put this conversion in kct_convert and only write kc->kctndx here..
+    // TODO: put this conversion in kct_convert and only write kc->ndxkct here..
     for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx) {
 
-        // ..then INDEX_MASK'ing isn't necessary test should be
-        // kc->kctndx[ndx] == ~0ul
-        if ((kc->kctndx[ndx] & INDEX_MASK) >= kc->kct_l) {
-            kc->kctndx[ndx] = kc->kct_l; // make high bit range available
+        if (kc->ndxkct[ndx] >= kc->kct_l) {
+            kc->ndxkct[ndx] = kc->kct_l; // make high bit range available
         } else {
             buf[i++] = ndx;
-            buf[i++] = kc->kctndx[ndx];
+            buf[i++] = kc->ndxkct[ndx];
         }
     }
     __WRITE_PTR(buf, len64)
@@ -221,8 +219,9 @@ err:
 
 int load_kc(struct gzfh_t* fhin, kct_t* kc)
 {
+    uint64_t val64;
+    uint32_t len;
     int res;
-    uint64_t val64, len64;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
     kc->kct = NULL;
@@ -232,13 +231,13 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     __READ_PTR(kc->kct, kc->kct_l);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-        kc->kctndx[i] = kc->kct_l;
+        kc->ndxkct[i] = kc->kct_l;
     for (uint64_t i=0ul; i != kc->kct_l; ++i) {
         __READ_VAL(val64)
         ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%lu/%lu: %lu > KEYNT_BUFSZ(%lu)",
                 i, kc->kct_l, val64, KEYNT_BUFSZ);
-        __READ_VAL(len64)
-        kc->kctndx[val64] = len64;
+        __READ_VAL(len)
+        kc->ndxkct[val64] = len;
     }
     res = 0;
 err:

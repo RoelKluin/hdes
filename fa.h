@@ -19,26 +19,41 @@
 
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
-#define B2LEN_OFFS_SHFT 59
-#define B2LEN_OFFS (1ul << B2LEN_OFFS_SHFT)
+#define B2LEN_SHFT 58
+#define ONE_B2SEQ (1ul << B2LEN_SHFT)
+
+#define B2SEQ_MASK  (ONE_B2SEQ - 1ul)
+#define B2LEN_MASK  (~B2SEQ_MASK)
 
 // indicates whether (set) or not the kct contains a sequence or an index
 #define FLAG_B2CT  (1ul << 58)
 
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
-#define STRAND_SHFT 40
-#define STRAND_BIT (1ul << STRAND_SHFT)
+#define BIG_SHFT 40
+#define SMALL_SHFT 24
+
+#define STRAND_BIT (1ul << BIG_SHFT)
 #define INDEX_MASK (STRAND_BIT - 1ul)
-#define INFIOR_SHFT (STRAND_SHFT + 1)
+
+#define INFIOR_SHFT (BIG_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
-#define L_INFIOR (INFERIORITY - 1ul)
-#define R_INFIOR (~(INFERIORITY - 1ul))
+#define INFIOR_MASK (~(INFERIORITY - 1ul))
+
+#define ONE_CT (1ul << BIG_SHFT)
+#define B2POS_MASK (ONE_CT -1ul)
+#define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
 // While some movement of next-NTs per key takes place - upwards
 // movement of next-NTs that lie within range of unique indices and can
 // therefore be skipped in future iterations, the number of next-Nts per
 // key remain constant.
+
+
+#define _keynt_offs(kct, _ndx) (kct[_ndx] & INDEX_MASK)
+#define get_keynt_offs(kct, ndx) _keynt_offs(kct, ndx + 1)
+#define get_last_keynt_offs(kct, ndx) (ndx != 0 ? _keynt_offs(kct, ndx - 1) : 0)
+
 
 
 #define __seq_le_n(b, dna, rc) ({\
@@ -68,10 +83,10 @@
 })
 
 #define _store_ndx(kc, left, ndx)\
-    if (ndx == dbgkctndx) {\
-        EPR("-- storing dbgkctndx in kc->wbuf[%u/%u] --", left - 1, kc->ext);\
+    if (ndx == dbgndxkct) {\
+        EPR("-- storing dbgndxkct in kc->wbuf[%u/%u] --", left - 1, kc->ext);\
     }\
-    ASSERT(kc->wbuf[left-1] == ~0ul, return -EFAULT, "[%u/%u]:0x%lx", left-1, kc->ext, kc->wbuf[left-1]);\
+    ASSERT(kc->wbuf[left-1] == ~0u, return -EFAULT, "[%u/%u]:0x%x", left-1, kc->ext, kc->wbuf[left-1]);\
     kc->wbuf[left-1] = ndx;
 
 #define _get_ndx_and_strand(ndx, b, dna, rc) ({\
@@ -83,14 +98,14 @@
 #define _get_ndx(ndx, wx, dna, rc) ({\
     ndx = _get_ndx_and_strand(ndx, wx, dna, rc);\
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
-    dbg = ((ndx == dbgndx) || ((kc)->kctndx[ndx] & INDEX_MASK) == dbgkctndx) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgkctndx 0x%lx", ndx, (kc)->kctndx[ndx] & INDEX_MASK);\
+    dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, (kc)->ndxkct[ndx]);\
 });
 
-#define _kctndx_and_infior(ndx, wx, dna, rc) ({\
+#define _ndxkct_and_infior(ndx, wx, dna, rc) ({\
     _get_ndx(ndx, wx, dna, rc);\
-    wx <<= STRAND_SHFT - KEY_WIDTH;/*store orient and infior in wx*/\
-    wx | (kc->kctndx[ndx] & ~INDEX_MASK);\
+    wx <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in wx*/\
+    wx | (kc->kct[kc->ndxkct[ndx] + 1] & ~INDEX_MASK);\
 });
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
@@ -117,8 +132,7 @@
     buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
     ++(buf ## _l)
 
-
-KHASH_MAP_INIT_INT64(UQCT, unsigned)
+//KHASH_MAP_INIT_INT64(UQCT, unsigned)
 
 #define ULL(x) ((unsigned __int128)(x))
 
@@ -155,6 +169,7 @@ packed_struct Walker {
     uint32_t excise_ct;
 };
 
+
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 
@@ -170,16 +185,19 @@ struct kct_t {
     Bnd* bd;
     char* id;
     uint8_t* ts, *s; // next nts(nn), seqb2
+    uint32_t* ndxkct;
     uint64_t* kct; // different meaning later.
-    kct_ext* kce; // early req
-    Walker* wlkr; // later req
-    uint64_t* wbuf; // later req
-    uint64_t *kctndx;
+    kct_ext* kce; // early req XXX
+    Walker* wlkr; // later req XXX
+    uint32_t* wbuf; // later req
     uint32_t id_l, uqct;
     int ext; // not stored
-    uint32_t kce_l; //early req
-    uint64_t bd_l, ts_l, s_l, kct_l; // late req, continued req
-    uint8_t kct_m, kce_m, kctndx_m, bd_m, id_m, s_m; // only bd_m is required, but not stored either
+    uint32_t kce_l; //early req XXX
+    uint64_t bd_l, ts_l, s_l;
+    uint64_t kct_l; // late req, continued req
+    uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
+    uint8_t kct_m;
+    uint8_t kce_m; //XXX
     std::list<Hdr*> h;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.

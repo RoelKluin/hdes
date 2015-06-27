@@ -62,7 +62,7 @@ free_kc(kct_t* kc)
     _buf_free(kc->ts);
     _buf_free(kc->s);
     _buf_free(kc->kct);
-    _buf_free(kc->kctndx);
+    _buf_free(kc->ndxkct);
 }
 
 //FIXME also keep infior above a uniq keys' infior after this key.
@@ -70,23 +70,22 @@ static int
 decr_excise(kct_t const *const kc, const int left)
 {
     Walker* wlkr = kc->wlkr;
-    uint64_t* wbuf = kc->wbuf;
+    uint32_t* wbuf = kc->wbuf;
     unsigned keep_dbg = 0;
     for(int i = kc->ext; i --> left ;) {
 
         // current next_Nt pos and pending offsets are stored in walker.
-        uint64_t ndx = wbuf[i] & INDEX_MASK;
-        ASSERT(ndx != ~0ul, return -EFAULT, "%u/%u", i, kc->ext);
-        dbg = ndx == dbgkctndx ?  dbg | 8 : dbg & ~8;
+        uint32_t ndx = wbuf[i];
+        ASSERT(ndx != ~0u, return -EFAULT, "%u/%u", i, kc->ext);
+        dbg = ndx == dbgndxkct ?  dbg | 8 : dbg & ~8;
         keep_dbg |= dbg;
         Walker* Next_nts = wlkr + ndx;
         ASSERT(Next_nts->count > 0, return -EFAULT);
 
         // get ts offset
-        uint64_t* kct = kc->kct;
-        uint64_t nt = ndx != 0 ? kct[ndx - 1] : 0;
+        uint64_t nt = get_last_keynt_offs(kc->kct, ndx);
         nt += --Next_nts->count;
-        uint64_t offs = kct[ndx] - ++Next_nts->excise_ct;
+        uint64_t offs = get_keynt_offs(kc->kct, ndx) - ++Next_nts->excise_ct;
 
         // excise out twobits, i.e. shift 2bits above current 2bit down.
         uint8_t* q = &kc->ts[nt >> 2];
@@ -104,7 +103,7 @@ decr_excise(kct_t const *const kc, const int left)
         EPQ(dbg > 6, "=====> excised <======, became %x",
                 *q | (q != qe ? (q[1] & 3) << 6 : 0));
         // mask to cover this and past nucleotide.
-        wbuf[i] = ~0ul;
+        wbuf[i] = ~0u;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
             EPQ0(dbg > 6, "became; next:");print_2dna(*q,q[1]>>2, dbg > 6);
@@ -118,7 +117,6 @@ decr_excise(kct_t const *const kc, const int left)
         *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
         EPQ0(dbg > 5, "after append:");print_dna(*q, dbg > 5);
     }
-    //if(left != kc->ext) wbuf[left] = ~0ul;
     return keep_dbg;
 }
 
@@ -127,13 +125,13 @@ static unsigned iter = 0;
 // if we cannot extend a range, update temporarily stored offsets.
 static inline int update_wlkr(kct_t* kc, int left)
 {
-    uint64_t ndx = kc->wbuf[left] & INDEX_MASK;
-    if (ndx == dbgkctndx) {
-        EPR("-- cleared dbgkctndx 0x%lx --", dbgkctndx);
+    uint32_t ndx = kc->wbuf[left];
+    if (ndx == dbgndxkct) {
+        EPR("-- cleared dbgndxkct 0x%x --", dbgndxkct);
         dbg |= 8;
     }
-    ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%lx", left, kc->ext, ndx)
-    kc->wbuf[left] = ~0ul;
+    ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%x", left, kc->ext, ndx)
+    kc->wbuf[left] = ~0u;
     return 0;
 }
 
@@ -142,10 +140,10 @@ static inline int update_wlkr(kct_t* kc, int left)
  * keywidth distance, ct==2 - keep this keys' inferiority above that infior.
  * A first uniq marks a potential start of a region, a 2nd or later uniq, within
  * scope - keylength minus keywidth distance - triggers an region insertion or
- * update. Also retrieve for this index the offset stored in kctndx high bits.
+ * update. Also retrieve for this index the offset.
  */
-static inline int eval_ndx(kct_t* kc, running *r, uint64_t *kctndx,
-        uint64_t wx, unsigned ct)
+static inline int eval_ndx(kct_t* kc, running *r, uint64_t wx,
+        uint32_t ndxkct, unsigned ct)
 {
     EPQ(dbg > 6, "path ct:%u", ct);
     switch(ct) { //(ct == 1) | ((left > 0) << 1);
@@ -153,9 +151,9 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
              // unique keys. Strand bit included, but that shouldn't matter.
              wx ^= r->infior + INFERIORITY;
-             *kctndx ^= wx;
+             kc->kct[ndxkct + 1] ^= wx;
         }
-        _store_ndx(kc, r->left, *kctndx);
+        _store_ndx(kc, r->left, ndxkct);
         break;
 case 3:{// A uniqs' inferior must be ge neighbouring uniqs' infior.
         int ret  = decr_excise(kc, r->left);
@@ -163,16 +161,16 @@ case 3:{// A uniqs' inferior must be ge neighbouring uniqs' infior.
         dbg |= ret;
         EPQ (dbg > 7, "dbg excision");
         wx ^= r->infior;
-        *kctndx ^= wx; // XXX: no -ge test before infior replacement?
+        kc->kct[ndxkct + 1] ^= wx; // XXX: no -ge test before infior replacement?
         ++kc->uqct;
 
         if (r->infior <= wx)
-            r->infior = wx & R_INFIOR; // only set strand bit below
+            r->infior = wx & INFIOR_MASK; // only set strand bit below
        }
 case 1: r->left = kc->ext;
-        _store_ndx(kc, r->left, *kctndx);
+        _store_ndx(kc, r->left, ndxkct);
     }
-    return *kctndx;
+    return ndxkct;
 }
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
@@ -200,21 +198,21 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
-    EPQ(b2pos >= next->s, "boundary %lu >= %lu ??", b2pos, next->s); // I guess this shouldn't happen?
+    EPQ(b2pos >= next->s, "boundary %u >= %u ??", b2pos, next->s); // I guess this shouldn't happen?
 
     while(b2pos < next->s) { // until next event
         EPQ(dbg > 6, "next path ct:%u", ct);
-        uint64_t ndx, t = _kctndx_and_infior(ndx, t, dna, rc);
+        uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
         // get offset to first of keys' next Nt
-        int kct_i = eval_ndx(kc, &r, kc->kctndx + ndx, t, ct);
+        int kct_i = eval_ndx(kc, &r, t, kc->ndxkct[ndx], ct);
         ASSERT(kct_i >= 0, return -EFAULT, "(%s:%u)", hdr, b2pos);
-        t = kct_i ? kc->kct[kct_i-1] : 0;
+        t = get_last_keynt_offs(kc->kct, kct_i);
 
         // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
         Walker* Next_nts = kc->wlkr + kct_i;
-        ct = kc->kct[kct_i] - t - Next_nts->excise_ct;
+        ct = get_keynt_offs(kc->kct, kct_i) - t - Next_nts->excise_ct;
         ASSERT(ct != 0, return -EFAULT);
         ct = ct == 1ul; // if only one, the key has become uniq
 
@@ -229,7 +227,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             uint64_t p = b2pos + h->s_s;
             p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
             if (t != p) {
-                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, kctndx 0x%x",
+                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c, ndxkct 0x%x",
                     b2pos,b6(p<<1), b6(t<<1), kct_i);
                 return print_2dna(dna, rc);
             }
@@ -368,10 +366,10 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
     while (t--) kc->wlkr[t] = {0u, 0u};
 
     t = kc->ext;
-    kc->wbuf = (uint64_t*)malloc(t * sizeof(uint64_t));
+    kc->wbuf = (uint32_t*)malloc(t * sizeof(uint32_t));
     ASSERT(kc->wbuf != NULL, goto err);
 
-    while (t--) kc->wbuf[t] = ~0ul;
+    while (t--) kc->wbuf[t] = ~0u;
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc);
@@ -415,7 +413,7 @@ fa_index(struct seqb2_t* seq)
         strncpy(fhio[i]->name, fhio[0]->name, len);
     }
 
-    kc.kctndx = _buf_init_arr_err(kc.kctndx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.ndxkct = _buf_init_arr_err(kc.ndxkct, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // first check whether unique boundary is ok.
     if (fhio[0]->fp) {
         mode = 2;
