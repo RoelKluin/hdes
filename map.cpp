@@ -52,7 +52,7 @@ map_fq_se(struct seqb2_t* seq)
     }
     ASSERT(fhio[0]->fp && fhio[1]->fp && fhio[2]->fp, return -EFAULT,
             "need seqb2, keycount and unique boundary files");
-    kc.kctndx = _buf_init_arr_err(kc.kctndx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.ndxkct = _buf_init_arr_err(kc.ndxkct, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
     _ACTION(load_kc(fhio[0], &kc), "loading keycounts file")

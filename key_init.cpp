@@ -202,17 +202,16 @@ default: // include 'N's and such to make sure the key is completed.
                 t = kc->ndxkct[ndx];
                 if (ndx == dbgndx) dbgkct = t;
                 //dbg = t == dbgkct ? dbg | 8 : dbg & ~8;
-                ASSERT(t < kc->kct_l, return -EFAULT, "0x%x, 0x%lx", t, ndx);
+                ASSERT(t < kc->kct_l, return -EFAULT, "0x%lx, 0x%lx", t, ndx);
                 ct = kc->kct + t + 1;
                 if ((*ct & B2LEN_MASK) != B2LEN_MASK) {
                     EPQ(dbg > 7, "sequence & length");
                     t = *ct >> B2LEN_SHFT;
 
+                    *ct += ONE_B2SEQ;
                     if (t < 32ul) {
-                        *ct-- += ONE_B2SEQ;
-                    } else if (t < 61ul) {
-                        *ct += ONE_B2SEQ;
-                    } else {
+                        --ct;
+                    } else if (t == 61ul) {
                         EPQ(dbg > 7, "conversion to index:%c", c);
                         b = *--ct;              // temp store 2bit dna
                         *ct = 0ul;
@@ -418,7 +417,7 @@ kct_convert(kct_t* kc)
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }
     // why not true, boundaries?
-    EPR("offs:%u kc->ts_l:%u", offs, kc->ts_l);
+    EPR("offs:%lu kc->ts_l:%lu", offs, kc->ts_l);
     //ASSERT(offs == kc->ts_l, return -EFAULT, "%u, %u", offs, kc->ts_l);
     kc->ts_l = offs;
     // TODO: convert kctndx to nextnt index here.
