@@ -224,8 +224,7 @@ default: // include 'N's and such to make sure the key is completed.
                     }
                 } else {
                     EPQ(dbg > 7, "in index format:%c", c);
-                    t = *ct;
-                    ++(*ct--); // incr length one
+                    t = (*ct--)++; // incr length one, move to address.
                     ct = (uint64_t *)*ct;
 
                     if ((t & 0x3f) == 0ul) {
@@ -326,11 +325,11 @@ kct_convert(kct_t* kc)
             //ASSERT(l + offs < kc->ts_l, return -EFAULT, 
             //        "\n%lu + %lu >= %lu?\nkct:%lu/%lu",
             //        l , offs, kc->ts_l, src - kc->kct, kc->kct_l);
-            src[0] = l << BIG_SHFT;
+            src[1] = l << BIG_SHFT;
             dest = kc->ts + (offs >> 2); // destination for copy.
             x <<= t << 1;                // prealign 2bits for appending to dest
             offs += l;                   // update offs for next round.
-            src[1] = offs;               // kc->kct conversion: store end position
+            src[0] = offs;               // kc->kct conversion: store end position
                                          // of its next Nts from now on.
 
             EPQ0(dbg > 6, "orig seq (%lu, %lu), %u\t", l, dest - kc->ts, t);
@@ -345,8 +344,7 @@ kct_convert(kct_t* kc)
             ASSERT(l != 0, return -EFAULT);
             ASSERT(l + offs < kc->ts_l, return -EFAULT);
             uint64_t *s = (uint64_t *)src[0];
-            src[1] = src[0];
-            src[0] = l << BIG_SHFT;
+            src[1] = l << BIG_SHFT;
             dest = kc->ts + (offs >> 2);
             offs += l;                  // update offs for next.
             x = ((unsigned __int128)s[1] << 64) | *s;
@@ -401,9 +399,9 @@ kct_convert(kct_t* kc)
                 l -= 64;
             }
             print_dna(x, dbg > 6, '.', 4);
-            s = (uint64_t *)src[1];
+            s = (uint64_t *)src[0];
             free(s);
-            src[1] = offs;              // kc->kct conversion
+            src[0] = offs;
 	}
         while (l >= 4) { // first is already written.
             *++dest = x & 0xff;

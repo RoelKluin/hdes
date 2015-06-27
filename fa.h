@@ -51,8 +51,8 @@
 
 
 #define _keynt_offs(kct, _ndx) (kct[_ndx] & INDEX_MASK)
-#define get_keynt_offs(kct, ndx) _keynt_offs(kct, ndx + 1)
-#define get_last_keynt_offs(kct, ndx) (ndx != 0 ? _keynt_offs(kct, ndx - 1) : 0)
+#define get_keynt_offs(kct, ndx) _keynt_offs(kct, ndx)
+#define get_last_keynt_offs(kct, ndx) (ndx != 0 ? _keynt_offs(kct, ndx - 2) : 0)
 
 
 
@@ -105,7 +105,7 @@
 #define _ndxkct_and_infior(ndx, wx, dna, rc) ({\
     _get_ndx(ndx, wx, dna, rc);\
     wx <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in wx*/\
-    wx | (kc->kct[kc->ndxkct[ndx] + 1] & ~INDEX_MASK);\
+    wx | (kc->kct[kc->ndxkct[ndx]] & ~INDEX_MASK);\
 });
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\

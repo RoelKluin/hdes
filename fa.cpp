@@ -151,7 +151,7 @@ case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
              // unique keys. Strand bit included, but that shouldn't matter.
              wx ^= r->infior + INFERIORITY;
-             kc->kct[ndxkct + 1] ^= wx;
+             kc->kct[ndxkct] ^= wx;
         }
         _store_ndx(kc, r->left, ndxkct);
         break;
@@ -161,7 +161,7 @@ case 3:{// A uniqs' inferior must be ge neighbouring uniqs' infior.
         dbg |= ret;
         EPQ (dbg > 7, "dbg excision");
         wx ^= r->infior;
-        kc->kct[ndxkct + 1] ^= wx; // XXX: no -ge test before infior replacement?
+        kc->kct[ndxkct] ^= wx; // XXX: no -ge test before infior replacement?
         ++kc->uqct;
 
         if (r->infior <= wx)
