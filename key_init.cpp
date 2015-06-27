@@ -213,33 +213,35 @@ default: // include 'N's and such to make sure the key is completed.
                         --ct;
                     } else if (t == 61ul) {
                         EPQ(dbg > 7, "conversion to index:%c", c);
-                        b = *--ct;              // temp store 2bit dna
-                        *ct = 0ul;
-                        t = *++ct;
-                        ndx = kc->kce_l;
-                        *ct = B2LEN_MASK | ndx; // conversion: set to index, make sure B2LEN_MASK bits are set
-                        ct = (uint64_t*)malloc(2 * sizeof(uint64_t)); // for 2bits
-                        _buf_grow0(kc->kce, 1ul);
-                        kc->kce[kc->kce_l++] = { .m = 0, .l = 62, .b2 = ct }; // 61th will be added
+                        t = *ct & B2SEQ_MASK;  // temp store 2bit dna
+                        *ct = B2LEN_MASK | 62; // conversion: set to index, make sure B2LEN_MASK bits are set
+                        b = *--ct;
+                        *ct = (uint64_t)malloc(2 * sizeof(uint64_t)); // for 2bits
+                        ct = (uint64_t*)*ct;
                         *ct = b;                // added after current 2bit dna, in ndx
-                        *++ct = t & B2SEQ_MASK;
+                        *++ct = t;
                         t = 61;
                     }
                 } else {
                     EPQ(dbg > 7, "in index format:%c", c);
-                    ndx = *ct & INDEX_MASK;
+                    t = *ct;
+                    ++(*ct--); // incr length one
+                    ct = (uint64_t *)*ct;
 
-                    t = kc->kce[ndx].l++;       // *ct is index to an extended keycount
                     if ((t & 0x3f) == 0ul) {
-                        if (t == (0x40u << kc->kce[ndx].m)) {
-                            kc->kce[ndx].b2 = (uint64_t *)realloc(kc->kce[ndx].b2,
-                                    (2 * sizeof(uint64_t)) << ++kc->kce[ndx].m);
-                            ASSERT(kc->kce[ndx].b2 != NULL, return -ENOMEM);
+                        if ((t & 0xffffffff) == (0x40u << ((t >> 32) & 0xff))) {
+                            t = kc->kct[kc->ndxkct[ndx] + 1] += 1ul << 32; // increment m
+                            ct = (uint64_t *)realloc(ct,
+                                    (2 * sizeof(uint64_t)) << ((t >> 32) & 0xff));
+                            ASSERT(ct != NULL, return -ENOMEM);
+                            kc->kct[kc->ndxkct[ndx]] = (uint64_t)ct;
+                            --t;
                         }
-                        ct = kc->kce[ndx].b2 + (t >> 5);
+                        ct += (t & 0xffffffff) >> 5; // point to the u64 to be updated
                         *ct = ct[1] = 0ul;
+                    } else {
+                        ct += (t & 0xffffffff) >> 5; // point to the u64 to be updated
                     }
-                    ct = kc->kce[ndx].b2 + (t >> 5); // point to the u64 to be updated
                 }
             } else {
                 EPQ(dbg > 5, "new key 0x%lx at %lu", ndx, kc->s_l - h->s_s + corr);
@@ -270,7 +272,7 @@ case 'A': case 'a':
                 if (t < 32) ++ct;
                 *ct -= ONE_B2SEQ;
             } else {// If not within kct range then this is an extended keycount:
-                --kc->kce[ndx].l;
+                --kc->kct[kc->ndxkct[ndx] + 1];
             }
             break;
         }
@@ -339,17 +341,14 @@ kct_convert(kct_t* kc)
             print_dna(*dest, dbg > 6, '.', 4);
 
         } else {
-            l &= INDEX_MASK;
-            ASSERT(l < kc->kce_l, return -EFAULT);
-            kct_ext* ke = kc->kce + l;   // x was an index to a extended keycount.
-            l = ke->l;                   // get length
+            l &= 0xffffffff;             // get length
             ASSERT(l != 0, return -EFAULT);
             ASSERT(l + offs < kc->ts_l, return -EFAULT);
+            uint64_t *s = (uint64_t *)src[0];
+            src[1] = src[0];
             src[0] = l << BIG_SHFT;
             dest = kc->ts + (offs >> 2);
             offs += l;                  // update offs for next.
-            src[1] = offs;              // kc->kct conversion
-            uint64_t *s = ke->b2;
             x = ((unsigned __int128)s[1] << 64) | *s;
 
             EPQ0(dbg > 6, "orig seqndx (%lu, %lu), %u\t", l, dest - kc->ts, t);
@@ -402,7 +401,9 @@ kct_convert(kct_t* kc)
                 l -= 64;
             }
             print_dna(x, dbg > 6, '.', 4);
-            free(ke->b2);
+            s = (uint64_t *)src[1];
+            free(s);
+            src[1] = offs;              // kc->kct conversion
 	}
         while (l >= 4) { // first is already written.
             *++dest = x & 0xff;
@@ -432,7 +433,6 @@ fa_read(struct seqb2_t* seq, kct_t* kc)
     int res = -ENOMEM;
 
     kc->kct = _buf_init_err(kc->kct, 16, goto err);
-    kc->kce = _buf_init_err(kc->kce, 8, goto err);
     kc->bd = _buf_init_err(kc->bd, 1, goto err);
     kc->id = _buf_init_err(kc->id, 5, goto err);
     kc->s = _buf_init_err(kc->s, 8, goto err);
@@ -452,7 +452,6 @@ fa_read(struct seqb2_t* seq, kct_t* kc)
     res = 0;
 err:
     //fclose occurs in main()
-    _buf_free(kc->kce);
     return res;
 }
 

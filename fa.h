@@ -187,17 +187,14 @@ struct kct_t {
     uint8_t* ts, *s; // next nts(nn), seqb2
     uint32_t* ndxkct;
     uint64_t* kct; // different meaning later.
-    kct_ext* kce; // early req XXX
     Walker* wlkr; // later req XXX
     uint32_t* wbuf; // later req
     uint32_t id_l, uqct;
     int ext; // not stored
-    uint32_t kce_l; //early req XXX
     uint64_t bd_l, ts_l, s_l;
     uint64_t kct_l; // late req, continued req
     uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
     uint8_t kct_m;
-    uint8_t kce_m; //XXX
     std::list<Hdr*> h;
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
