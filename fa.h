@@ -139,8 +139,8 @@ packed_struct Bnd {
 #endif
     uint64_t dna; // dna after boundary, where we `jump' to
     uint32_t s;   // position at which we jump.
-    uint32_t l;   // length of jump or real position correction.
-    uint32_t corr;
+    uint32_t l;   // length of jump.
+    uint32_t corr;// real position correction
 };
 
 packed_struct running {
@@ -168,9 +168,10 @@ struct Hdr {
 struct kct_t {
     Bnd* bd;
     char* id;
-    uint8_t* ts, *s; // next nts(nn), seqb2
-    uint32_t* ndxkct;
-    uint64_t* kct; // different meaning later.
+    uint8_t* ts; // next nts(nn)
+    uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
+    uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
+    uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint32_t* wbuf; // later req
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
@@ -181,6 +182,32 @@ struct kct_t {
     std::list<uint32_t>::iterator bdit;
     // could be possible to move bnd here.
 };
+/* == kct in key_init stage: ==
+ * next_nt (sequence) is stored in first u64 and 2nd up to 6 highest bits.
+ * 6 highest bits contain the count. if more then 61 Nts, all 6 highest are set,
+ * count is moved to lowest bits of 2nd u64. The 1st u64 receives the address of a
+ * pointer to u64 that receives the storage and grows dynamically in powers of 2.
+ * its size (2-to the powers) is also stored in 2nd u64, 32th bit and above.
+ *
+ * == kct conversion: ==
+ * During conversion all nextNts are concatenated in kc->ts. The 2nd u64 receives
+ * the kc->ts offset in its low 40 bits, its high 24 bits receive the nextNt count.
+ * The 1st u64 of the kct receives the complement independent index (ndx). This is
+ * just temporary - it allows more efficient ndxkct storage.
+ *
+ * == unique boundary extension: ==
+ * The 2nd u64 of kct contains kc->ts offset in its low 40, nextNt count in high 24.
+ * In the scope of another unique key, remaining non unique positions are no longer
+ * considered. They can be skipped and therefore their respective nextNts are
+ * excised and moved upwards. The nextNt count is decremented.
+ *
+ * The 1st u64 is unset and will be used for keeping track which nextnts are passed
+ * for this index in the low 40 bits. The inferiority is stored in the highest 23th
+ * bit and the 40th bit contains the orientation of the complement independent index
+ * on reference once unique. Once unique the low 40 bits are used instead for the
+ * (genomic) b2pos storage.
+ * the 2nd u64s
+ */
 void show_list(kct_t*, std::list<uint32_t> &bnd);
 void free_kc(kct_t* kc);
 int fa_read(struct seqb2_t*, kct_t*);

@@ -116,7 +116,9 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 ./tst hg19_chr1_2.fa.gz -c -m 15
 ./tst hg19_chr1_2.fa.gz -p -m 15
 
-./tst hg19.fa.gz -p -m 15
+./tst hg19.fa.gz -p -m 17
+
+
 
 (rm hg19_GL.{2b,nn,bd,ub,kc}.gz; make clean && DEFINES="-DKEY_LENGTH=9" make &&
     valgrind ./uqct hg19_GL.fa.gz -l 51; rm hg19_GL.ub.gz; 
@@ -153,6 +155,24 @@ valgrind ./uqct hg19_chr1_2.fa.gz -l 51 2>&1 | tee hg19_1_2uqct.err
 
 rm test.x*.gz; DEFINES="-DKEY_LENGTH=11" make && ./uqct test.fa.gz -l 51 2>&1 | tee test_uqct.err
 
+mkdir fakeq
+for ref in hg19{_GL,_chr1_2}.fa.gz; do
+  for simerr in "" "-SE true"; do
+    out="fakeq/${ref%.fa.gz}${simerr// /_}"
+    echo $out
+    /opt/java/jre1.8.0_45/bin/java \
+-jar /home/roel/dev/src/ArtificialFastqGenerator/ArtificialFastqGenerator.jar \
+-R <(zcat hg19_GL.fa.gz) -O $out -RL 51 -RCNF 1 -SE true \
+-S $(zcat hg19_GL.fa.gz | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
+  done
+done
 
+
+make clean && DEFINES="-DKEY_LENGTH=11" make &&
+valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.fa.gz -l 51
+
+valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.fa.gz
+
+#qualities are not 
 
 

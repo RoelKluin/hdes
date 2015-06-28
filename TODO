@@ -10,6 +10,14 @@ version 0.011
 - the entire human genome is processed without error.
 - store final regions, keys and next Nts on disk.
 
+version 0.012
+- clean up boundary generation - no longer spurious
+
+version 0.013
+- clean up kc
+- kctndx => ndxkct, 32 bits
+- efficient kct reusage for memory
+
 TODO:
 - store:
  - separate seqb2: better for verification of key.
