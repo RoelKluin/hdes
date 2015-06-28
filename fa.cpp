@@ -265,6 +265,8 @@ default:    if (r.left-- == kc->ext) {
         if (ct == 1) {
             EPQ(dbg > 5, "1st unique at %u", b2pos);
             //XXX: make sure this is not off by one or two.
+            kc->kct[kct_i] &= ~INDEX_MASK;
+            kc->kct[kct_i] |= b2pos - KEY_WIDTH - 1;
             h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
             h->mapable += kc->ext;
             inter->s = b2pos;
@@ -350,8 +352,9 @@ ext_uq_iter(kct_t* kc)
             "\t%lu/%lu => %.2f%% mapable", kc->uqct, iter++, kc->bd_l, mapable, totNts,
             totNts ? 100.0f * mapable / totNts : nanf("NAN"));
     //dbg = 7;
-    for (Walker *w = kc->wlkr; w != kc->wlkr + kc->kct_l; ++w)
-        w->count = 0u;
+    for (uint64_t *w = kc->kct; w != kc->kct + kc->kct_l; w+=2)
+        if (w[1] > ONE_CT) // at least one left (if unique position genomic 2bit)
+            *w &= ~B2POS_MASK; // reset position
 
     return kc->uqct;
 }
