@@ -207,6 +207,23 @@ print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true, unsigned len = KEY_WIDT
     return -1;
 }
 
+static int
+print_ndx(uint64_t dna, bool dbg = true)
+{
+    if (dbg == false) return -1;
+    uint64_t rc = dna & KEYNT_TRUNC_UPPER;
+    dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
+    rc = revcmp(dna);
+    for (unsigned t = KEY_WIDTH; t--; dna >>= 2)
+        fputc(b6((dna & 3) << 1), stderr);
+    fputc('|', stderr);
+    for (unsigned t = KEY_WIDTH; t--; rc >>= 2)
+        fputc(b6((rc & 3) << 1), stderr);
+    fputc('\n', stderr);
+    return -1;
+}
+
+
 // to get array size of array member of t
 #define FIELD_SIZEOF(t, f) (sizeof(((t*)0)->f))
 

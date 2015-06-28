@@ -194,17 +194,6 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
 
     __WRITE_VAL(kc->kct_l)
     __WRITE_PTR(kc->kct, kc->kct_l)
-    len64 = kc->kct_l;
-    buf = (uint32_t*)malloc(sizeof(uint32_t) * len64);
-    ASSERT(buf != NULL, return -ENOMEM);
-    i = 0ul;
-    for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx) {
-        if (kc->ndxkct[ndx] < kc->kct_l) {
-            buf[i++] = ndx;
-            buf[i++] = kc->ndxkct[ndx];
-        }
-    }
-    __WRITE_PTR(buf, len64)
     res = rclose(fhout);
 err:
     if (buf)
@@ -228,12 +217,10 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->ndxkct[i] = kc->kct_l;
-    for (unsigned i=0u; i != kc->kct_l; ++i) {
-        __READ_VAL(val64)
-        ASSERT(val64 < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %lu > KEYNT_BUFSZ(%lu)",
-                i, kc->kct_l, val64, KEYNT_BUFSZ);
-        __READ_VAL(len)
-        kc->ndxkct[val64] = len;
+    for (unsigned i=0u; i != kc->kct_l; i += 2) {
+        ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %u > KEYNT_BUFSZ(%lu)",
+                i, kc->kct_l, kc->kct[i], KEYNT_BUFSZ);
+        kc->ndxkct[kc->kct[i]] = i;
     }
     res = 0;
 err:

@@ -310,8 +310,13 @@ kct_convert(kct_t* kc)
     *dest = '\0';
     uint64_t offs = 0ul;
 
-    for (uint64_t *src = kc->kct; src != kc->kct + kc->kct_l; src += 2) {
-        dbg = (src - kc->kct) == dbgkct ?  dbg | 8 : dbg & ~8;
+    for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx) {
+        if (kc->ndxkct[ndx] >= kc->kct_l) {
+            kc->ndxkct[ndx] = kc->kct_l;
+            continue;
+        }
+        uint64_t *src = kc->kct + kc->ndxkct[ndx];
+        dbg = kc->ndxkct[ndx] == dbgkct ? dbg | 8 : dbg & ~8;
         uint64_t l = src[1];
         unsigned __int128 x;
         unsigned t = offs & 3;
@@ -320,7 +325,7 @@ kct_convert(kct_t* kc)
             x = ((unsigned __int128)(l & B2SEQ_MASK) << 64) | src[0];
 
             l >>= B2LEN_SHFT;            // isolate twobit count
-            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%lx", src - kc->kct); // can happen at boundaries
+            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%lx", kc->ndxkct[ndx]); // can happen at boundaries
             src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2); // destination for copy.
             offs += l;                   // update offs for next round.
@@ -336,7 +341,6 @@ kct_convert(kct_t* kc)
         } else {
             l &= 0xffffffff;             // get length
             ASSERT(l != 0, return -EFAULT);
-            ASSERT(l + offs < kc->ts_l, return -EFAULT);
             uint64_t *s = (uint64_t *)src[0];
             src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2);
@@ -402,9 +406,9 @@ kct_convert(kct_t* kc)
             l -= 4;
         }
         ++dest;
-        ASSERT(dest < kc->ts + ts_end, return -EFAULT, "\n%lu(%lu) > %lu(%lu)?\nkct:0x%lx", dest - kc->ts, offs, ts_end, kc->ts_l, src - kc->kct);
+        ASSERT(dest < kc->ts + ts_end, return -EFAULT, "\n%lu(%lu) > %lu(%lu)?\nkct:0x%lx", dest - kc->ts, offs, ts_end, kc->ts_l, kc->ndxkct[ndx]);
         *dest = x; // if l == 0, pre-empty next.
-        src[0] = 0ul; //XXX: ndx here for ndxkct storage? - also change loop.
+        src[0] = ndx;
         //print_dna(*dest, dbg > 6, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }

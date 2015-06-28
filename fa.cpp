@@ -32,22 +32,6 @@ show_list(kct_t* kc, std::list<uint32_t> &bnd)
     }
 }
 
-static inline int
-print_ndx(uint64_t dna, bool dbg = true)
-{
-    if (dbg == false) return -1;
-    uint64_t rc = dna & KEYNT_TRUNC_UPPER;
-    dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
-    rc = revcmp(dna);
-    for (unsigned t = KEY_WIDTH; t--; dna >>= 2)
-        fputc(b6((dna & 3) << 1), stderr);
-    fputc('|', stderr);
-    for (unsigned t = KEY_WIDTH; t--; rc >>= 2)
-        fputc(b6((rc & 3) << 1), stderr);
-    fputc('\n', stderr);
-    return -1;
-}
-
 void
 free_kc(kct_t* kc)
 {
@@ -365,6 +349,10 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
 {
     int res = -ENOMEM;
     size_t t = kc->kct_l;
+
+    // was ndx for storage, unset for pos, strand & infiority;
+    for (unsigned i=0u; i != kc->kct_l; i += 2)
+        kc->kct[i] = 0ul;
 
     t = kc->ext;
     kc->wbuf = (uint32_t*)malloc(t * sizeof(uint32_t));

@@ -154,12 +154,6 @@ packed_struct kct_ext {
     uint64_t* b2;
 };
 
-packed_struct Walker {
-    uint32_t count;
-    uint32_t excise_ct;
-};
-
-
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 
