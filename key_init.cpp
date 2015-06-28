@@ -320,7 +320,7 @@ kct_convert(kct_t* kc)
             x = ((unsigned __int128)(l & B2SEQ_MASK) << 64) | src[0];
 
             l >>= B2LEN_SHFT;            // isolate twobit count
-            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%x", src - kc->kct); // can happen at boundaries
+            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%lx", src - kc->kct); // can happen at boundaries
             src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2); // destination for copy.
             offs += l;                   // update offs for next round.

@@ -178,10 +178,9 @@ struct kct_t {
     uint32_t* ndxkct;
     uint64_t* kct; // different meaning later.
     uint32_t* wbuf; // later req
-    uint32_t id_l, uqct;
+    uint64_t ts_l, s_l;
+    uint32_t id_l, bd_l, kct_l, uqct;
     int ext; // not stored
-    uint64_t bd_l, ts_l, s_l;
-    uint64_t kct_l; // late req, continued req
     uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
     uint8_t kct_m;
     std::list<Hdr*> h;

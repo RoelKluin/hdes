@@ -234,7 +234,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             }
         }
         switch(r.left) {
-case 1:     EPQ(dbg > 3 && inter->l, "[%lu]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
+case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
             h->mapable += inter->l;
             if (inter != last) {
                 inter->corr = last->corr;
@@ -348,7 +348,7 @@ ext_uq_iter(kct_t* kc)
         mapable += (*h)->mapable;
         totNts += ret;
     }
-    EPQ(dbg > 0, "extended %u unique ranges in iteration %u, using %lu boundaries\n"
+    EPQ(dbg > 0, "extended %u unique ranges in iteration %u, using %u boundaries\n"
             "\t%lu/%lu => %.2f%% mapable", kc->uqct, iter++, kc->bd_l, mapable, totNts,
             totNts ? 100.0f * mapable / totNts : nanf("NAN"));
     //dbg = 7;
