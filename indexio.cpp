@@ -197,13 +197,9 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
     len64 = kc->kct_l;
     buf = (uint32_t*)malloc(sizeof(uint32_t) * len64);
     ASSERT(buf != NULL, return -ENOMEM);
-    i = 0;
-    // TODO: put this conversion in kct_convert and only write kc->ndxkct here..
+    i = 0ul;
     for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx) {
-
-        if (kc->ndxkct[ndx] >= kc->kct_l) {
-            kc->ndxkct[ndx] = kc->kct_l; // make high bit range available
-        } else {
+        if (kc->ndxkct[ndx] < kc->kct_l) {
             buf[i++] = ndx;
             buf[i++] = kc->ndxkct[ndx];
         }

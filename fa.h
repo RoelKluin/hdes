@@ -44,16 +44,6 @@
 #define B2POS_MASK (ONE_CT -1ul)
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
-// While some movement of next-NTs per key takes place - upwards
-// movement of next-NTs that lie within range of unique indices and can
-// therefore be skipped in future iterations, the number of next-Nts per
-// key remain constant.
-
-
-#define _keynt_offs(kct, _ndx) (kct[_ndx] & INDEX_MASK)
-#define get_keynt_offs(kct, ndx) _keynt_offs(kct, ndx)
-#define get_last_keynt_offs(kct, ndx) (ndx != 0 ? _keynt_offs(kct, ndx - 2) : 0)
-
 
 
 #define __seq_le_n(b, dna, rc) ({\
@@ -187,7 +177,6 @@ struct kct_t {
     uint8_t* ts, *s; // next nts(nn), seqb2
     uint32_t* ndxkct;
     uint64_t* kct; // different meaning later.
-    Walker* wlkr; // later req XXX
     uint32_t* wbuf; // later req
     uint32_t id_l, uqct;
     int ext; // not stored

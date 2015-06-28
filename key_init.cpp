@@ -320,17 +320,11 @@ kct_convert(kct_t* kc)
             x = ((unsigned __int128)(l & B2SEQ_MASK) << 64) | src[0];
 
             l >>= B2LEN_SHFT;            // isolate twobit count
-            //if (l == 0) continue;
-            //ASSERT(l != 0, return -EFAULT);
-            //ASSERT(l + offs < kc->ts_l, return -EFAULT, 
-            //        "\n%lu + %lu >= %lu?\nkct:%lu/%lu",
-            //        l , offs, kc->ts_l, src - kc->kct, kc->kct_l);
-            src[1] = l << BIG_SHFT;
+            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%x", src - kc->kct); // can happen at boundaries
+            src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2); // destination for copy.
-            x <<= t << 1;                // prealign 2bits for appending to dest
             offs += l;                   // update offs for next round.
-            src[0] = offs;               // kc->kct conversion: store end position
-                                         // of its next Nts from now on.
+            x <<= t << 1;                // prealign 2bits for appending to dest
 
             EPQ0(dbg > 6, "orig seq (%lu, %lu), %u\t", l, dest - kc->ts, t);
 
@@ -344,9 +338,9 @@ kct_convert(kct_t* kc)
             ASSERT(l != 0, return -EFAULT);
             ASSERT(l + offs < kc->ts_l, return -EFAULT);
             uint64_t *s = (uint64_t *)src[0];
-            src[1] = l << BIG_SHFT;
+            src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2);
-            offs += l;                  // update offs for next.
+            offs += l;
             x = ((unsigned __int128)s[1] << 64) | *s;
 
             EPQ0(dbg > 6, "orig seqndx (%lu, %lu), %u\t", l, dest - kc->ts, t);
@@ -399,9 +393,7 @@ kct_convert(kct_t* kc)
                 l -= 64;
             }
             print_dna(x, dbg > 6, '.', 4);
-            s = (uint64_t *)src[0];
-            free(s);
-            src[0] = offs;
+            free((uint64_t *)src[0]);
 	}
         while (l >= 4) { // first is already written.
             *++dest = x & 0xff;
@@ -412,6 +404,7 @@ kct_convert(kct_t* kc)
         ++dest;
         ASSERT(dest < kc->ts + ts_end, return -EFAULT, "\n%lu(%lu) > %lu(%lu)?\nkct:0x%lx", dest - kc->ts, offs, ts_end, kc->ts_l, src - kc->kct);
         *dest = x; // if l == 0, pre-empty next.
+        src[0] = 0ul; //XXX: ndx here for ndxkct storage? - also change loop.
         //print_dna(*dest, dbg > 6, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }

@@ -16,7 +16,7 @@
 #include "b6.h"
 
 static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
-static unsigned dbgkct = 0x25d034; //~0u;
+static unsigned dbgkct = ~0u;
 static const uint32_t dbgndxkct = ~0u; //1099511627775; //0x2028;
 static int dbg = 3;
 

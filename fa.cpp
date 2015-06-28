@@ -69,7 +69,6 @@ free_kc(kct_t* kc)
 static int
 decr_excise(kct_t const *const kc, const int left)
 {
-    Walker* wlkr = kc->wlkr;
     uint32_t* wbuf = kc->wbuf;
     unsigned keep_dbg = 0;
     for(int i = kc->ext; i --> left ;) {
@@ -79,13 +78,14 @@ decr_excise(kct_t const *const kc, const int left)
         ASSERT(ndx != ~0u, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgndxkct ?  dbg | 8 : dbg & ~8;
         keep_dbg |= dbg;
-        Walker* Next_nts = wlkr + ndx;
-        ASSERT(Next_nts->count > 0, return -EFAULT);
 
-        // get ts offset
-        uint64_t nt = get_last_keynt_offs(kc->kct, ndx);
-        nt += --Next_nts->count;
-        uint64_t offs = get_keynt_offs(kc->kct, ndx) - ++Next_nts->excise_ct;
+        uint64_t nt = kc->kct[ndx + 1] & B2POS_MASK; // ts offset
+
+        kc->kct[ndx + 1] -= ONE_CT;         // excise it..
+        uint64_t offs = nt + (kc->kct[ndx + 1] >> BIG_SHFT);
+
+        ASSERT((kc->kct[ndx] & B2POS_MASK) > 0, return -EFAULT);
+        nt += --kc->kct[ndx] & B2POS_MASK;  // ..instead of passing
 
         // excise out twobits, i.e. shift 2bits above current 2bit down.
         uint8_t* q = &kc->ts[nt >> 2];
@@ -143,9 +143,9 @@ static inline int update_wlkr(kct_t* kc, int left)
  * update. Also retrieve for this index the offset.
  */
 static inline int eval_ndx(kct_t* kc, running *r, uint64_t wx,
-        uint32_t ndxkct, unsigned ct)
+        uint32_t ndxkct, uint64_t ct)
 {
-    EPQ(dbg > 6, "path ct:%u", ct);
+    EPQ(dbg > 6, "path ct:%lu", ct);
     switch(ct) { //(ct == 1) | ((left > 0) << 1);
 case 2: if ((r->infior + INFERIORITY) > wx) {
              // A non-unique keys' inferiority must be gt neighbouring
@@ -190,7 +190,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint32_t b2pos = last->s + last->l;
     uint64_t dna = last->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
-    unsigned ct = 1; // treat last boundary as a first unique
+    uint64_t ct = 1; // treat last boundary as a first unique
     running r = {0};
 
     if (dbg > 5) show_list(kc, h->bnd);
@@ -199,26 +199,27 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
     EPQ(b2pos >= next->s, "boundary %u >= %u ??", b2pos, next->s); // I guess this shouldn't happen?
-
     while(b2pos < next->s) { // until next event
-        EPQ(dbg > 6, "next path ct:%u", ct);
+        EPQ(dbg > 6, "next path ct:%lu", ct);
         uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
         // get offset to first of keys' next Nt
         int kct_i = eval_ndx(kc, &r, t, kc->ndxkct[ndx], ct);
         ASSERT(kct_i >= 0, return -EFAULT, "(%s:%u)", hdr, b2pos);
-        t = get_last_keynt_offs(kc->kct, kct_i);
 
-        // ts.idx of this key minus ts.idx of former is this keys' next-Nts-length.
-        Walker* Next_nts = kc->wlkr + kct_i;
-        ct = get_keynt_offs(kc->kct, kct_i) - t - Next_nts->excise_ct;
-        ASSERT(ct != 0, return -EFAULT);
+        // get offset to this keys nextNts
+        t = (kc->kct[kct_i]++ + kc->kct[kct_i + 1]) & B2POS_MASK;
+        ct = kc->kct[kct_i + 1] >> BIG_SHFT; // remaining nextNts
+
+        // TODO: if all nextNts are the same increase keylength.
+
+        EPQ(ct == 0, "No nextNts for 0x%x\tt:%lu, ct:%lu", kct_i, t, ct); // can happen at boundaries
+        EPQ(dbg > 6, "0x%x\tt:%lu, ct:%lu", kct_i, t, ct);
+        //ASSERT(ct != 0, return -EFAULT);
         ct = ct == 1ul; // if only one, the key has become uniq
 
-        t += Next_nts->count++; // offset to current next Nt.
-
-        EPQ(dbg > 6, "offs:%lu\tnext Nts (%lu part, %ux, byte %lu(%x)):",
+        EPQ(dbg > 6, "offs:%lu\tnext Nts (%lu part, %lu x, byte %lu(%x)):",
             t, 4 - (t&3), ct, t >> 2, kc->ts[t>>2]);
         print_2dna(kc->ts[t>>2], kc->ts[t>>2] >> ((t&3) << 1), dbg > 6);
 
@@ -361,9 +362,6 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
 {
     int res = -ENOMEM;
     size_t t = kc->kct_l;
-    kc->wlkr = (Walker*)malloc(t * sizeof(Walker));
-    ASSERT(kc->wlkr != NULL, return res);
-    while (t--) kc->wlkr[t] = {0u, 0u};
 
     t = kc->ext;
     kc->wbuf = (uint32_t*)malloc(t * sizeof(uint32_t));
@@ -379,7 +377,6 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
         _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     }
 err:
-    _buf_free(kc->wlkr);
     return res;
 }
 
