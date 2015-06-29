@@ -59,9 +59,13 @@ decr_excise(kct_t const *const kc, const int left)
 
         // current next_Nt pos and pending offsets are stored in walker.
         uint32_t ndx = wbuf[i];
+        wbuf[i] = ~0u;
         ASSERT(ndx != ~0u, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgndxkct ?  dbg | 8 : dbg & ~8;
         keep_dbg |= dbg;
+        // no movement if only one left (besides.. genomic position was written)
+        if (kc->kct[ndx + 1] <= (ONE_CT << 1))
+            continue;
 
         uint64_t nt = kc->kct[ndx + 1] & B2POS_MASK; // ts offset
 
@@ -87,7 +91,6 @@ decr_excise(kct_t const *const kc, const int left)
         EPQ(dbg > 6, "=====> excised <======, became %x",
                 *q | (q != qe ? (q[1] & 3) << 6 : 0));
         // mask to cover this and past nucleotide.
-        wbuf[i] = ~0u;
         while (q != qe) {
             *q |= (q[1] & 3) << 6;
             EPQ0(dbg > 6, "became; next:");print_2dna(*q,q[1]>>2, dbg > 6);
@@ -246,15 +249,18 @@ default:    if (r.left-- == kc->ext) {
         }
         dna = _seq_next(t, dna, rc);
         ++b2pos;
-        if (ct == 1) {
-            EPQ(dbg > 5, "1st unique at %u", b2pos);
-            //XXX: make sure this is not off by one or two.
+        if (ct & 1) {
+            // set genomic position for unique.
             kc->kct[kct_i] &= ~INDEX_MASK;
             kc->kct[kct_i] |= b2pos - KEY_WIDTH - 1;
-            h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
-            h->mapable += kc->ext;
-            inter->s = b2pos;
-            inter->at_dna = dna;
+            if (ct == 1) {
+                EPQ(dbg > 5, "1st unique at %u", b2pos);
+                //XXX: make sure this is not off by one or two.
+                h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
+                h->mapable += kc->ext;
+                inter->s = b2pos;
+                inter->at_dna = dna;
+            }
         }
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
