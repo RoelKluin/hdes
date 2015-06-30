@@ -186,8 +186,6 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
 {
     uint32_t* buf = NULL;
     int res = -EFAULT;
-    uint32_t i;
-    uint64_t len64;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
@@ -204,8 +202,6 @@ err:
 
 int load_kc(struct gzfh_t* fhin, kct_t* kc)
 {
-    uint64_t val64;
-    uint32_t len;
     int res;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
@@ -218,10 +214,26 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->ndxkct[i] = kc->kct_l;
     for (unsigned i=0u; i != kc->kct_l; i += 2) {
-        ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %u > KEYNT_BUFSZ(%lu)",
+        ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %lu > KEYNT_BUFSZ(%lu)",
                 i, kc->kct_l, kc->kct[i], KEYNT_BUFSZ);
         kc->ndxkct[kc->kct[i]] = i;
     }
+    res = 0;
+err:
+    return res;
+}
+
+int ammend_kc(struct gzfh_t* fhin, kct_t* kc)
+{
+    int res;
+    _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
+    res = -EFAULT;
+    // 0: version number
+    // 1: buffer sizes
+    __READ_VAL(kc->kct_l)
+    if (fhin->read(fhin, (char*)kc->kct, kc->kct_l * sizeof(*(kc->kct))) < 0)
+        return res;
+
     res = 0;
 err:
     return res;

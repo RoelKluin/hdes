@@ -196,8 +196,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ASSERT(kct_i >= 0, return -EFAULT, "(%s:%u)", hdr, b2pos);
 
         // get offset to this keys nextNts
-        t = (kc->kct[kct_i]++ + kc->kct[kct_i + 1]) & B2POS_MASK;
         ct = kc->kct[kct_i + 1] >> BIG_SHFT; // remaining nextNts
+        t = (ct > 1ul) ? kc->kct[kct_i]++ : 0;
+        t = (t + kc->kct[kct_i + 1]) & B2POS_MASK;
 
         // TODO: if all nextNts are the same increase keylength.
 
@@ -343,7 +344,7 @@ ext_uq_iter(kct_t* kc)
             totNts ? 100.0f * mapable / totNts : nanf("NAN"));
     //dbg = 7;
     for (uint64_t *w = kc->kct; w != kc->kct + kc->kct_l; w+=2)
-        if (w[1] > ONE_CT) // at least one left (if unique position genomic 2bit)
+        if ((w[1] & ~B2POS_MASK) > ONE_CT) // at least one left (if unique position genomic 2bit)
             *w &= ~B2POS_MASK; // reset position
 
     return kc->uqct;
@@ -351,7 +352,7 @@ ext_uq_iter(kct_t* kc)
 
 
 static int
-extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
+extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
 {
     int res = -ENOMEM;
     size_t t = kc->kct_l;
@@ -371,7 +372,8 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
     } while (res > 0);
     _buf_free(kc->wbuf);
     if (res == 0) {
-        _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
+        _ACTION(save_boundaries(fhout[0], kc), "writing unique boundaries file");
+        _ACTION(save_kc(fhout[2], kc), "writing unique keycounts file");
     }
 err:
     return res;
@@ -387,7 +389,7 @@ fa_index(struct seqb2_t* seq)
     kc.ext = seq->readlength - KEY_WIDTH;
     unsigned mode;
 
-    const char* ext[6] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub"};
+    const char* ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
 
     if (fhio[0]->name) {
         len = strlen(fhio[0]->name);
@@ -447,7 +449,8 @@ fa_index(struct seqb2_t* seq)
     }
     if (mode < 2) {
         _ACTION(reopen(fhio[0], ext[1], ext[5]), "")
-        _ACTION(extd_uniqbnd(&kc, fhio[0]), "extending unique boundaries")
+        _ACTION(reopen(fhio[2], ext[3], ext[6]), "")
+        _ACTION(extd_uniqbnd(&kc, fhio), "extending unique boundaries")
     }
     EPR("All seems fine.");
 err:

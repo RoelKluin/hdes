@@ -325,7 +325,7 @@ kct_convert(kct_t* kc)
             x = ((unsigned __int128)(l & B2SEQ_MASK) << 64) | src[0];
 
             l >>= B2LEN_SHFT;            // isolate twobit count
-            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%lx", kc->ndxkct[ndx]); // can happen at boundaries
+            EPQ(dbg > 3 && l == 0, "No nextNts for 0x%x", kc->ndxkct[ndx]); // can happen at boundaries
             src[1] = (l << BIG_SHFT) | offs;
             dest = kc->ts + (offs >> 2); // destination for copy.
             offs += l;                   // update offs for next round.
@@ -406,14 +406,14 @@ kct_convert(kct_t* kc)
             l -= 4;
         }
         ++dest;
-        ASSERT(dest < kc->ts + ts_end, return -EFAULT, "\n%lu(%lu) > %lu(%lu)?\nkct:0x%lx", dest - kc->ts, offs, ts_end, kc->ts_l, kc->ndxkct[ndx]);
+        ASSERT(dest < kc->ts + ts_end, return -EFAULT, "\n%lu(%lu) > %lu(%lu)?\nkct:0x%x", dest - kc->ts, offs, ts_end, kc->ts_l, kc->ndxkct[ndx]);
         *dest = x; // if l == 0, pre-empty next.
         src[0] = ndx;
         //print_dna(*dest, dbg > 6, '\n', 4);
 //EPR0("copied final rest:\t"); print_dna(*dest);
     }
     // why not true, boundaries?
-    EPR("offs:%lu kc->ts_l:%lu", offs, kc->ts_l);
+    EPQ(dbg > 4, "offs:%lu kc->ts_l:%lu", offs, kc->ts_l);
     //ASSERT(offs == kc->ts_l, return -EFAULT, "%u, %u", offs, kc->ts_l);
     kc->ts_l = offs;
     // TODO: convert kctndx to nextnt index here.
