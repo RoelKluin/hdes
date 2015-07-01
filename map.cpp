@@ -134,7 +134,12 @@ default:            dna = _seq_next(b, dna, rc);
                         continue;
                     _get_ndx(ndx, wx, dna, rc);
                     wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
+                    //ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos, 
+                    //    c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
+                    //ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0,
+                    //        c = -EFAULT; goto out, "0x%lx", ndx);
                     if (kc->ndxkct[ndx] >= kc->kct_l || // WHY does this happen??
+                            ((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0) &&
                             ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= end_pos)) {
                         buf[++mismatching] = (ndx | wx) + kc->kct_l;
                         bufi[mismatching] = len;
@@ -171,7 +176,13 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1;
                     _get_ndx(ndx, wx, dna, rc);
                     wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
-                    if (kc->ndxkct[ndx] < kc->kct_l && // WHY does this happen??
+                    //ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos, 
+                    //    c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
+                    //ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0,
+                    //        c = -EFAULT; goto out, "0x%lx", ndx);
+
+                    if (kc->ndxkct[ndx] < kc->kct_l && // WHY do below happen??
+                            ((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0) &&
                             ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos)) { // key exists on reference
                         //test infior - in high bits.
                         uint64_t *k = kc->kct + kc->ndxkct[ndx];
@@ -214,7 +225,15 @@ default:            dna = _seq_next(b, dna, rc);
         unsigned seqlen = strlen(seqstart), tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
 
-        if (((uint32_t)ndx < kc->kct_l) && ((kc->kct[ndx + 1] >> BIG_SHFT) == 1ul)) {
+        //ASSERT((kc->kct[ndx] & B2POS_MASK) < end_pos,
+        //        c = -EFAULT; goto out, "0x%lx", ndx);
+        //ASSERT((int)(kc->kct[ndx] & B2POS_MASK) <= 0,
+        //        c = -EFAULT; goto out, "ncxkct:0x%lx", ndx);
+
+        if (((uint32_t)ndx < kc->kct_l) && 
+                ((kc->kct[ndx] & B2POS_MASK) < end_pos) &&
+                ((int)(kc->kct[ndx] & B2POS_MASK) > 0) &&
+                ((kc->kct[ndx + 1] >> BIG_SHFT) == 1ul)) {
             mq = 37;
             flag = (wx ^ (kc->kct[ndx] >> BIG_SHFT)) & 1;
             flag = 0x42 | (flag << 4);
@@ -272,6 +291,7 @@ default:            dna = _seq_next(b, dna, rc);
             while ((c = gc(g)) != '\n' && c != -1) {}
             s = h; // no storage needed
         }
+        c = gc(g);
     } while (c >= 0);
     c = 0;
 out:
