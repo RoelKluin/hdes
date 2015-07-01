@@ -304,7 +304,7 @@ static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     kc->uqct = 0u;
-    uint32_t lastx = h->bnd.back();
+    uint32_t lastx;
     EPR("Processing %s", kc->id + h->part[0]);
     kc->bdit = h->bnd.begin();
     h->mapable = 0u;
@@ -355,7 +355,7 @@ static int
 extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
 {
     int res = -ENOMEM;
-    size_t t = kc->kct_l;
+    size_t t;
 
     // was ndx for storage, unset for pos, strand & infiority;
     for (unsigned i=0u; i != kc->kct_l; i += 2)

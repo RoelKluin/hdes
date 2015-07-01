@@ -137,7 +137,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
                 EPQ(kc->s_l - h->s_s + corr != h->end_pos,
                         "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%u) == %u",
                         kc->s_l - h->s_s, corr, h->end_pos);
-                t = 0;
                 continue;
             }
             kc->bd[kc->bd_l].corr = corr;
