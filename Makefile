@@ -1,6 +1,10 @@
+CC=		g++-4.9
+#CC=		g++
 CC=		g++
 #CC=		clang --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11
+#CC=		clang++-3.5 --analyze
+CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always
 AR=		ar
 VERSION=	0.013
 LOBJS=
