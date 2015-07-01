@@ -14,6 +14,72 @@
 #include <string.h> // memset()
 #include "fa.h"
 
+/**
+ * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
+ */
+static inline int
+init_fq(seqb2_t *seq)
+{
+
+    seq->s = _buf_init(seq->s, INIT_BUFSIZEBIT);
+    *seq->s = '\0';
+
+    size_t i, v = 1, l = sizeof(*seq->lookup) * KEYNT_BUFSZ;
+    seq->lookup = (uint32_t*)malloc(l);
+    if (seq->lookup == NULL) {
+        _buf_free(seq->s);
+        return -ENOMEM;
+    }
+    for (i = 0; i != l; i += sizeof(*seq->lookup))
+        memcpy(((char*)seq->lookup) + i, &v, sizeof(*seq->lookup));
+    return 0;
+}
+
+/*
+ * store seqphred and return corresponding 2bit Nt
+ */
+static inline unsigned
+seqphred(uint8_t *s, int q)
+{
+    unsigned c = b6(*s);
+    *s = q;
+
+    // 1) seqphred includes redundant key Nts. We could save a few bytes per sequence.
+    // 2) Maybe reads with N's should be processed at the end - in assembly.
+    if (isb6(c)) {
+        *s = (*s | (c << 5)) + 3;
+        return c >>= 1;
+    }
+    return c ^ c; // zero [min] for N - but also for A.
+}
+
+
+static int
+get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
+{
+    // FIXME: no looping here.
+    std::list<Hdr*>::iterator hdr;
+    std::list<uint32_t>::iterator bd;
+    for (hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
+        bd = (*hdr)->bnd.end();
+        --bd;
+        ASSERT(*bd < kc->bd_l, return -EFAULT);
+        if (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) < *pos)
+            continue;
+        EPQ(dbg > 16, "%s", kc->id + (*hdr)->part[0]);
+        while (bd != (*hdr)->bnd.begin() &&
+                ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) > *pos) {
+            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l), pos);
+            --bd;
+        }
+        break;
+    }
+    *pos += kc->bd[*bd].corr + 1 - (*hdr)->s_s - bufi; // one-based.
+
+    return (*hdr)->part[0];
+}
+
+
 static int
 fq_read(kct_t* kc, seqb2_t *seq)
 {
@@ -21,9 +87,196 @@ fq_read(kct_t* kc, seqb2_t *seq)
     int (*gc) (void*);
     int (*ungc) (int, void*);
     struct gzfh_t* fhin = seq->fh;
+dbg = 5;
+    uint64_t l = seq->s_l, m = seq->s_m;
+    register uint8_t *s = seq->s + l;
+    const unsigned phred_offset = seq->phred_offset;
+    unsigned fq_ent_max = SEQ_MAX_NAME_ETC + seq->readlength + 1;
     register int c;
+    uint64_t ndx, dna = 0ul, rc = 0ul, b = 0ul, wx = 0ul;
+    uint64_t* buf = (uint64_t*)malloc((kc->ext + 1) * sizeof(uint64_t));
+    unsigned* bufi = (unsigned*)malloc((kc->ext + 1) * sizeof(unsigned));
+    Hdr* lh = kc->h.back();
+    const uint64_t end_pos = lh->end_pos;
+
     set_readfunc(fhin, &g, &gc, &ungc);
+
+    while ((c = gc(g)) != '@') /* skip to first header */
+        if (c == -1 || c == '>') goto out;
+    do {
+        register unsigned i = 0;
+        _buf_grow0(seq->s, fq_ent_max); // at least enough space for one read
+
+        s = seq->s + seq->s_l;
+        uint8_t* h = s;
+
+        while (!isspace(c = gc(g)) && (c >= 0)) *s++ = c; /* header */
+        while (c != '\n' && (c >= 0)) c = gc(g);          /* comment - ignored. */
+        if (c == -1) break;
+        *s++ = '\0';
+        EPQ(dbg > 6, "%s", (char*)h);
+
+        unsigned len = 0, mismatching = 0;
+        char* seqstart = (char*)s;
+        i = 0;
+        while ((c = gc(g)) != '\n') {
+            ASSERT(c != -1, c = -EFAULT; goto out);
+            *s = b ^= b;
+            switch(c) {
+case 'C': case 'c': b = 2;
+case 'G': case 'g': b ^= 1;
+case 'U': case 'u':
+case 'T': case 't': b ^= 2;
+case 'A': case 'a': *s = 0x3e;
+default:            dna = _seq_next(b, dna, rc);
+                    *s++ |= (b << 6) | 1; // for seqphred storage
+                    if (++i < KEY_WIDTH)
+                        continue;
+                    _get_ndx(ndx, wx, dna, rc);
+                    wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
+                    if (kc->ndxkct[ndx] >= kc->kct_l || // WHY does this happen??
+                            ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= end_pos)) {
+                        buf[++mismatching] = (ndx | wx) + kc->kct_l;
+                        bufi[mismatching] = len;
+                        continue;
+                    }
+                    ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out)
+                    buf[0] = kc->ndxkct[ndx] | wx;
+                    bufi[0] = len++;
+                    if (dbg > 6) {
+                        uint64_t pos = kc->kct[kc->ndxkct[ndx]] & B2POS_MASK;
+                        c = get_tid_and_pos(kc, &pos, bufi[0]);
+                        ASSERT(c >= 0, goto out);
+                        EPR0("%s:%lu\t", kc->id + c, pos);
+                        print_ndx(ndx);
+                    }
+            }
+            break;
+        }
+        ASSERT(len > 0, c = -EFAULT; goto out, "FIXME: skip too short read or handle entirely non-matching");
+        // TODO: early verify and process unique count if correct.
+
+        if (c != '\n') c = gc(g);
+
+        while (c != '\n') {
+            ASSERT(c != -1, c = -EFAULT; goto out);
+            *s = b ^= b;
+            switch(c) {
+case 'C': case 'c': b = 2;
+case 'G': case 'g': b ^= 1;
+case 'U': case 'u':
+case 'T': case 't': b ^= 2;
+case 'A': case 'a': *s = 0x3e;
+default:            dna = _seq_next(b, dna, rc);
+                    *s++ |= (b << 6) | 1;
+                    _get_ndx(ndx, wx, dna, rc);
+                    wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
+                    if (kc->ndxkct[ndx] < kc->kct_l && // WHY does this happen??
+                            ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos)) { // key exists on reference
+                        //test infior - in high bits.
+                        uint64_t *k = kc->kct + kc->ndxkct[ndx];
+                        uint32_t t = buf[0] & ~KEYNT_BUFSZ;
+                        ASSERT(t < kc->kct_l, c = -EFAULT; goto out);
+                        // TODO: early verify and process unique count if correct.
+                        ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
+
+                        if (*k < kc->kct[t]) { // lowest inferiority
+                            buf[len] = buf[0];
+                            bufi[len] = bufi[0];
+                            buf[0] = kc->ndxkct[ndx] | wx;
+                            bufi[0] = len;
+                            if (dbg > 6) {
+                                uint64_t pos = *k & B2POS_MASK;
+                                ASSERT(pos < end_pos,  c = -EFAULT; goto out, "0x%lx", pos);
+                                c = get_tid_and_pos(kc, &pos, bufi[0]);
+                                ASSERT(c >= 0, goto out);
+                                EPR0("%s:%lu\t", kc->id + c, pos);
+                                print_ndx(ndx);
+                            }
+                        } else {
+                            buf[len] = kc->ndxkct[ndx] | wx;
+                        }
+                    } else {
+                        // at least one of the Nts must be a mismatch, N or variant
+                        // the KEY_WIDTH range is suspected (TODO)
+                        buf[len] = (ndx | wx) + kc->kct_l;
+                        bufi[len] = len;
+                        ++mismatching;
+                    }
+            }
+            ++len;
+            c = gc(g);
+        }
+        wx = buf[0] >> KEYNT_BUFSZ_SHFT;
+        ndx = buf[0] & ~KEYNT_BUFSZ;
+        *s = '\0';
+        while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
+        unsigned seqlen = strlen(seqstart), tln = 0, mps = 0, mq = 0, flag = 44;
+        const char* mtd = "*";
+
+        if (((uint32_t)ndx < kc->kct_l) && ((kc->kct[ndx + 1] >> BIG_SHFT) == 1ul)) {
+            mq = 37;
+            flag = (wx ^ (kc->kct[ndx] >> BIG_SHFT)) & 1;
+            flag = 0x42 | (flag << 4);
+
+
+
+            uint64_t pos = kc->kct[ndx] & B2POS_MASK;
+            
+            ASSERT(pos != -2u, c = -EFAULT; goto out,
+                    "pos:%lu, kc->kct[0x%lx,+1], %lx, %lx", pos, ndx, kc->kct[ndx], kc->kct[ndx+1])
+            EPQ(dbg > 6, "pos:%lu", pos);
+            c = get_tid_and_pos(kc, &pos, bufi[0]);
+            ASSERT(c >= 0, goto out);
+
+            const char* tid = kc->id + c;
+
+            OPR0("%s\t%u\t%s\t%lu\t%u\t%uM\t%s\t%u\t%d\t",
+           (char*)h,flag,tid, pos,mq,seqlen,mtd,mps,tln);
+            if (flag & 0x10) { //reverse complemented
+                for (i = 0; i != seqlen; ++i) {
+                    c = *--s;
+                    *s = gc(g);
+                    ASSERT(*s != '\n' && *s != -1, c = -EFAULT; goto out, "truncated");
+                    switch (c) {
+                        case 0x3f: OPR0("T"); break;
+                        case 0x7f: OPR0("G"); break;
+                        case 0xbf: OPR0("A"); break;
+                        case 0xff: OPR0("C"); break;
+                        case 0x1: OPR0("N"); break;
+                    }
+                }
+                 OPR0("\t");
+                for (i = 0; i != seqlen; ++i)
+                    OPR0("%c", *s++);
+                ASSERT(gc(g) == '\n', c = -EFAULT; goto out);
+            } else {
+                s -= seqlen;
+                for (i = 0; i != seqlen; ++i) {
+                    switch ((c = *s++)) {
+                        case 0x3f: OPR0("A"); break;
+                        case 0x7f: OPR0("C"); break;
+                        case 0xbf: OPR0("T"); break;
+                        case 0xff: OPR0("G"); break;
+                        case 0x1: OPR0("N"); break;
+                    }
+                }
+                OPR0("\t");
+                while ((c = gc(g)) != '\n' && c != -1)
+                    OPR0("%c", c);
+            }
+            OPR("\tMD:Z:%u\tNM:i:0", seqlen);
+            s = h; // no storage needed
+        } else {
+            // XXX: skip for now.
+            while ((c = gc(g)) != '\n' && c != -1) {}
+            s = h; // no storage needed
+        }
+    } while (c >= 0);
     c = 0;
+out:
+    free(buf);
+    free(bufi);
     return c;
 }
 
@@ -34,13 +287,15 @@ map_fq_se(struct seqb2_t* seq)
 
     // 1) open keyindex, infior and strand
     struct gzfh_t* fhio[3] = { seq->fh + 1, seq->fh + 2, seq->fh + 3};
-    const char* ext[4] = {".kc",".2b",".bd", ".fa"};
+    const char* ext[4] = {".kc",".2b",".bd",  ".uq"};
     char file[768];
     kct_t kc = {0};
     kc.ext = seq->readlength - KEY_WIDTH;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
+
+    _ACTION( init_fq(seq), "intializing memory")
 
     for (int i=0; i != 3; ++i) {
         if (fhio[i]->name == NULL) {
@@ -58,8 +313,12 @@ map_fq_se(struct seqb2_t* seq)
     _ACTION(load_kc(fhio[0], &kc), "loading keycounts file")
     _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file")
     _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file")
+
+    _ACTION(reopen(fhio[0], ext[0], ext[3]), "")
+    _ACTION(ammend_kc(fhio[0], &kc), "ammending keycounts from file")
     
     // 4) open fq for reading
+    _ACTION(fq_read(&kc, seq), "mapping reads")
     //...
     EPR("All seems fine.");
 err:
