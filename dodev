@@ -1,6 +1,6 @@
 #!/bin/bash
 
-dir=/home/roel/dev/git/hdes
+dir=$(dirname "$0")
 mf=Makefile
 cd $dir
 git ls-tree -r $(git branch | sed -n 's/\* //p') --name-only | sort -u | xargs du -b | perl -e'

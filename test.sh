@@ -201,5 +201,11 @@ EOF
 
 ~/dev/git/IGV/igv.sh -b batchfile
 
+#########################
+make clean && DEFINES="-DKEY_LENGTH=17" make
+
+ln -s /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+./uqct Homo_sapiens.GRCh38.dna.primary_assembly.fa -l 51
+
 
 

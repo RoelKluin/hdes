@@ -157,7 +157,7 @@ int main(int argc, char* const* argv)
         i = get_fastx_type(f, fhsz);
         if ((i < 2) && seq.fh[i].name != NULL) ++i; // get available read fastqs, skipped for fasta
 
-        if ((i >= fhsz) || seq.fh[i].name != NULL) { // fhsz , not neccearily one bit, marks error.
+        if ((i >= fhsz) || seq.fh[i].name != NULL) { // ge fhsz marks error.
             EPR("Unhandled argument %s (%u)", f, i);
             goto out;
         }
