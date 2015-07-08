@@ -77,11 +77,11 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
         break;
     }
     ASSERT (hdr != kc->h.end(), return -EFAULT);
-    EPQ(dbg > 6, "%d + %u <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi, KEY_WIDTH);
+    EPQ(dbg > 6, "%d + %u <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi);
 
-    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi + KEY_WIDTH, return -EFAULT/*,
+    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi, return -EFAULT/*,
             "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
-    *pos += kc->bd[*bd].corr - (*hdr)->s_s - bufi - KEY_WIDTH; // should be one-based.
+    *pos += kc->bd[*bd].corr - (*hdr)->s_s - bufi; // should be one-based.
 
     return (*hdr)->part[0];
 }
@@ -123,7 +123,6 @@ fq_read(kct_t* kc, seqb2_t *seq)
         *s++ = '\0';
         EPQ(dbg > 6, "%s", (char*)h);
 
-        unsigned len = 0, mismatching = 0;
         char* seqstart = (char*)s;
         i = 0;
         while ((c = gc(g)) != '\n') {
@@ -137,15 +136,16 @@ case 'T': case 't': b ^= 2;
 case 'A': case 'a': *s = 0x3e;
 default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1; // for seqphred storage
-                    if (++i < KEY_WIDTH)
+                    if (++i < KEY_WIDTH) // first only complete key
                         continue;
+		    ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out)
                     _get_ndx(ndx, wx, dna, rc);
                     wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
+		    // put multimapper keys to end - unused.
                     if (kc->ndxkct[ndx] >= kc->kct_l ||
                             (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) > 1ul) {
-                        if (++mismatching >= kc->ext + 1) break;
-                        buf[mismatching] = (ndx | wx) + kc->kct_l;
-                        bufi[mismatching] = len;
+                        buf[i - KEY_WIDTH] = ~0ul;
+                        bufi[i - KEY_WIDTH] = i;
                         continue;
                     }
                     ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
@@ -156,89 +156,40 @@ default:            dna = _seq_next(b, dna, rc);
                                 kc->kct[kc->ndxkct[ndx] + 1],
                             (int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) & print_ndx(ndx));
                     ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out)
-                    buf[0] = kc->ndxkct[ndx] | wx;
-                    bufi[0] = len + mismatching;
                     if (dbg > 6) {
                         uint64_t pos = kc->kct[kc->ndxkct[ndx]] & B2POS_MASK;
-                        c = get_tid_and_pos(kc, &pos, len + mismatching);
+                        c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) continue;
                         ASSERT(c >= 0, goto out, "%lu", kc->kct[kc->ndxkct[ndx]] & B2POS_MASK);
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
                                 kc->kct[kc->ndxkct[ndx]] >> INFIOR_SHFT, ndx);
                         print_ndx(ndx);
                     }
-                    ++len;
+		    if (i == KEY_WIDTH) {
+	                    buf[0] = kc->ndxkct[ndx] | wx;
+			    bufi[0] = i;
+		    } else {
+			// test infior - in high bits.
+                        uint64_t *k = kc->kct + kc->ndxkct[ndx];
+                        uint64_t t = buf[0] & ~KEYNT_BUFSZ;
+                        // TODO: early verify and process unique count if correct.
+                        ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
+			if (*k < kc->kct[t]) { // lowest inferiority
+                            buf[i - KEY_WIDTH] = buf[0];
+                            bufi[i - KEY_WIDTH] = bufi[0];
+                            buf[0] = kc->ndxkct[ndx] | wx;
+                            bufi[0] = i;
+                        } else {
+                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx] | wx;
+                        }
+
+		    }
             }
-            break;
         }
-        if (len == 0) {
+        if (buf[0] == ~0u) {
             //EPR("FIXME: skip too short read or handle entirely non-matching");
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
-        }
-        // TODO: early verify and process unique count if correct.
-
-        if (c != '\n') c = gc(g);
-
-        while (c != '\n') {
-            ASSERT(c != -1, c = -EFAULT; goto out);
-            *s = b ^= b;
-            switch(c) {
-case 'C': case 'c': b = 2;
-case 'G': case 'g': b ^= 1;
-case 'U': case 'u':
-case 'T': case 't': b ^= 2;
-case 'A': case 'a': *s = 0x3e;
-default:            dna = _seq_next(b, dna, rc);
-                    *s++ |= (b << 6) | 1;
-                    _get_ndx(ndx, wx, dna, rc);
-                    wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
-
-                    if ((kc->ndxkct[ndx] < kc->kct_l) &&
-                            (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) == 1ul) { // key exists on reference
-                        ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
-                            c = -EFAULT; goto out, "\n0x%lx/0x%lx\t0x%lx", ndx,
-                            end_pos & print_ndx(ndx), kc->ndxkct[ndx]);
-                        ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= 0,
-                                c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx, 
-                                kc->kct[kc->ndxkct[ndx]],
-                                kc->kct[kc->ndxkct[ndx] + 1],
-                                (int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) & print_ndx(ndx));
-                        // test infior - in high bits.
-                        uint64_t *k = kc->kct + kc->ndxkct[ndx];
-                        uint32_t t = buf[0] & ~KEYNT_BUFSZ;
-                        ASSERT(t < kc->kct_l, c = -EFAULT; goto out);
-                        // TODO: early verify and process unique count if correct.
-                        ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
-                        if (dbg > 6) {
-                            uint64_t pos = *k & B2POS_MASK;
-                            ASSERT(pos < end_pos, c = -EFAULT; goto out,
-                                    "0x%lx", pos);
-                            c = get_tid_and_pos(kc, &pos, len + mismatching);
-			    if (c < 0) continue;
-                            ASSERT(c >= 0, goto out, "%lu", *k & B2POS_MASK);
-                            EPR0("%s:%lu\t%lu\t0x%lx\t",
-                                    kc->id + c, pos, *k >> INFIOR_SHFT, ndx);
-                            print_ndx(ndx);
-                        }
-                        if (*k < kc->kct[t]) { // lowest inferiority
-                            buf[len] = buf[0];
-                            bufi[len] = bufi[0];
-                            buf[0] = kc->ndxkct[ndx] | wx;
-                            bufi[0] = len + mismatching;
-                        } else {
-                            buf[len] = kc->ndxkct[ndx] | wx;
-                        }
-                    } else {
-                        // at least one of the Nts must be a mismatch, N or variant
-                        // the KEY_WIDTH range is suspected (TODO)
-                        buf[len] = (ndx | wx) + kc->kct_l;
-                        bufi[len] = len + mismatching;
-                        ++mismatching;
-                    }
-            }
-            ++len;
-            c = gc(g);
         }
         wx = buf[0] >> KEYNT_BUFSZ_SHFT;
         ndx = buf[0] & ~KEYNT_BUFSZ;
