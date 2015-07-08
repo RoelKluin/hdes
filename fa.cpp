@@ -231,8 +231,9 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
             inter = kc->bd + kc->bd_l; // no longer last at least
             inter->l = inter->s = 0;
             --r.left;
-            r.infior = 0;
-case 0:     break;
+            break;
+case 0:     r.infior = 0;
+            break;
 default:    if (r.left-- == kc->ext) {
                 EPQ(dbg > 6, "setting uniq jump destination");
                 // Sucessively overwritten until region completed - left became 0.
