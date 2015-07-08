@@ -253,25 +253,22 @@ case 1:     EPQ(dbg > 5, "1st unique at %u", b2pos);
             inter->s = b2pos;
             inter->at_dna = dna;
 case 3:     kc->kct[kct_i] &= INFIOR_MASK;
-            kc->kct[kct_i] |= b2pos + h->s_s;
-            // A uniqs' inferior must be ge neighbouring uniqs' infior
-            // A primary uniq should be 0. Also set strand for uniq.
-            if (r.infior > t && (kct_i + 3 >= kc->kct_l ||
-                    ((kc->kct[kct_i + 3] - kc->kct[kct_i + 1]) & B2POS_MASK) > 1ul)) {
-                t ^= r.infior;
-                kc->kct[kct_i] ^= t; // replace inferiority, keep strand.
+            kc->kct[kct_i] |= (b2pos + h->s_s) | (t & STRAND_BIT);
+            // A uniqs' infior must be ge siding uniqs' infior, also set strand.
+            if (r.infior > t) {
+                t ^= r.infior & INFIOR_MASK;
+                kc->kct[kct_i] ^= t & B2POS_MASK; // replace inferiority, keep strand.
             } else {
                 r.infior = t & INFIOR_MASK; 
-                kc->kct[kct_i] |= t & STRAND_BIT;
             }
             break;
-case 2:     if ((r.infior + INFERIORITY) > t) {
-                 // A non-unique keys' inferiority must be gt neighbouring
-                 // unique keys. Strand bit included, but that shouldn't matter.
+case 2:     // inferior must be ge neighbouring uniqs' infior
+            // A primary uniq should be 0. Also set strand for uniq.
+            if (r.infior + INFERIORITY > t) {
                  ASSERT((t & INFIOR_MASK) != INFIOR_MASK, return -EFAULT);
                  maxinfior = max(maxinfior, r.infior + INFERIORITY);
                  t ^= r.infior + INFERIORITY;
-                 kc->kct[kct_i] ^= t;
+                 kc->kct[kct_i] ^= t; // replace inferiority, keep strand.
             }
         }
     }

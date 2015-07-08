@@ -210,7 +210,6 @@ struct kct_t {
  * bit and the 40th bit contains the orientation of the complement independent index
  * on reference once unique. Once unique the low 40 bits are used instead for the
  * (genomic) b2pos storage.
- * the 2nd u64s
  */
 void show_list(kct_t*, std::list<uint32_t> &bnd);
 void free_kc(kct_t* kc);
