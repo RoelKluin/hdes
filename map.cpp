@@ -77,7 +77,7 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
         break;
     }
     ASSERT (hdr != kc->h.end(), return -EFAULT);
-    EPQ(dbg > 6, "%d + %u <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi);
+    EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi);
 
     ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi, return -EFAULT/*,
             "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)

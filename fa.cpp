@@ -167,7 +167,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
         // get offset to first of keys' next Nt
-        int kct_i = kc->ndxkct[ndx];
+        unsigned kct_i = kc->ndxkct[ndx];
         EPQ(dbg > 6, "prev path ct:%lu", ct);
         EPQ(dbg > 6, "[0]:0x%lx\t[1]:%lx", kc->kct[kct_i], kc->kct[kct_i+1]);
 /*
@@ -187,7 +187,6 @@ case 1: // A first uniq marks a potential start of a region
             r.left = kc->ext;
 case 2:     _store_ndx(kc, r.left, kct_i);
         }
-        ASSERT(kct_i >= 0, return -EFAULT, "(%s:%u)", hdr, b2pos);
 
         // get offset to this keys nextNts
         ct = kc->kct[kct_i + 1] >> BIG_SHFT; // remaining nextNts

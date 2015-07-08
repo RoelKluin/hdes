@@ -49,7 +49,7 @@
 #define KEYNT_STRAND (1ul << KEY_WIDTH)
 #define KEYNT_AC (1ul << (KEY_WIDTH - 1))
 
-#define KEYNT_MASK ((1u << (KEY_WIDTH << 1)) - 1ul)
+#define KEYNT_MASK ((1ul << (KEY_WIDTH << 1)) - 1ul)
 #define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
 #define KEYNT_TRUNC_UPPER (~HALF_KEYNT_MASK & KEYNT_TRUNC_MASK)
 

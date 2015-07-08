@@ -179,7 +179,7 @@ struct kct_t {
     uint32_t* wbuf; // later req
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
-    int ext; // not stored
+    unsigned ext; // not stored
     uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
     uint8_t kct_m;
     std::list<Hdr*> h;
