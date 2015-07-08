@@ -169,13 +169,17 @@ done
 
 
 make clean && DEFINES="-DKEY_LENGTH=11" make &&
-valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz -l 51
+valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz -l 51 2>&1 | tee hg19_GL.samerr
 
 valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz
 
 #qualities are not 
 #####################
-cd ..; make clean && DEFINES="-DKEY_LENGTH=11" make; cd -
+cd /home/roel/dev/git/hdes
+make clean
+DEFINES="-DKEY_LENGTH=11" make
+cd /home/roel/dev/git/hdes/bwatest
+
 mkdir ~/dev/git/hdes/bwatest; cd !$
 ln -s ~/dev/git/hdes/hg19_GL.fa.gz
 bwa=/home/roel/bin/bwa
@@ -184,19 +188,24 @@ $bwa index hg19_GL.fa.gz
 $samtools faidx hg19_GL.fa.gz
 $bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | samtools view -Sub - |
 $samtools sort - hg19_GL.1.bwa
+$samtools index hg19_GL.1.bwa.bam
 
+cd /home/roel/dev/git/hdes &&
+make clean && 
+DEFINES="-DKEY_LENGTH=11" make && 
+cd /home/roel/dev/git/hdes/bwatest &&
 ($samtools view -H hg19_GL.1.bwa.bam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
-$samtools sort - hg19_GL.1.uqct
-
-$samtools index hg19_GL.1.bwa.bam
+$samtools sort - hg19_GL.1.uqct &&
 $samtools index hg19_GL.1.uqct.bam
+
 
 cat << EOF > batchfile
 new
 load hg19_GL.1.bwa.bam
 load hg19_GL.1.uqct.bam
+goto GL000207.1
 EOF
 
 ~/dev/git/IGV/igv.sh -b batchfile
