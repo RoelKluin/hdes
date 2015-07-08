@@ -42,8 +42,12 @@
 
 #define ONE_CT (1ul << BIG_SHFT)
 #define B2POS_MASK (ONE_CT -1ul)
+#define REMAIN_MASK (~B2POS_MASK)
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
+// While some movement of next-NTs per key takes place - upwards movement
+// of next-NTs within range of unique indices and can therefore be skipped
+// in future iterations - the number of next-Nts per key remains constant.
 
 
 #define __seq_le_n(b, dna, rc) ({\
@@ -79,23 +83,23 @@
     ASSERT(kc->wbuf[left-1] == ~0u, return -EFAULT, "[%u/%u]:0x%x", left-1, kc->ext, kc->wbuf[left-1]);\
     kc->wbuf[left-1] = ndx;
 
-#define _get_ndx_and_strand(ndx, b, dna, rc) ({\
-    b = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
-    ndx = b ? dna : rc;    /* strand. Excise it out since its always the same */\
+#define _get_ndx_and_strand(ndx, t, dna, rc) ({\
+    t = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
+    ndx = t ? dna : rc;    /* strand. Excise it out since its always the same */\
     ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
 })
 
-#define _get_ndx(ndx, wx, dna, rc) ({\
-    ndx = _get_ndx_and_strand(ndx, wx, dna, rc);\
+#define _get_ndx(ndx, t, dna, rc) ({\
+    ndx = _get_ndx_and_strand(ndx, t, dna, rc);\
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
     dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
     EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, (kc)->ndxkct[ndx]);\
 });
 
-#define _ndxkct_and_infior(ndx, wx, dna, rc) ({\
-    _get_ndx(ndx, wx, dna, rc);\
-    wx <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in wx*/\
-    wx | (kc->kct[kc->ndxkct[ndx]] & ~INDEX_MASK);\
+#define _ndxkct_and_infior(ndx, t, dna, rc) ({\
+    _get_ndx(ndx, t, dna, rc);\
+    t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\
+    t | (kc->kct[kc->ndxkct[ndx]] & ~INDEX_MASK);\
 });
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\

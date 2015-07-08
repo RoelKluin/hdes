@@ -175,26 +175,34 @@ valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz
 
 #qualities are not 
 #####################
-cd /home/roel/dev/git/hdes
+#rm hg19_GL.{2b,nn,bd,ub,kc}.gz;
+make clean && DEFINES="-DKEY_LENGTH=11" make &&
+valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_uqct.err
+####################
+
+
+cd /net/NGSanalysis/dvl/roel/git/hdes
 make clean
 DEFINES="-DKEY_LENGTH=11" make
-cd /home/roel/dev/git/hdes/bwatest
+cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest
 
-mkdir ~/dev/git/hdes/bwatest; cd !$
-ln -s ~/dev/git/hdes/hg19_GL.fa.gz
-bwa=/home/roel/bin/bwa
+mkdir /net/NGSanalysis/dvl/roel/git/hdes/bwatest; cd !$
+ln -s /net/NGSanalysis/dvl/roel/git/hdes/hg19_GL.fa.gz
+bwa=/net/NGSanalysis/apps/bwa/bwa-0.7.12/bwa
 samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
 $bwa index hg19_GL.fa.gz
 $samtools faidx hg19_GL.fa.gz
-$bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | samtools view -Sub - |
-$samtools sort - hg19_GL.1.bwa
-$samtools index hg19_GL.1.bwa.bam
 
-cd /home/roel/dev/git/hdes &&
-make clean && 
-DEFINES="-DKEY_LENGTH=11" make && 
-cd /home/roel/dev/git/hdes/bwatest &&
-($samtools view -H hg19_GL.1.bwa.bam
+(time $bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | samtools view -Sub - |
+$samtools sort - hg19_GL.1.bwa) &> bwa_mem.log && 
+$samtools index hg19_GL.1.bwa.bam
+$samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
+
+cd /net/NGSanalysis/dvl/roel/git/hdes &&
+make clean &&
+DEFINES="-DKEY_LENGTH=11" make &&
+cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
+(cat hg19_GL.1.hdr.sam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
 $samtools sort - hg19_GL.1.uqct &&

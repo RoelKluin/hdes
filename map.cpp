@@ -57,24 +57,31 @@ seqphred(uint8_t *s, int q)
 static int
 get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
 {
-    // FIXME: no looping here.
+    // FIXME: no looping here, store ref to header in boundary?.
     std::list<Hdr*>::iterator hdr;
     std::list<uint32_t>::iterator bd;
     for (hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
         bd = (*hdr)->bnd.end();
         --bd;
         ASSERT(*bd < kc->bd_l, return -EFAULT);
+        //position beyond end of last boundary of this contig must be on a later one.
         if (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) < *pos)
             continue;
         EPQ(dbg > 16, "%s", kc->id + (*hdr)->part[0]);
-        while (bd != (*hdr)->bnd.begin() &&
-                ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) > *pos) {
+        while ((((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) > *pos) &&
+                bd != (*hdr)->bnd.begin()) {
             EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l), pos);
             --bd;
         }
+        ASSERT (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) <= *pos, return -EFAULT);
         break;
     }
-    *pos += kc->bd[*bd].corr + 1 - (*hdr)->s_s - bufi; // one-based.
+    ASSERT (hdr != kc->h.end(), return -EFAULT);
+    EPQ(dbg > 6, "%d + %u <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi, KEY_WIDTH);
+
+    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi + KEY_WIDTH, return -EFAULT/*,
+            "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
+    *pos += kc->bd[*bd].corr - (*hdr)->s_s - bufi - KEY_WIDTH; // should be one-based.
 
     return (*hdr)->part[0];
 }
@@ -87,7 +94,7 @@ fq_read(kct_t* kc, seqb2_t *seq)
     int (*gc) (void*);
     int (*ungc) (int, void*);
     struct gzfh_t* fhin = seq->fh;
-dbg = 5;
+//dbg = 7;
     uint64_t l = seq->s_l, m = seq->s_m;
     register uint8_t *s = seq->s + l;
     const unsigned phred_offset = seq->phred_offset;
@@ -97,7 +104,7 @@ dbg = 5;
     uint64_t* buf = (uint64_t*)malloc((kc->ext + 1) * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc((kc->ext + 1) * sizeof(unsigned));
     Hdr* lh = kc->h.back();
-    const uint64_t end_pos = lh->end_pos;
+    const uint64_t end_pos = lh->s_s + lh->end_pos;
 
     set_readfunc(fhin, &g, &gc, &ungc);
 
@@ -134,31 +141,41 @@ default:            dna = _seq_next(b, dna, rc);
                         continue;
                     _get_ndx(ndx, wx, dna, rc);
                     wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
-                    //ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos, 
-                    //    c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
-                    //ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0,
-                    //        c = -EFAULT; goto out, "0x%lx", ndx);
-                    if (kc->ndxkct[ndx] >= kc->kct_l || // WHY does this happen??
-                            ((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0) &&
-                            ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= end_pos)) {
-                        buf[++mismatching] = (ndx | wx) + kc->kct_l;
+                    if (kc->ndxkct[ndx] >= kc->kct_l ||
+                            (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) > 1ul) {
+                        if (++mismatching >= kc->ext + 1) break;
+                        buf[mismatching] = (ndx | wx) + kc->kct_l;
                         bufi[mismatching] = len;
                         continue;
                     }
+                    ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
+                        c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
+                    ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= 0,
+                            c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx,
+                            kc->kct[kc->ndxkct[ndx]],
+                                kc->kct[kc->ndxkct[ndx] + 1],
+                            (int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) & print_ndx(ndx));
                     ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out)
                     buf[0] = kc->ndxkct[ndx] | wx;
-                    bufi[0] = len++;
+                    bufi[0] = len + mismatching;
                     if (dbg > 6) {
                         uint64_t pos = kc->kct[kc->ndxkct[ndx]] & B2POS_MASK;
-                        c = get_tid_and_pos(kc, &pos, bufi[0]);
-                        ASSERT(c >= 0, goto out);
-                        EPR0("%s:%lu\t", kc->id + c, pos);
+                        c = get_tid_and_pos(kc, &pos, len + mismatching);
+			if (c < 0) continue;
+                        ASSERT(c >= 0, goto out, "%lu", kc->kct[kc->ndxkct[ndx]] & B2POS_MASK);
+                        EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
+                                kc->kct[kc->ndxkct[ndx]] >> INFIOR_SHFT, ndx);
                         print_ndx(ndx);
                     }
+                    ++len;
             }
             break;
         }
-        ASSERT(len > 0, c = -EFAULT; goto out, "FIXME: skip too short read or handle entirely non-matching");
+        if (len == 0) {
+            //EPR("FIXME: skip too short read or handle entirely non-matching");
+            while ((c = gc(g)) != -1 && c != '@') {}
+            continue;
+        }
         // TODO: early verify and process unique count if correct.
 
         if (c != '\n') c = gc(g);
@@ -176,34 +193,39 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1;
                     _get_ndx(ndx, wx, dna, rc);
                     wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
-                    //ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos, 
-                    //    c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
-                    //ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0,
-                    //        c = -EFAULT; goto out, "0x%lx", ndx);
 
-                    if (kc->ndxkct[ndx] < kc->kct_l && // WHY do below happen??
-                            ((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) <= 0) &&
-                            ((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos)) { // key exists on reference
-                        //test infior - in high bits.
+                    if ((kc->ndxkct[ndx] < kc->kct_l) &&
+                            (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) == 1ul) { // key exists on reference
+                        ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
+                            c = -EFAULT; goto out, "\n0x%lx/0x%lx\t0x%lx", ndx,
+                            end_pos & print_ndx(ndx), kc->ndxkct[ndx]);
+                        ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= 0,
+                                c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx, 
+                                kc->kct[kc->ndxkct[ndx]],
+                                kc->kct[kc->ndxkct[ndx] + 1],
+                                (int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) & print_ndx(ndx));
+                        // test infior - in high bits.
                         uint64_t *k = kc->kct + kc->ndxkct[ndx];
                         uint32_t t = buf[0] & ~KEYNT_BUFSZ;
                         ASSERT(t < kc->kct_l, c = -EFAULT; goto out);
                         // TODO: early verify and process unique count if correct.
                         ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
-
+                        if (dbg > 6) {
+                            uint64_t pos = *k & B2POS_MASK;
+                            ASSERT(pos < end_pos, c = -EFAULT; goto out,
+                                    "0x%lx", pos);
+                            c = get_tid_and_pos(kc, &pos, len + mismatching);
+			    if (c < 0) continue;
+                            ASSERT(c >= 0, goto out, "%lu", *k & B2POS_MASK);
+                            EPR0("%s:%lu\t%lu\t0x%lx\t",
+                                    kc->id + c, pos, *k >> INFIOR_SHFT, ndx);
+                            print_ndx(ndx);
+                        }
                         if (*k < kc->kct[t]) { // lowest inferiority
                             buf[len] = buf[0];
                             bufi[len] = bufi[0];
                             buf[0] = kc->ndxkct[ndx] | wx;
-                            bufi[0] = len;
-                            if (dbg > 6) {
-                                uint64_t pos = *k & B2POS_MASK;
-                                ASSERT(pos < end_pos,  c = -EFAULT; goto out, "0x%lx", pos);
-                                c = get_tid_and_pos(kc, &pos, bufi[0]);
-                                ASSERT(c >= 0, goto out);
-                                EPR0("%s:%lu\t", kc->id + c, pos);
-                                print_ndx(ndx);
-                            }
+                            bufi[0] = len + mismatching;
                         } else {
                             buf[len] = kc->ndxkct[ndx] | wx;
                         }
@@ -211,7 +233,7 @@ default:            dna = _seq_next(b, dna, rc);
                         // at least one of the Nts must be a mismatch, N or variant
                         // the KEY_WIDTH range is suspected (TODO)
                         buf[len] = (ndx | wx) + kc->kct_l;
-                        bufi[len] = len;
+                        bufi[len] = len + mismatching;
                         ++mismatching;
                     }
             }
@@ -225,28 +247,33 @@ default:            dna = _seq_next(b, dna, rc);
         unsigned seqlen = strlen(seqstart), tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
 
-        //ASSERT((kc->kct[ndx] & B2POS_MASK) < end_pos,
-        //        c = -EFAULT; goto out, "0x%lx", ndx);
-        //ASSERT((int)(kc->kct[ndx] & B2POS_MASK) <= 0,
-        //        c = -EFAULT; goto out, "ncxkct:0x%lx", ndx);
+        ASSERT((kc->kct[ndx] & B2POS_MASK) < end_pos,
+                c = -EFAULT; goto out, "0x%lx", ndx);
+        //ASSERT((int)(kc->kct[ndx] & B2POS_MASK) >= 0,
+        //        c = -EFAULT; goto out, "0x%lx*\n0x%lx\n%d", ndx, 
+        //                    kc->kct[ndx],
+        //                    (int)(kc->kct[ndx] & B2POS_MASK));
 
-        if (((uint32_t)ndx < kc->kct_l) && 
-                ((kc->kct[ndx] & B2POS_MASK) < end_pos) &&
-                ((int)(kc->kct[ndx] & B2POS_MASK) > 0) &&
-                ((kc->kct[ndx + 1] >> BIG_SHFT) == 1ul)) {
+        if (((uint32_t)ndx < kc->kct_l) &&
+                (kc->kct[ndx + 1] >> BIG_SHFT) == 1ul) {
             mq = 37;
             flag = (wx ^ (kc->kct[ndx] >> BIG_SHFT)) & 1;
+            //ASSERT(flag == 0, return -EFAULT, "FIXME: ONLY valid in testset");
             flag = 0x42 | (flag << 4);
 
 
 
             uint64_t pos = kc->kct[ndx] & B2POS_MASK;
-            
-            ASSERT(pos != -2u, c = -EFAULT; goto out,
-                    "pos:%lu, kc->kct[0x%lx,+1], %lx, %lx", pos, ndx, kc->kct[ndx], kc->kct[ndx+1])
+
             EPQ(dbg > 6, "pos:%lu", pos);
             c = get_tid_and_pos(kc, &pos, bufi[0]);
-            ASSERT(c >= 0, goto out);
+	    if (c < 0) {	
+		while ((c = gc(g)) != '@' && c != -1) {}
+		continue;
+	    }
+            ASSERT(c >= 0, goto out, "%lu", kc->kct[ndx] & B2POS_MASK);
+            ASSERT((int)pos > 0, c = -EFAULT; goto out,
+                    "pos:%lu, kc->kct[0x%lx,+1], %lx, %lx", pos, ndx, kc->kct[ndx], kc->kct[ndx+1])
 
             const char* tid = kc->id + c;
 

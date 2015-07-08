@@ -232,7 +232,7 @@ int ammend_kc(struct gzfh_t* fhin, kct_t* kc)
     // 1: buffer sizes
     __READ_VAL(kc->kct_l)
     if (fhin->read(fhin, (char*)kc->kct, kc->kct_l * sizeof(*(kc->kct))) < 0)
-        return res;
+        return -EFAULT;
 
     res = 0;
 err:
