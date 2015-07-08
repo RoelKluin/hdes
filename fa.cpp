@@ -445,6 +445,7 @@ fa_index(struct seqb2_t* seq)
         }
         if (found) goto err;
         EPR("starting from scratch.");
+	ASSERT(fhio[0]->write == NULL, return -EFAULT, "Unable to write: %s", fhio[0]->name)
         _ACTION(fa_read(seq, &kc), "reading fasta")
     }
     if (mode < 2) {

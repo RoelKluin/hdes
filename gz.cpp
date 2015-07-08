@@ -51,6 +51,36 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
     return gzeof(fh->io) ? -EIO : 0;
 }
 
+int
+b2_write(const gzfh_t *fh, const char *s, uint64_t l)
+{
+    while (l) {
+        int c = write(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
+        if (c < 0) {
+            EPR("error while writing");
+            return c;
+        }
+        EPR("==%d bytes written", c);
+        l -= c, s += c;
+    }
+    return ferror(fh->fp) ? -3 : 0;
+}
+
+static int
+b2_read(const gzfh_t *fh, char *s, uint64_t l)
+{
+    while (l) {
+        int c = read(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
+        if (c < 0) {
+            EPR("error while reading");
+            return c;
+        }
+        EPR("==%d bytes read", c);
+        l -= c, s += c;
+    }
+    return ferror(fh->fp) ? -3 : 0;
+}
+
 void set_readfunc(struct gzfh_t* fhin, void** g, int (**gc)(void*),
         int (**ungc)(int, void*))
 {
@@ -172,11 +202,13 @@ set_io_fh(struct gzfh_t* fh, int force)
             return -EPERM;
         }
         int ret = 1;
+        fh->read = NULL;
         if (t && t[3] == '\0') {/* '.gz' at _end_ */
             fh->write = b2gz_write;
-            fh->read = NULL;
             ret = rgzopen(fh);
-        }
+        } else {
+	    fh->write = b2_write;
+	}
         return ret;
     } else {
         fprintf(stderr, "== preparing to read %s...\n", fh->name);
@@ -184,11 +216,13 @@ set_io_fh(struct gzfh_t* fh, int force)
             fprintf(stderr, "cannot read from %s\n", fh->name);
             return -ENOENT;
         }
+	fh->write = NULL;
         if (t && t[3] == '\0') {
             fh->read = b2gz_read;
-            fh->write = NULL;
             return rgzopen(fh);
-        }
+        } else {
+            fh->read = b2_read;
+	}
     }
     return 0;
 }

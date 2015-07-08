@@ -24,7 +24,7 @@ typedef struct gzfh_t {
     int fd;
     uint16_t blocksize;
 } gzfh;
-
+int b2_write(const gzfh_t*, const char*, size_t);
 int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
 int set_io_fh(struct gzfh_t* fh, int force);
 int rclose(gzfh_t *fh);

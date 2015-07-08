@@ -23,37 +23,6 @@
 # define PROGRAM_VERSION "0.013"
 #endif
 
-static int
-b2_write(const gzfh_t *fh, const char *s, uint64_t l)
-{
-    while (l) {
-        int c = write(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
-        if (c < 0) {
-            EPR("error while writing");
-            return c;
-        }
-        EPR("==%d bytes written", c);
-        l -= c, s += c;
-    }
-    return ferror(fh->fp) ? -3 : 0;
-}
-
-static int
-b2_read(const gzfh_t *fh, char *s, uint64_t l)
-{
-    while (l) {
-        int c = read(fileno(fh->fp), s, l > INT_MAX ? INT_MAX : l);
-        if (c < 0) {
-            EPR("error while reading");
-            return c;
-        }
-        EPR("==%d bytes read", c);
-        l -= c, s += c;
-    }
-    return ferror(fh->fp) ? -3 : 0;
-}
-
-
 typedef struct option_description
 {
     const char *name;

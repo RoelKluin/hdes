@@ -31,16 +31,16 @@ prep: $(PREPROCESSED)
 asm: $(ASSEMBLIES)
 
 $(PROG):libuqct.a $(OBJECTS)
-	$(CC) $(DEFINES) $(DEBUG) $(OBJECTS) -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(OBJECTS) ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 .cpp.s:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $< -S -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -S ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 .cpp.o:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $< -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 .cpp.i:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $< -E -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -E ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 libuqct.a:$(OBJS)
 		$(AR) -csru $@ $(OBJS)
@@ -56,7 +56,7 @@ dist:
 	tar -czf $(ARCHIVE).tar.gz $(SOURCES)  fqless *.c *.h *.pl *.sh .git Makefile
 
 depend:
-	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) -- *.cpp )
+	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) $(DEF) -- *.cpp )
 
 gz.o: gz.h
 
