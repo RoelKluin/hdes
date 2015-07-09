@@ -175,11 +175,17 @@ valgrind ./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz
 
 #qualities are not 
 #####################
-#rm hg19_GL.{2b,nn,bd,ub,kc}.gz;
+#rm hg19_GL.{2b,nn,bd,ub,kc,uq}.gz;
 make clean && DEFINES="-DKEY_LENGTH=11" make &&
 valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_uqct.err
 ####################
 
+#with debug 7
+cd /net/NGSanalysis/dvl/roel/git/hdes &&
+make clean &&
+DEFINES="-DKEY_LENGTH=11" make &&
+cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
+valgrind ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51 2>&1 | less
 
 cd /net/NGSanalysis/dvl/roel/git/hdes
 make clean
@@ -202,6 +208,8 @@ cd /net/NGSanalysis/dvl/roel/git/hdes &&
 make clean &&
 DEFINES="-DKEY_LENGTH=11" make &&
 cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
+mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam &&
+mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
 (cat hg19_GL.1.hdr.sam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
@@ -212,17 +220,27 @@ $samtools index hg19_GL.1.uqct.bam
 cat << EOF > batchfile
 new
 load hg19_GL.1.bwa.bam
+load hg19_GL.1.uqct_prev.bam
 load hg19_GL.1.uqct.bam
 goto GL000207.1
 EOF
 
-~/dev/git/IGV/igv.sh -b batchfile
+igvwrap hg19_GL.fa -b batchfile
 
 #########################
 make clean && DEFINES="-DKEY_LENGTH=17" make
 
 ln -s /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 ./uqct Homo_sapiens.GRCh38.dna.primary_assembly.fa -l 51
+
+
+(cat ../hg38_hdr.sam
+../uqct ../realfq/3387_1_MH_K27_05_CAATGGAA_L003_R1_001.fastq.gz ../Homo_sapiens.GRCh38.dna.primary_assembly.2b.gz -l 51) |
+samtools view -Sub - |
+$samtools sort - 3387_1_hg38.uqct &&
+$samtools index 3387_1_hg38.uqct.bam
+
+$samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
 
 
 

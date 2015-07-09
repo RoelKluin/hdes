@@ -182,11 +182,10 @@ default:            dna = _seq_next(b, dna, rc);
                         } else {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx] | wx;
                         }
-
 		    }
             }
         }
-        if (buf[0] == ~0u) {
+        if (buf[0] == ~0ul) {
             //EPR("FIXME: skip too short read or handle entirely non-matching");
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
@@ -195,7 +194,7 @@ default:            dna = _seq_next(b, dna, rc);
         ndx = buf[0] & ~KEYNT_BUFSZ;
         *s = '\0';
         while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
-        unsigned seqlen = strlen(seqstart), tln = 0, mps = 0, mq = 0, flag = 44;
+        unsigned seqlen = i, tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
 
         ASSERT((kc->kct[ndx] & B2POS_MASK) < end_pos,
@@ -209,7 +208,11 @@ default:            dna = _seq_next(b, dna, rc);
                 (kc->kct[ndx + 1] >> BIG_SHFT) == 1ul) {
             mq = 37;
             flag = (wx ^ (kc->kct[ndx] >> BIG_SHFT)) & 1;
-            //ASSERT(flag == 0, return -EFAULT, "FIXME: ONLY valid in testset");
+            if ((wx & 1)) { //XXX
+                while ((c = gc(g)) != -1 && c != '@') {}
+                continue;
+            }
+            //ASSERT(flag == 0, return -EFAULT, "FIXME: ASSERTION only valid in testset");
             flag = 0x42 | (flag << 4);
 
 

@@ -179,12 +179,14 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 case 3: {  // 2nd or later uniq within scope => region insertion or update.
             EPQ (dbg > 7, "dbg excision");
             ++kc->uqct;
+            r.infior = max(r.infior, t & INFIOR_MASK);
             int ret  = decr_excise(kc, &r);
             ASSERT(ret >= 0, return -EFAULT, "left:%d", ret);
             dbg |= ret;
         }
 case 1: // A first uniq marks a potential start of a region
             r.left = kc->ext;
+            r.infior = t & INFIOR_MASK;
 case 2:     _store_ndx(kc, r.left, kct_i);
         }
 
@@ -255,13 +257,6 @@ case 1:     EPQ(dbg > 5, "1st unique at %u", b2pos);
             inter->at_dna = dna;
 case 3:     kc->kct[kct_i] &= INFIOR_MASK;
             kc->kct[kct_i] |= (b2pos + h->s_s) | (t & STRAND_BIT);
-            // A uniqs' infior must be ge siding uniqs' infior, also set strand.
-            if (r.infior > t) {
-                t ^= r.infior & INFIOR_MASK;
-                kc->kct[kct_i] ^= t & B2POS_MASK; // replace inferiority, keep strand.
-            } else {
-                r.infior = t & INFIOR_MASK; 
-            }
             break;
 case 2:     // inferior must be ge neighbouring uniqs' infior
             // A primary uniq should be 0. Also set strand for uniq.

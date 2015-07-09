@@ -99,7 +99,7 @@
 #define _ndxkct_and_infior(ndx, t, dna, rc) ({\
     _get_ndx(ndx, t, dna, rc);\
     t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\
-    t | (kc->kct[kc->ndxkct[ndx]] & ~INDEX_MASK);\
+    t | (kc->kct[kc->ndxkct[ndx]] & INFIOR_MASK);\
 });
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\

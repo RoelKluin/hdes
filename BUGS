@@ -1,7 +1,15 @@
 
-boundaries
+1) .2b files and friends are written in the source directory, not the directory where uqct is run
+solution => strip of dirs.
 
-for (u32 b2pos = last->s; b2pos != bd[i+1]->s; ++b2pos) {
+when indexing ungzipped fasta:
 
-  u32 genomic_pos == b2pos + bd->l;
-}
+converting keycounts..  done
+== preparing to write /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b...
+opening /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b for writing..     done
+Warning: assertion 'fhout->write != NULL' failed  at indexio.cpp:129
+Warning: assertion 'res >= 0' failed writing seqb2: /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b. at key_init.cpp:440
+Warning: assertion 'res >= 0' failed reading fasta. at fa.cpp:448
+an error occured:-14
+== failed to create keyct.
+...
