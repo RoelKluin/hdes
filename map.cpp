@@ -139,13 +139,13 @@ default:            dna = _seq_next(b, dna, rc);
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
 		    ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out)
+		    // wx only has strand at offset KEY_WIDTH.
                     _get_ndx(ndx, wx, dna, rc);
-                    wx <<= KEYNT_BUFSZ_SHFT - KEY_WIDTH;
-		    // put multimapper keys to end - unused.
+		    // put not recognized and multimapper keys to end - unused.
                     if (kc->ndxkct[ndx] >= kc->kct_l ||
                             (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) > 1ul) {
-                        buf[i - KEY_WIDTH] = ~0ul;
-                        bufi[i - KEY_WIDTH] = i;
+                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
+                        bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
                     }
                     ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
@@ -166,21 +166,28 @@ default:            dna = _seq_next(b, dna, rc);
                         print_ndx(ndx);
                     }
 		    if (i == KEY_WIDTH) {
-	                    buf[0] = kc->ndxkct[ndx] | wx;
-			    bufi[0] = i;
+	                    buf[0] = kc->ndxkct[ndx];
+			    bufi[0] = i ^ wx;
+		    } else if (buf[0] == ~0ul){
+			buf[i - KEY_WIDTH] = buf[0];
+			bufi[i - KEY_WIDTH] = bufi[0];
+			buf[0] = kc->ndxkct[ndx];
+			bufi[0] = i ^ wx;
 		    } else {
 			// test infior - in high bits.
-                        uint64_t *k = kc->kct + kc->ndxkct[ndx];
-                        uint64_t t = buf[0] & ~KEYNT_BUFSZ;
+                        uint32_t k = kc->ndxkct[ndx];
+                        uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
-			if (*k < kc->kct[t]) { // lowest inferiority
+			if ((kc->kct[k] & INFIOR_MASK) <= (kc->kct[t] & INFIOR_MASK)) {
+			    // lowest inferiority
                             buf[i - KEY_WIDTH] = buf[0];
                             bufi[i - KEY_WIDTH] = bufi[0];
-                            buf[0] = kc->ndxkct[ndx] | wx;
-                            bufi[0] = i;
+                            buf[0] = kc->ndxkct[ndx];
+                            bufi[0] = i ^ wx;
                         } else {
-                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx] | wx;
+                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
+		            bufi[i - KEY_WIDTH] = i ^ wx;
                         }
 		    }
             }
@@ -190,8 +197,7 @@ default:            dna = _seq_next(b, dna, rc);
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
         }
-        wx = buf[0] >> KEYNT_BUFSZ_SHFT;
-        ndx = buf[0] & ~KEYNT_BUFSZ;
+        ndx = buf[0];
         *s = '\0';
         while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
         unsigned seqlen = i, tln = 0, mps = 0, mq = 0, flag = 44;
@@ -212,6 +218,7 @@ default:            dna = _seq_next(b, dna, rc);
                 while ((c = gc(g)) != -1 && c != '@') {}
                 continue;
             }
+	    flag = !(kc->kct[ndx] & STRAND_BIT) ^ !(bufi[0] & KEYNT_STRAND);
             //ASSERT(flag == 0, return -EFAULT, "FIXME: ASSERTION only valid in testset");
             flag = 0x42 | (flag << 4);
 
@@ -220,7 +227,7 @@ default:            dna = _seq_next(b, dna, rc);
             uint64_t pos = kc->kct[ndx] & B2POS_MASK;
 
             EPQ(dbg > 6, "pos:%lu", pos);
-            c = get_tid_and_pos(kc, &pos, bufi[0]);
+            c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
 	    if (c < 0) {	
 		while ((c = gc(g)) != '@' && c != -1) {}
 		continue;
