@@ -115,6 +115,48 @@ inline uint64_t revcmp(uint64_t dna) /* Reverse Complement, is ok. */
     return REVSEQ(dna, m);
 }
 
+/*
+ * This is to get a twisted halfdev for even number of Nts. for odd counts
+ * the conversion is much more straightforward - 2nd bit of central Nt decides.
+ */
+inline unsigned get_twisted_even(uint64_t* t, uint64_t dna, uint64_t rc)
+{
+    // first get deviant: all bits that differ between complements.
+    // Left and right tails of deviant are mirrored per twobit.
+    uint64_t dev = dna ^ rc;
+
+    dna &= HALF_KEYNT_MASK;
+
+    uint64_t p = dev & -dev; // devbit position
+
+    *t = -!(rc & p); // set all bits if devbit is set
+
+    // if set, flip all, otherwise only top half.
+    // result is deviant in high bits, dna / rc in low.
+    dna ^= dev & (~HALF_KEYNT_MASK | *t);
+
+    *t &= KEYNT_STRAND; // for backwards compatability.
+
+    // mask bits above devbit, to excise out devbit
+    p ^= -p;
+    dna ^= (dna & p) ^ ((dna & p) >> 1);
+
+    return dna & KEYNT_MASK;
+}
+
+#define _get_ndx(ndx, t, dna, rc) ({\
+    if (KEY_WIDTH & 1) {\
+        t = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
+        ndx = t ? dna : rc;    /* strand. Excise it out since its always the same */\
+        ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+    } else {\
+        ndx = get_twisted_even(&t, dna, rc);\       
+    }\
+    ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
+    dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, (kc)->ndxkct[ndx]);\
+});
+
 /* With the b6 conversion, only the specified characters are converted to
  * 2bits, left shifted by one, with all other bits zeroed. With the function
  * below one can test whether the ascii character prior to conversion was a

@@ -61,21 +61,3 @@ inline uint8_t BitRevbyte(uint8_t x)
     return BitReverseTable256[x];
 }
 
-/*
- * This is to get a twisted halfdev for even number of Nts. for odd counts
- * the conversion is much more straightforward - 2nd bit of central Nt decides.
- */
-inline unsigned get_twisted_even(unsigned rev, unsigned sq)
-{
-    rev = rev ^ 0xaaaaaaaau;
-    unsigned dev = sq ^ rev;
-
-    unsigned m = dev & -dev; // leftmost deviant bit. NB: palindromes have none
-    sq &= m;                 // test whether it's set for first sequence
-    rev ^= (sq ^ -sq) & dev; // flip revcmp deviant above devbit, if set
-
-    m -= !!m; // mask below devbit, if any - none for palindromes
-    m &= rev; // revnxt below devbit, if any
-    rev ^= m ^ (m << 1) ^ sq ^ !sq; // swap devbit to lowest and flip
-    return ((rev & 0xffff) << 16) | (dev & 0xffff);
-}
