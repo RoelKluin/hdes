@@ -307,7 +307,6 @@ case 2:     // inferior must be ge neighbouring uniqs' infior
 static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
-    kc->uqct = 0u;
     uint32_t lastx;
     EPR("Processing %s", kc->id + h->part[0]);
     kc->bdit = h->bnd.begin();
