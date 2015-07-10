@@ -257,15 +257,6 @@ case 1:     EPQ(dbg > 5, "1st unique at %u", b2pos);
             inter->at_dna = dna;
 case 3:     kc->kct[kct_i] &= INFIOR_MASK;
             kc->kct[kct_i] |= (b2pos + h->s_s) | (t & STRAND_BIT);
-            break;
-case 2:     // inferior must be ge neighbouring uniqs' infior
-            // A primary uniq should be 0. Also set strand for uniq.
-            if (r.infior + INFERIORITY > t) {
-                 ASSERT((t & INFIOR_MASK) != INFIOR_MASK, return -EFAULT);
-                 maxinfior = max(maxinfior, r.infior + INFERIORITY);
-                 t ^= r.infior + INFERIORITY;
-                 kc->kct[kct_i] ^= t; // replace inferiority, keep strand.
-            }
         }
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
