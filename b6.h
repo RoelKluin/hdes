@@ -148,9 +148,9 @@ inline unsigned get_twisted_even(uint64_t* t, uint64_t dna, uint64_t rc)
     if (KEY_WIDTH & 1) {\
         t = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
         ndx = t ? dna : rc;    /* strand. Excise it out since its always the same */\
-        ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
+        ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
     } else {\
-        ndx = get_twisted_even(&t, dna, rc);\       
+        ndx = get_twisted_even(&t, dna, rc);\
     }\
     ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
     dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
