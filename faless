@@ -2,14 +2,15 @@
 # (c) Roel Kluin, 2012, NKI
 
 F="$1"
+DN=$(dirname $0)
 
 if [ ! -e "$1" ]; then
-   ./facolor.pl "$@" 2>&1 | less -R
+   $DN/facolor.pl "$@" 2>&1 | less -R
 else
 	shift;
 	if [[ "$F" =~ \.gz$ ]]; then
-		zcat "$F" | ./facolor.pl "$@" 2>&1 | less -R
+		zcat "$F" | $DN/facolor.pl "$@" 2>&1 | less -R
 	else
-		cat "$F" | ./facolor.pl "$@" 2>&1 | less -R
+		cat "$F" | $DN/facolor.pl "$@" 2>&1 | less -R
 	fi
 fi

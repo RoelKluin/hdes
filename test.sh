@@ -116,7 +116,7 @@ make clean && DEFINES="-DKEY_LENGTH=11" make && ./uqct hg19_GL.fa.gz -l 51 2>&1 
 ./tst hg19_chr1_2.fa.gz -c -m 15
 ./tst hg19_chr1_2.fa.gz -p -m 15
 
-./tst hg19.fa.gz -p -m 17
+./tst hg19.fa.gz -p -m 16
 
 
 
@@ -145,7 +145,7 @@ bug bij 2e N stretch: niet gestopt voor stretch
 
 # the real thing
 #rm hg19.{2b,nn,bd,ub,kc}.gz;
-make clean && DEFINES="-DKEY_LENGTH=15" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee hg19_uqct.err
+make clean && DEFINES="-DKEY_LENGTH=16" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee hg19_uqct.err
 
 
 zcat hg19.fa.gz | sed '/^>3/Q' | gzip --fast -c > hg19_chr1_2.fa.gz
@@ -161,7 +161,7 @@ for ref in hg19_GL.fa.gz; do
     out="fakeq/${ref%.fa.gz}${simerr// /_}"
     echo $out
     /opt/java/jre1.8.0_45/bin/java \
--jar  /net/NGSanalysis/dvl/roel/git/hdes/external/ArtificialFastqGenerator.jar \
+-jar  /home/roel/dev/git/hdes/external/ArtificialFastqGenerator.jar \
 -R <(zcat hg19_GL.fa.gz) -O $out -RL 51 -RCNF 1 -SE true \
 -S $(zcat hg19_GL.fa.gz | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
   done
@@ -181,19 +181,19 @@ valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_uqct.err
 ####################
 
 #with debug 7
-cd /net/NGSanalysis/dvl/roel/git/hdes &&
+cd /home/roel/dev/git/hdes &&
 make clean &&
 DEFINES="-DKEY_LENGTH=11" make &&
-cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
+cd /home/roel/dev/git/hdes/bwatest &&
 valgrind ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51 2>&1 | less
 
-cd /net/NGSanalysis/dvl/roel/git/hdes
+cd /home/roel/dev/git/hdes
 make clean
 DEFINES="-DKEY_LENGTH=11" make
-cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest
+cd /home/roel/dev/git/hdes/bwatest
 
-mkdir /net/NGSanalysis/dvl/roel/git/hdes/bwatest; cd !$
-ln -s /net/NGSanalysis/dvl/roel/git/hdes/hg19_GL.fa.gz
+mkdir /home/roel/dev/git/hdes/bwatest; cd !$
+ln -s /home/roel/dev/git/hdes/hg19_GL.fa.gz
 bwa=/net/NGSanalysis/apps/bwa/bwa-0.7.12/bwa
 samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
 $bwa index hg19_GL.fa.gz
@@ -204,17 +204,17 @@ $samtools sort - hg19_GL.1.bwa) &> bwa_mem.log &&
 $samtools index hg19_GL.1.bwa.bam
 $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
 
-cd /net/NGSanalysis/dvl/roel/git/hdes &&
-make clean &&
-DEFINES="-DKEY_LENGTH=11" make &&
-cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
+# mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct_prev.bam.bai hg19_GL.1.uqct.bam.bai 
+
+../tst hg19_GL.fa.gz -v -c -m 12 &&
 mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam &&
 mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
 (cat hg19_GL.1.hdr.sam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
 $samtools sort - hg19_GL.1.uqct &&
-$samtools index hg19_GL.1.uqct.bam
+$samtools index hg19_GL.1.uqct.bam &&
+~/dev/git/IGV/igv.sh -b batchfile
 
 
 cat << EOF > batchfile
@@ -225,7 +225,9 @@ load hg19_GL.1.uqct.bam
 goto GL000207.1
 EOF
 
-igvwrap hg19_GL.fa -b batchfile
+
+diff -u <(samtools view hg19_GL.1.uqct.bam)\
+    <(samtools view hg19_GL.1.uqct_prev.bam) | gview -
 
 #########################
 make clean && DEFINES="-DKEY_LENGTH=17" make

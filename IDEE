@@ -4,39 +4,40 @@ Doel: map aan de hand van unieke keys, liefst eens per readlengte verdeeld.
 Indexing
 
 In een twobit schema, waarbij een bit verschilt bij reverse complement, is de
-bitpositie hiervan identiek in beide complementen voor de middelste nucleotide,
-in een sequentie met oneven lengte. Om slechts een van twee orientaties in
-behandeling te nemen, kan er naar deze bit gekeken worden, die altijd maar is
-gezet voor een van twee. Indien in de andere orientatie, kan de sequentie eerst
+bitpositie hiervan voor de middelste nucleotide, in een sequentie met oneven
+lengte, identiek in beide complementen. Om slechts een van twee orientaties in
+behandeling te nemen, kan er naar deze bit gekeken worden, die altijd maar een
+van twee markeert. Indien in de andere orientatie, kan de sequentie eerst
 reverse gecomplementeerd worden.
 
-Een fragment van de read is vaak uniek genoeg om de read met zekerheid genomisch
-te plaatsen. Als de read gereverse complementeerd wordt afhankelijk van de
-centrale complement bit, en elke referentie sectie waarmee deze gematcht wordt
-evengoed, dan halveert het aantal mogelijke sleutels.
+Een fragment van de read is vaak al uniek genoeg om deze met zekerheid genomisch
+te kunnen plaatsen. Als de orientatie hiervan wordt aangepast, aan de hand van
+deze centrale complement bit, en evenlange referentie secties net zo, dan
+halveert het aantal mogelijke sleutels. De centrale complement bit is namelijk
+altijd identiek.
 
-Bij het afwandelen van het genoom kan je telkens zo'n sleutel bepalen, die
-afhankelijk van de lengte vaker of minder op het genoom voorkomen. Indien een
+Bij het afwandelen van het genoom kan je telkens de sleutel bepalen. Afhankelijk
+van de lengte zullen sleutels vaker of minder op het genoom voorkomen. Indien een
 sleutel slechts eenmaal voorkomt, dan is de genomische locatie bepaald voor elke
 read met deze sleutel. Voor verdere read alignment moet de de originele centrale
-complement bit waarde - voor de orientatie van de read op de reference - en de
-positie op het reference genoom worden opgeslagen.
+complement bit waarde - voor de orientatie - en de positie op het reference genoom
+worden opgeslagen.
 
 Naast deze primair unieke sleutels, kunnen nabijgelegen sleutels, die bijna uniek
 zijn, in tweede instantie soms toch nog reads elders plaatsen. Liggen bijvoorbeeld
 op chromosoom 8 twee unieke sleutels, A en B, binnen de afstand read- min
-sleutellengte, dan hoeven, voor read plaatsing hierbinnen, de sleutels tussen A
-en B niet meer in ogenschouw genomen te worden. Indien tussenliggende sleutel C
-verder alleen nog maar op chromosoom X voorkomt, dan kan sleutel C als secundair
-uniek worden beschouwd: reads met C, maar zonder sleutel A of B, kunnen reads toch
-nog op X plaatsen.
+sleutellengte, dan hoeven, voor read plaatsing hierbinnen, de sleutels tussen A en B
+niet meer in ogenschouw genomen te worden. Indien tussenliggende sleutel C verder
+alleen nog maar op chromosoom X voorkomt, dan kan sleutel C als secundair uniek worden
+beschouwd: de reads met C, maar zonder sleutel A of B, kunnen reads toch nog op X
+plaatsen.
 
 De regio's waarbinnen er telkens een unieke sleutel binnen de afstand read- min
 sleutellengte ligt, kan een aaneenschakeling van unieke sleutels omvatten. Ook
-groeien deze unieke sleutelbossen met de secundair of later uniek geworden
-sleutels. Het vereist meer iteraties over het genoom om hierbij ook de sleutels
-toe te voegen die, op hun eerste genomische positie na, later telkens binnen
-unieke sleutelbossen liggen.
+groeien deze unieke sleutelbossen met de secundair of later uniek geworden sleutels.
+Het vereist meer iteraties over het genoom om hierbij ook de sleutels toe te voegen
+die, op hun eerste genomische positie na, later telkens binnen unieke sleutelbossen
+liggen.
 
 Indien je op deze manier posities per sleutel probeert op te slaan, loop je tegen
 een practisch probleem aan. Voor een positie op het humane genoom is 32 bit al erg
@@ -47,29 +48,24 @@ Sla je voor elke sleutel, per chromosoom/contig, in volgorde van voorkomen, telk
 alleen een opvolgende nucleotide op, dan is het hiermee later mogelijk de hele
 genomische sequentie opnieuw af te wandelen. Naast de genomische positie, kunnen de
 volgende sequentie en reverse complement steeds worden bepaald, nodig om de sleutel
-te maken. Er moet per sleutel gaandeweg wel worden bijgehouden, bij welke van zijn
-opvolgende nucleotide we gebleven waren.
+te maken. Er moet per sleutel wel worden bijgehouden, bij welke van zijn opvolgende
+nucleotide we gebleven waren.
 
-Naast de sequentie is hiermee ook per sleutel het aantal keer voorkomen op het
-genoom bekend. Dit is namelijk de totale lengte van de opvolgende nucleotiden per
-sleutel.
+Naast de sequentie is ook per sleutel het aantal repetities op het genoom bekend.
+Dit is namelijk de totale lengte van de opvolgende nucleotiden per sleutel.
 
 Om bij te houden waar we zijn op het genoom is het noodzakelijk rekening te houden
-met begrenzingen en stukken genoom die moeten worden overgeslagen. Aanvankelijk
-zijn deze begrenzingen alleen locaties van chromosoom eindes en N-reeksen. Als we
-bij een dergelijke positie aankomen, dan overbruggen we deze met de positie en
-sequentie erna, waarvan we het reverse complement bepalen en de sleutel zodat
-kunnen maken, de opvolgende base weer weten enzovoorts.
+met begrenzingen en stukken genoom die moeten worden overgeslagen. Aanvankelijk zijn
+dit alleen locaties van chromosoom eindes en N-reeksen. Als we bij een dergelijke
+positie aankomen, dan overbruggen we deze met de positie en sequentie erna,
+waarvan we het reverse complement bepalen en de sleutel zodat kunnen maken, de
+opvolgende base weer weten enzovoorts.
 
-Bij de tweede en latere iteraties over het genoom kunnen de eerder al bewandelde
-delen van unieke sleutelbossen overgeslagen worden. Voor de unieke sleutels is de
-orientatie en positie al opgeslagen, en voor de overige, nog niet unieke sleutels
-zijn door de omliggende unieke sleutels niet meer een optie.
-
-Om zulke regio's te kunnen overslaan worden ze bij de overige genomische
-begrenzingen (chromosoom eindes en N-reeksen) opgeslagen. Het overslaan van deze
-sleutelbossen betekent ook dat voor de nog niet unieke sleutels daarbinnen de
-repectievelijke volgende nucleotiden worden verwijderd.
+Bij een tweede iteratie over het genoom kunnen de eerder al bewandelde delen van
+unieke sleutelbossen overgeslagen worden. Deze regio's worden daartoe bij de overige
+genomische begrenzingen (chromosoom eindes en N-reeksen) opgeslagen. Het overslaan
+van deze sleutelbossen betekent ook dat voor de nog niet unieke sleutels daarbinnen
+de repectievelijke volgende nucleotiden moeten worden verwijderd.
 
 
 [misschien hoeven boundaries niet per chromosoom.]

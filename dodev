@@ -1,6 +1,6 @@
 #!/bin/bash
 
-dir=$(dirname "$0")
+dir=/home/roel/dev/git/hdes
 mf=Makefile
 cd $dir
 git ls-tree -r $(git branch | sed -n 's/\* //p') --name-only | sort -u | xargs du -b | perl -e'
@@ -8,7 +8,7 @@ my (%h, %sz);
 while (<>) {
     chomp;
     my ($ct, $f) = split /\t/, $_;
-    next if -d $f or $f =~ /^Makefile|main\.cpp$/;
+    next if -d $f or $f =~ /^Makefile|main\.cpp$|^klib|^malloc|\.pl$|^f[aq]less|^\.|^ksort.h|^minqueue.cpp/;
     my ($bn, @etc) = split /\./, $f;
     $sz{$bn} = 0 if not exists $h{$bn};
     $sz{$bn} += $ct;

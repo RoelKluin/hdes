@@ -1,15 +1,11 @@
 
-1) .2b files and friends are written in the source directory, not the directory where uqct is run
-solution => strip of dirs.
+* orientation not correct, should all be fwd in testset
+* preference for early contig - due to lower bits in ifior test? why then, if on multiple locations the same infior?
 
-when indexing ungzipped fasta:
+Warning: assertion '*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi' failed  at map.cpp:83
 
-converting keycounts..  done
-== preparing to write /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b...
-opening /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b for writing..     done
-Warning: assertion 'fhout->write != NULL' failed  at indexio.cpp:129
-Warning: assertion 'res >= 0' failed writing seqb2: /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.2b. at key_init.cpp:440
-Warning: assertion 'res >= 0' failed reading fasta. at fa.cpp:448
-an error occured:-14
-== failed to create keyct.
-...
+
+bijna alle potentiele keys waarbij ref orientatie fwd is gaan goed, bijna alle met ref back gaan fout.
+
+
+sometimes setting r->infior to uniqs infior before decr_excise is beneficial, sometimes not.

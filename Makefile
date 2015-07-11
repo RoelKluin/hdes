@@ -1,5 +1,5 @@
-#CC=		g++-4.9
-CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+CC=		g++-4.9
+#CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
