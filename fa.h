@@ -76,13 +76,6 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _store_ndx(kc, left, ndx)\
-    if (ndx == dbgndxkct) {\
-        EPR("-- storing dbgndxkct in kc->wbuf[%u/%u] --", left - 1, kc->ext);\
-    }\
-    ASSERT(kc->wbuf[left-1] == ~0u, return -EFAULT, "[%u/%u]:0x%x", left-1, kc->ext, kc->wbuf[left-1]);\
-    kc->wbuf[left-1] = ndx;
-
 #define _ndxkct_and_infior(ndx, t, dna, rc) ({\
     _get_ndx(ndx, t, dna, rc);\
     t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\

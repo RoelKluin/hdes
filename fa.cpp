@@ -62,24 +62,9 @@ decr_excise(kct_t const *const kc, running *r)
 
         // current next_Nt pos and pending offsets are stored in walker.
         uint32_t ndx = wbuf[i];
-        wbuf[i] = ~0u;
-        ASSERT(ndx != ~0u, return -EFAULT, "%u/%u", i, kc->ext);
         dbg = ndx == dbgndxkct ?  dbg | 8 : dbg & ~8;
         keep_dbg |= dbg;
-        // no movement if only one left (besides.. genomic position was written)
-        // infior is also no longer increased
-        if ((kc->kct[ndx + 1] & REMAIN_MASK) <= ONE_CT)
-            continue;
-
-        uint64_t nt = kc->kct[ndx + 1] & B2POS_MASK; // ts offset
-
-        kc->kct[ndx + 1] -= ONE_CT;         // excise it..
-        uint64_t offs = nt + (kc->kct[ndx + 1] >> BIG_SHFT);
-
         uint64_t k = kc->kct[ndx];
-        ASSERT((k & B2POS_MASK) > 0, return -EFAULT);
-        nt += --kc->kct[ndx] & B2POS_MASK;  // ..instead of passing
-
         k &= INFIOR_MASK;
         // also keep infior above a uniq keys' infior after this key.
         if ((r->infior + INFERIORITY) > k) {
@@ -90,6 +75,24 @@ decr_excise(kct_t const *const kc, running *r)
              k ^= r->infior + INFERIORITY;
              kc->kct[ndx] ^= k;
         }
+        // no movement if only one left (besides.. genomic position was written)
+        if ((kc->kct[ndx + 1] & REMAIN_MASK) <= ONE_CT)
+            continue;
+        kc->kct[ndx + 1] -= ONE_CT;         // excise it..
+
+        uint64_t nt = kc->kct[ndx + 1];
+        uint64_t offs = nt >> BIG_SHFT;
+        nt &= B2POS_MASK; // ts offset
+        offs += nt;
+
+        nt += --kc->kct[ndx] & B2POS_MASK; // ..instead of passing
+        if (nt == offs) {
+            // also if at last nextNt we can skip.
+            // TODO: maybe check here whether all nextNts are the same - for
+            // extended key in next iterations, set remain to 0? ts offset obsolete.
+            continue;
+        }
+
         // excise out twobits, i.e. shift 2bits above current 2bit down.
         uint8_t* q = &kc->ts[nt >> 2];
         uint8_t* qe = &kc->ts[offs >> 2];
@@ -122,18 +125,6 @@ decr_excise(kct_t const *const kc, running *r)
     return keep_dbg;
 }
 
-// if we cannot extend a range, update temporarily stored offsets.
-static inline int update_wlkr(kct_t* kc, int left)
-{
-    uint32_t ndx = kc->wbuf[left];
-    if (ndx == dbgndxkct) {
-        EPR("-- cleared dbgndxkct 0x%x --", dbgndxkct);
-        dbg |= 8;
-    }
-    ASSERT(ndx < kc->kct_l, return -EFAULT, "[%u/%u]:%x", left, kc->ext, ndx)
-    kc->wbuf[left] = ~0u;
-    return 0;
-}
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
 // reverse seq could be required for mapping - maybe 
@@ -187,12 +178,12 @@ case 3: {  // 2nd or later uniq within scope => region insertion or update.
 case 1: // A first uniq marks a potential start of a region
             r.left = kc->ext;
             r.infior = t & INFIOR_MASK;
-case 2:     _store_ndx(kc, r.left, kct_i);
+case 2:     kc->wbuf[r.left-1] = kct_i;
         }
 
         // get offset to this keys nextNts
         ct = kc->kct[kct_i + 1] >> BIG_SHFT; // remaining nextNts
-        uint64_t x = (ct > 1ul) ? kc->kct[kct_i]++ : 0;
+        uint64_t x = (ct > 1ul) ? kc->kct[kct_i]++ : 0; // passed this key, if not yet unique and b2pos
         x = (x + kc->kct[kct_i + 1]) & B2POS_MASK;
 
         // TODO: if all nextNts are the same increase keylength.
@@ -226,14 +217,9 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
                 last = kc->bd + kc->bd_l++;
                 next = kc->bd + *kc->bdit;
             }
-            for (unsigned i = kc->ext; i--> 0 ;) {
-                if (update_wlkr(kc, i) < 0)
-                    return -EFAULT;
-            }
             inter = kc->bd + kc->bd_l; // no longer last at least
             inter->l = inter->s = 0;
             --r.left;
-            break;
 case 0:     r.infior = 0;
             break;
 default:    if (r.left-- == kc->ext) {
@@ -362,8 +348,6 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
     t = kc->ext;
     kc->wbuf = (uint32_t*)malloc(t * sizeof(uint32_t));
     ASSERT(kc->wbuf != NULL, goto err);
-
-    while (t--) kc->wbuf[t] = ~0u;
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc);
