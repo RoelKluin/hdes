@@ -20,7 +20,7 @@
 # define PROGRAM_NAME "uqct"
 #endif
 #ifndef PROGRAM_VERSION
-# define PROGRAM_VERSION "0.013"
+# define PROGRAM_VERSION "0.014"
 #endif
 
 typedef struct option_description

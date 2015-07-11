@@ -5,7 +5,7 @@ CC=		g++-4.9
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.013
+VERSION=	0.014
 LOBJS=
 PROG=		uqct
 INCLUDES=	
