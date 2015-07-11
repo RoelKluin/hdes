@@ -121,6 +121,11 @@ fq_read(kct_t* kc, seqb2_t *seq)
         while (c != '\n' && (c >= 0)) c = gc(g);          /* comment - ignored. */
         if (c == -1) break;
         *s++ = '\0';
+        if (strcmp((const char*)h, dbgrn)) {
+            dbg &= ~8;
+        } else {
+            dbg |= 8;
+        }
         EPQ(dbg > 6, "%s", (char*)h);
 
         char* seqstart = (char*)s;
@@ -138,58 +143,58 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
-		    ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out)
+		    ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out);
 		    // wx only has strand at offset KEY_WIDTH.
                     _get_ndx(ndx, wx, dna, rc);
+                    uint32_t k = kc->ndxkct[ndx];
 		    // put not recognized and multimapper keys to end - unused.
-                    if (kc->ndxkct[ndx] >= kc->kct_l ||
-                            (kc->kct[kc->ndxkct[ndx] + 1] >> BIG_SHFT) > 1ul) {
+                    if (k >= kc->kct_l ||
+                            (kc->kct[k + 1] >> BIG_SHFT) > 1ul) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
                     }
-                    ASSERT((kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) < end_pos,
+                    ASSERT((kc->kct[k] & B2POS_MASK) < end_pos,
                         c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
-                    ASSERT((int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) >= 0,
+                    ASSERT((int)(kc->kct[k] & B2POS_MASK) >= 0,
                             c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx,
-                            kc->kct[kc->ndxkct[ndx]],
-                                kc->kct[kc->ndxkct[ndx] + 1],
-                            (int)(kc->kct[kc->ndxkct[ndx]] & B2POS_MASK) & print_ndx(ndx));
-                    ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out)
+                            kc->kct[k],
+                                kc->kct[k + 1],
+                            (int)(kc->kct[k] & B2POS_MASK) & print_ndx(ndx));
+                    ASSERT(k != -2u, c = -EFAULT; goto out)
                     if (dbg > 6) {
-                        uint64_t pos = kc->kct[kc->ndxkct[ndx]] & B2POS_MASK;
+                        uint64_t pos = kc->kct[k] & B2POS_MASK;
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) continue;
-                        ASSERT(c >= 0, goto out, "%lu", kc->kct[kc->ndxkct[ndx]] & B2POS_MASK);
+                        ASSERT(c >= 0, goto out, "%lu", kc->kct[k] & B2POS_MASK);
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
-                                kc->kct[kc->ndxkct[ndx]] >> INFIOR_SHFT, ndx);
+                                kc->kct[k] >> INFIOR_SHFT, ndx);
                         print_ndx(ndx);
                     }
 		    if (i == KEY_WIDTH) {
-	                    buf[0] = kc->ndxkct[ndx];
+	                    buf[0] = k;
 			    bufi[0] = i ^ wx;
 		    } else if (buf[0] == ~0ul){
 			buf[i - KEY_WIDTH] = buf[0];
 			bufi[i - KEY_WIDTH] = bufi[0];
-			buf[0] = kc->ndxkct[ndx];
+			buf[0] = k;
 			bufi[0] = i ^ wx;
 		    } else {
 			// test infior - in high bits.
-                        uint32_t k = kc->ndxkct[ndx];
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
-                        ASSERT(kc->ndxkct[ndx] != -2u, c = -EFAULT; goto out);
-			if ((kc->kct[k] & INFIOR_MASK) <= (kc->kct[t] & INFIOR_MASK)) {
+                        ASSERT(k != -2u, c = -EFAULT; goto out);
+                        if ((kc->kct[k] & INFIOR_MASK) > (kc->kct[t] & INFIOR_MASK)) {
+                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
+		            bufi[i - KEY_WIDTH] = i ^ wx;
+			} else {
 			    // lowest inferiority
                             buf[i - KEY_WIDTH] = buf[0];
                             bufi[i - KEY_WIDTH] = bufi[0];
-                            buf[0] = kc->ndxkct[ndx];
+                            buf[0] = k;
                             bufi[0] = i ^ wx;
-                        } else {
-                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
-		            bufi[i - KEY_WIDTH] = i ^ wx;
                         }
-		    }
+                    }
             }
         }
         if (buf[0] == ~0ul) {
