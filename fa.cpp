@@ -154,6 +154,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint64_t rc = revcmp(dna);
     uint64_t ct = 1; // treat last boundary as a first unique
     running r = {0};
+    uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
 
     if (dbg > 5) show_list(kc, h->bnd);
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
@@ -163,7 +164,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ(b2pos >= next->s, "boundary %u >= %u ??", b2pos, next->s); // I guess this shouldn't happen?
     while(b2pos < next->s) { // until next event
         EPQ(dbg > 6, "next path ct:%lu", ct);
-        uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
 
         // get offset to first of keys' next Nt
@@ -258,6 +258,7 @@ case 1:     EPQ(dbg > 5, "1st unique at %u", b2pos);
 case 3:     kc->kct[kct_i] &= INFIOR_MASK;
             kc->kct[kct_i] |= (b2pos + h->s_s) | (t & STRAND_BIT);
         }
+        t = _ndxkct_and_infior(ndx, t, dna, rc);
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
@@ -265,6 +266,8 @@ case 3:     kc->kct[kct_i] &= INFIOR_MASK;
         EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
         if (r.left) {
             ++kc->uqct;
+            if (ct & 1)
+                r.infior = max(r.infior, t & INFIOR_MASK);
             decr_excise(kc, &r);
         }
 
