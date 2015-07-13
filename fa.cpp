@@ -57,22 +57,24 @@ decr_excise(kct_t const *const kc, running *r)
 {
     uint32_t* wbuf = kc->wbuf;
     unsigned keep_dbg = 0;
-    const int left = r->left;
-    for(int i = kc->ext; i --> left ;) {
+    const uint64_t infior = r->infior + INFERIORITY;
+    maxinfior = max(maxinfior, infior);
+    for(unsigned i = r->last; i != r->rot ;) {
+        i |= -!i & kc->ext;
 
         // current next_Nt pos and pending offsets are stored in walker.
-        uint32_t ndx = wbuf[i];
+        uint32_t ndx = wbuf[--i];
         dbg = ndx == dbgndxkct ?  dbg | 8 : dbg & ~8;
         keep_dbg |= dbg;
         uint64_t k = kc->kct[ndx];
         k &= INFIOR_MASK;
         // also keep infior above a uniq keys' infior after this key.
-        if ((r->infior + INFERIORITY) > k) {
+        if (infior > k) {
 
              // A non-unique keys' inferiority must be gt neighbouring unique key.
              ASSERT((k & INFIOR_MASK) != INFIOR_MASK, return -EFAULT);
-             maxinfior = max(maxinfior, r->infior + INFERIORITY);
-             k ^= r->infior + INFERIORITY;
+             maxinfior = max(maxinfior, infior);
+             k ^= infior;
              kc->kct[ndx] ^= k;
         }
         // no movement if only one left (besides.. genomic position was written)
@@ -146,6 +148,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint64_t ct = 1; // treat last boundary as a first unique
     running r = {0};
     uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
+    unsigned rest = 0;
 
     if (dbg > 5) show_list(kc, h->bnd);
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
@@ -176,9 +179,12 @@ case 3: {  // 2nd or later uniq within scope => region insertion or update.
             dbg |= ret;
         }
 case 1: // A first uniq marks a potential start of a region
-            r.left = kc->ext;
+            //r.rot = kc->ext;
+            r.last = r.rot % kc->ext;
+            rest = kc->ext;
             r.infior = t & INFIOR_MASK;
-case 2:     kc->wbuf[r.left-1] = kct_i;
+case 2:     r.rot |= -!r.rot & kc->ext;
+            kc->wbuf[--r.rot] = kct_i;
         }
 
         // get offset to this keys nextNts
@@ -207,7 +213,7 @@ case 2:     kc->wbuf[r.left-1] = kct_i;
             }
         }
         // within scope of unique key or when leaving it
-        switch(r.left) {
+        switch(rest) {
 case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
             h->mapable += inter->l;
             if (inter != last) {
@@ -219,10 +225,10 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
             }
             inter = kc->bd + kc->bd_l; // no longer last at least
             inter->l = inter->s = 0;
-            --r.left;
-case 0:     r.infior = 0;
-            break;
-default:    if (r.left-- == kc->ext) {
+            --rest;
+            r.infior = 0;
+case 0:     break;
+default:    if (rest-- == kc->ext) {
                 EPQ(dbg > 6, "setting uniq jump destination");
                 // Sucessively overwritten until region completed - left became 0.
                 inter->dna = dna;
@@ -248,9 +254,9 @@ case 3:     kc->kct[kct_i] &= INFIOR_MASK;
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
-    if (r.left || ct == 3) {
+    if (r.rot != r.last || ct == 3) {
         EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
-        if (r.left) {
+        if (r.rot != r.last) {
             ++kc->uqct;
             if (ct & 1)
                 r.infior = max(r.infior, t & INFIOR_MASK);

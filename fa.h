@@ -129,7 +129,8 @@ packed_struct Bnd {
 
 packed_struct running {
     uint64_t infior;
-    int left;
+    unsigned last;
+    unsigned rot;
 };
 
 packed_struct kct_ext {
