@@ -53,7 +53,7 @@ distclean: clean
 	rm -rf $(ARCHIVE).tar.gz
 
 dist:
-	tar -czf $(ARCHIVE).tar.gz $(SOURCES)  fqless *.c *.h *.pl *.sh .git Makefile
+	tar -czf $(ARCHIVE).tar.gz $(SOURCES) faless fqless *.cpp *.c *.h *.pl *.sh .git Makefile doc/hdes.odt documentation.txt PLAN IDEE BUGS dodev
 
 depend:
 	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) $(DEF) -- *.cpp )

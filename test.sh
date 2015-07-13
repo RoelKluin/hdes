@@ -204,9 +204,9 @@ $samtools sort - hg19_GL.1.bwa) &> bwa_mem.log &&
 $samtools index hg19_GL.1.bwa.bam
 $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
 
-# mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct_prev.bam.bai hg19_GL.1.uqct.bam.bai 
+alias revert="mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct_prev.bam.bai hg19_GL.1.uqct.bam.bai"
 
-../tst hg19_GL.fa.gz -v -c -m 12 &&
+../tst hg19_GL.fa.gz -c -m 12 &&
 mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam &&
 mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
 (cat hg19_GL.1.hdr.sam
