@@ -52,22 +52,20 @@ free_kc(kct_t* kc)
 static unsigned iter = 0;
 static uint64_t maxinfior = 0;
 
-static int
+static void
 decr_excise(kct_t const *const kc, uint64_t infior, uint32_t ndx)
 {
     dbg |= ndx == dbgndxkct ?  8 : 0;
-    uint64_t k = kc->kct[ndx];
-    // also keep infior above a uniq keys' infior after this key.
-    if (infior > k) {
 
-         // A non-unique keys' inferiority must be gt neighbouring unique key.
-         ASSERT((k & INFIOR_MASK) != INFIOR_MASK, return -EFAULT);
-         k ^= infior;
-         kc->kct[ndx] ^= k & INFIOR_MASK;
-    }
     // no movement if only one left (besides.. genomic position was written)
     if ((kc->kct[ndx + 1] & REMAIN_MASK) <= ONE_CT)
-        return 0;
+        return;
+    uint64_t k = kc->kct[ndx];
+    if (infior > k) {
+        maxinfior = max(maxinfior, infior);
+        k ^= infior;
+        kc->kct[ndx] ^= k & INFIOR_MASK;
+    }
     kc->kct[ndx + 1] -= ONE_CT;         // excise it..
 
     uint64_t nt = kc->kct[ndx + 1];
@@ -80,7 +78,7 @@ decr_excise(kct_t const *const kc, uint64_t infior, uint32_t ndx)
         // also if at last nextNt we can skip.
         // TODO: maybe check here whether all nextNts are the same - for
         // extended key in next iterations, set remain to 0? ts offset obsolete.
-        return 0;
+        return;
     }
 
     // excise out twobits, i.e. shift 2bits above current 2bit down.
@@ -111,9 +109,8 @@ decr_excise(kct_t const *const kc, uint64_t infior, uint32_t ndx)
     offs = *q & ((1u << offs) - 1u); // below 2bits were shifted correctly
     *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
     EPQ0(dbg > 5, "after append:");print_dna(*q, dbg > 5);
-    return 0;
+    return;
 }
-
 
 // XXX: inferiority ok? XXX: store deviant bit when unique,
 // reverse seq could be required for mapping - maybe 
@@ -136,7 +133,10 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     running r = {0};
     uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
     unsigned rest = kc->ext;
-    r.infior = t & INFIOR_MASK;
+    r.infior = t;
+
+    for(int i=0; i != kc->ext; ++i)
+        kc->wbuf[i] = -1u;
 
     if (dbg > 5) show_list(kc, h->bnd);
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
@@ -150,13 +150,30 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
  * scope - keylength minus keywidth distance - triggers a region insertion or
  * update. Also retrieve for this index the offset.
  */
+
+        r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
+
+        unsigned i = kc->wbuf[--r.rot]; // NB, i is reused after this branch
+        if (i == -1u) { // unless not within scope of unique
+        //    r.infior = 0;
+        } else {
+            // test whether leaving index was not yet uniqish
+            if ((kc->kct[i + 1] >> BIG_SHFT) > 1ul) {
+                uint64_t k = kc->kct[i] & INFIOR_MASK;
+                if (r.infior > k) {
+                    maxinfior = max(maxinfior, r.infior);
+                    k ^= r.infior;
+                    kc->kct[i] ^= k & INFIOR_MASK;
+                }
+            }
+        }
         // get offset to first of keys' next Nt
-        unsigned i = kc->ndxkct[ndx];
+        i = kc->ndxkct[ndx];
         EPQ(dbg > 6, "prev path ct:%lu", ct);
         EPQ(dbg > 6, "[0]:0x%lx\t[1]:%lx", kc->kct[i], kc->kct[i+1]);
 
-        r.rot |= -!r.rot & kc->ext;        // decrement r.rot, rotate to kc->ext
-        kc->wbuf[--r.rot] = i | -!ct;      // all ones for not within scope of unique
+        // insertion of kct index for new complement insensitive index (cindx)
+        kc->wbuf[r.rot] = i | -!ct; // all ones for not within scope of unique
 
         // get offset to this keys nextNts
         ct = kc->kct[i + 1] >> BIG_SHFT; // remaining nextNts
@@ -212,6 +229,23 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
 case 0:     r.last = r.rot;
             break;
 default:    --rest;
+            if (ct) {
+                r.infior = t;
+                unsigned j = r.last;
+                j |= -!j & kc->ext; // skip first (unique).
+                while(--j != r.rot) {
+                    decr_excise(kc, r.infior + INFERIORITY, kc->wbuf[j]);
+                    j |= -!j & kc->ext;
+                }
+            } else { // for non-unique ensure infior is above last uniq infior.
+                uint64_t infior = max(r.infior, t);
+                uint64_t k = kc->kct[i];
+                if (infior > k) {
+                    maxinfior = max(maxinfior, infior);
+                    k ^= infior;
+                    kc->kct[i] ^= k & INFIOR_MASK;
+                }
+            }
             ct |= 2;
         }
         // when in scope of an uniq key - keylength minus keywidth distance,
@@ -221,13 +255,6 @@ default:    --rest;
                 // 2nd or later uniq within scope => region insertion or update.
                 EPQ (dbg > 7, "dbg excision");
                 ++kc->uqct;
-                r.infior = max(r.infior, t);
-                maxinfior = max(maxinfior, r.infior + INFERIORITY);
-                for(unsigned i = r.last; i != r.rot ;) {
-                    i |= -!i & kc->ext;
-                    int ret = decr_excise(kc, r.infior + INFERIORITY, kc->wbuf[--i]);
-                    ASSERT(ret >= 0, return -EFAULT, "left:%d", ret);
-                }
             } else {
                 EPQ(dbg > 5, "1st unique at %u", b2pos);
                 //XXX: make sure this is not off by one or two.
@@ -236,15 +263,13 @@ default:    --rest;
                 inter->s = b2pos;
                 inter->at_dna = dna;
                 // A first uniq marks a potential start of a region
-                //r.rot = kc->ext;
             }
             r.last = r.rot % kc->ext;
             rest = kc->ext;
-            r.infior = t;
-                EPQ(dbg > 6, "setting uniq jump destination");
-                // Sucessively overwritten until region completed - left became 0.
-                inter->dna = dna;
-                inter->l = b2pos - inter->s;
+            EPQ(dbg > 6, "setting uniq jump destination");
+            // Sucessively overwritten until region completed - left became 0.
+            inter->dna = dna;
+            inter->l = b2pos - inter->s;
         }
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
@@ -254,12 +279,11 @@ default:    --rest;
         if (r.rot != r.last) {
             ++kc->uqct;
             if (ct & 1)
-                r.infior = max(r.infior, t);
-            maxinfior = max(maxinfior, r.infior + INFERIORITY);
-            for(unsigned i = r.last; i != r.rot ;) {
-                i |= -!i & kc->ext;
-                int ret = decr_excise(kc, r.infior + INFERIORITY, kc->wbuf[--i]);
-                ASSERT(ret >= 0, return -EFAULT, "left:%d", ret);
+                r.infior = t;
+
+            for(unsigned j = r.last; j != r.rot;) {
+                j |= -!j & kc->ext;
+                decr_excise(kc, r.infior + INFERIORITY, kc->wbuf[--j]);
             }
         }
 
