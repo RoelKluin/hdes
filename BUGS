@@ -9,3 +9,8 @@ bijna alle potentiele keys waarbij ref orientatie fwd is gaan goed, bijna alle m
 
 
 sometimes setting r->infior to uniqs infior before decr_excise is beneficial, sometimes not.
+
+
+beste resultaten tot nu toe als infior oploopt, maar nog niet alles opgelost
+* per iteratie
+* ook voor unieke keys

@@ -38,7 +38,9 @@
 
 #define INFIOR_SHFT (BIG_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
-#define INFIOR_MASK (~(INFERIORITY - 1ul))
+#define STRAND_POS (INFERIORITY - 1ul)
+#define INFIOR_MASK (~STRAND_POS)
+#define INFIOR INFERIORITY //((uint64_t)(iter+1) << INFIOR_SHFT)  //INFERIORITY
 
 #define ONE_CT (1ul << BIG_SHFT)
 #define B2POS_MASK (ONE_CT -1ul)

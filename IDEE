@@ -37,7 +37,7 @@ sleutellengte ligt, kan een aaneenschakeling van unieke sleutels omvatten. Ook
 groeien deze unieke sleutelbossen met de secundair of later uniek geworden sleutels.
 Het vereist meer iteraties over het genoom om hierbij ook de sleutels toe te voegen
 die, op hun eerste genomische positie na, later telkens binnen unieke sleutelbossen
-liggen.
+liggen. Ook moet de onderlinge verhouding van sleutels worden bijgehouden.
 
 Indien je op deze manier posities per sleutel probeert op te slaan, loop je tegen
 een practisch probleem aan. Voor een positie op het humane genoom is 32 bit al erg

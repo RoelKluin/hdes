@@ -222,7 +222,7 @@ new
 load hg19_GL.1.bwa.bam
 load hg19_GL.1.uqct_prev.bam
 load hg19_GL.1.uqct.bam
-goto GL000207.1
+goto GL000202.1:14,001-15,620
 EOF
 
 

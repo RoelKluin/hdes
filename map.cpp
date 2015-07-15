@@ -184,7 +184,7 @@ default:            dna = _seq_next(b, dna, rc);
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         ASSERT(k != -2u, c = -EFAULT; goto out);
-                        if ((kc->kct[k] & INFIOR_MASK) > (kc->kct[t] & INFIOR_MASK)) {
+                        if ( kc->kct[k] > kc->kct[t]) {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
 		            bufi[i - KEY_WIDTH] = i ^ wx;
 			} else {
