@@ -28,7 +28,7 @@ cmp <(samtools view hg19_GL.1.uqct.bam)\
       echo "no difference in result" 1>&2
     } || {
 diff -u <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) | gview - &
+    <(samtools view hg19_GL.1.uqct_prev.bam) | tee >(diffstat -u) | gview - &
 ~/dev/git/IGV/igv.sh -b batchfile
 }
 fi

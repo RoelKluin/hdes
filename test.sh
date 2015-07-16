@@ -213,8 +213,13 @@ mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
 $samtools sort - hg19_GL.1.uqct &&
-$samtools index hg19_GL.1.uqct.bam &&
+$samtools index hg19_GL.1.uqct.bam && (
+cmp <(samtools view hg19_GL.1.uqct.bam)\
+    <(samtools view hg19_GL.1.uqct_prev.bam) || {
+diff -u <(samtools view hg19_GL.1.uqct.bam)\
+    <(samtools view hg19_GL.1.uqct_prev.bam) | gview - &
 ~/dev/git/IGV/igv.sh -b batchfile
+})
 
 
 cat << EOF > batchfile
