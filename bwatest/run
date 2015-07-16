@@ -1,0 +1,35 @@
+#!/bin/bash
+if [ $(hostname) = "Z" ]; then
+  samtools=$(which samtools)
+else
+  samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
+fi
+
+# compile
+../tst hg19_GL.fa.gz -c -m 12
+
+if [ -f hg19_GL.1.uqct.bam ]; then
+  mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam
+fi
+
+(cat hg19_GL.1.hdr.sam
+../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
+samtools view -Sub - |
+$samtools sort - hg19_GL.1.uqct
+
+if [ ! -f "hg19_GL.1.uqct.bam" -o $(stat -c "%s" hg19_GL.1.uqct.bam) -lt 10000 ]; then # revert
+  mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam
+  echo reverted
+else # compare
+  mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai
+  $samtools index hg19_GL.1.uqct.bam &&
+cmp <(samtools view hg19_GL.1.uqct.bam)\
+    <(samtools view hg19_GL.1.uqct_prev.bam) && {
+      echo "no difference in result" 1>&2
+    } || {
+diff -u <(samtools view hg19_GL.1.uqct.bam)\
+    <(samtools view hg19_GL.1.uqct_prev.bam) | gview - &
+~/dev/git/IGV/igv.sh -b batchfile
+}
+fi
+
