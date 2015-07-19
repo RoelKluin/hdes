@@ -1,29 +1,6 @@
 #!/bin/bash
 
-dir=/home/roel/dev/git/hdes
-mf=Makefile
-cd $dir
-git ls-tree -r $(git branch | sed -n 's/\* //p') --name-only | sort -u | xargs du -b | perl -e'
-my (%h, %sz);
-while (<>) {
-    chomp;
-    my ($ct, $f) = split /\t/, $_;
-    next if -d $f or $f =~ /^Makefile|main\.cpp$|^klib|^malloc|\.pl$|^f[aq]less|^\.|^ksort.h|^minqueue.cpp/;
-    my ($bn, @etc) = split /\./, $f;
-    $sz{$bn} = 0 if not exists $h{$bn};
-    $sz{$bn} += $ct;
-    push @{$h{$bn}}, $f;
-}
-
-my @keys = ("__init__", sort { scalar(@{$h{$b}}) <=> scalar(@{$h{$a}}) ||
-    (join("\t", @{$h{$b}}) =~ /\.cpp/) <=> (join("\t", @{$h{$a}}) =~ /\.cpp/) ||
-    $sz{$b} <=> $sz{$a} || $a cmp $b } keys %h);
-
-$h{__init__} = [qw/Makefile main.cpp/];
-
-print "open ".join("\ntabnew ", map {
-  $h{$_}->[0]."\nvs ".$h{$_}->[1]."\nwinc r\n44sp ".$h{$_}->[0]
-} @keys)."\ntabr\n";
-' | gvim -p -geometry 180x78+0+0 -c "so /dev/stdin"
+cd /home/roel/dev/git/hdes
+gvim -p -geometry 212x90+0+0 -c "so dodev.vim"
 
 
