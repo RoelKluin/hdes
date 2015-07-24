@@ -206,20 +206,28 @@ $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
 
 alias revert="mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct_prev.bam.bai hg19_GL.1.uqct.bam.bai"
 
-../tst hg19_GL.fa.gz -c -m 12 &&
-mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam &&
-mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
-(cat hg19_GL.1.hdr.sam
+./run
+
+../tst hg19_GL.fa.gz -c -m 12 && {
+  mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam
+  (cat hg19_GL.1.hdr.sam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
 samtools view -Sub - |
 $samtools sort - hg19_GL.1.uqct &&
-$samtools index hg19_GL.1.uqct.bam && (
-cmp <(samtools view hg19_GL.1.uqct.bam)\
+[ ! -f "hg19_GL.1.uqct.bam" -o $(stat -c "%s" hg19_GL.1.uqct.bam) -lt 10000 ] && {
+  mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam
+  echo reverted 1>&2
+} || {
+  mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
+     $samtools index hg19_GL.1.uqct.bam&
+  cmp <(samtools view hg19_GL.1.uqct.bam)\
     <(samtools view hg19_GL.1.uqct_prev.bam) || {
 diff -u <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) | gview - &
+    <(samtools view hg19_GL.1.uqct_prev.bam) | tee >(diffstat -u)| gview - &
 ~/dev/git/IGV/igv.sh -b batchfile
-})
+}
+}
+}
 
 
 cat << EOF > batchfile

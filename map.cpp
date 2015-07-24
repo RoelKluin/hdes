@@ -79,8 +79,9 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
     ASSERT (hdr != kc->h.end(), return -EFAULT);
     EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi);
 
-    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi, return -EFAULT/*,
-            "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
+    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi, return -EFAULT,
+            "%s\t%lu\t%lu", kc->id + (*hdr)->part[0], *pos + kc->bd[*bd].corr, (*hdr)->s_s + bufi
+            /*, "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
     *pos += kc->bd[*bd].corr - (*hdr)->s_s - bufi; // should be one-based.
 
     return (*hdr)->part[0];
@@ -96,10 +97,10 @@ fq_read(kct_t* kc, seqb2_t *seq)
     struct gzfh_t* fhin = seq->fh;
 //dbg = 7;
     uint64_t l = seq->s_l, m = seq->s_m;
-    register uint8_t *s = seq->s + l;
+    uint8_t *s = seq->s + l;
     const unsigned phred_offset = seq->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + seq->readlength + 1;
-    register int c;
+    int c;
     uint64_t ndx, dna = 0ul, rc = 0ul, b = 0ul, wx = 0ul;
     uint64_t* buf = (uint64_t*)malloc((kc->ext + 1) * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc((kc->ext + 1) * sizeof(unsigned));
@@ -111,7 +112,7 @@ fq_read(kct_t* kc, seqb2_t *seq)
     while ((c = gc(g)) != '@') /* skip to first header */
         if (c == -1 || c == '>') goto out;
     do {
-        register unsigned i = 0;
+        unsigned i = 0;
         _buf_grow0(seq->s, fq_ent_max); // at least enough space for one read
 
         s = seq->s + seq->s_l;
@@ -248,8 +249,6 @@ default:            dna = _seq_next(b, dna, rc);
             if (flag & 0x10) { //reverse complemented
                 for (i = 0; i != seqlen; ++i) {
                     c = *--s;
-                    *s = gc(g);
-                    ASSERT(*s != '\n' && *s != -1, c = -EFAULT; goto out, "truncated");
                     switch (c) {
                         case 0x3f: OPR0("T"); break;
                         case 0x7f: OPR0("G"); break;
@@ -257,6 +256,9 @@ default:            dna = _seq_next(b, dna, rc);
                         case 0xff: OPR0("C"); break;
                         case 0x1: OPR0("N"); break;
                     }
+                    c = gc(g);
+                    ASSERT(c != '\n' && c != -1, goto out, "truncated");
+                    *s = c;
                 }
                  OPR0("\t");
                 for (i = 0; i != seqlen; ++i)

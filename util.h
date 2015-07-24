@@ -139,14 +139,14 @@ sprints(uint8_t *out, uint8_t *s)
  * the following should be enough for 64 bit int
  */
 static inline unsigned
-sprintu(uint8_t *out, register uint64_t u, uint8_t del)
+sprintu(uint8_t *out, uint64_t u, uint8_t del)
 {
-    register unsigned len = 0;
-    register uint8_t *s = out + 21;
+    unsigned len = 0;
+    uint8_t *s = out + 21;
 
     do {
         ++len;
-        register unsigned t = u % 10;
+        unsigned t = u % 10;
         u /= 10;
         *--s = t + '0';
     } while (u);
@@ -160,16 +160,16 @@ sprintu(uint8_t *out, register uint64_t u, uint8_t del)
  * again should be enough for 64 bit int
  */
 static inline unsigned
-sprint0x(uint8_t *out, register uint64_t u, uint8_t del, uint8_t len)
+sprint0x(uint8_t *out, uint64_t u, uint8_t del, uint8_t len)
 {
-    register unsigned i;
+    unsigned i;
     *out = '0'; *++out = 'x';
-    register uint8_t *s = out + len + 1;
+    uint8_t *s = out + len + 1;
     *s = del;
 
     // hex: zero padded.
     for (i = 0; i != len; ++i) {
-        register int t = u & 0xf;
+        int t = u & 0xf;
         *--s = t + (t >= 10 ? 'a' - 10 : '0');
         u >>= 4;
     }

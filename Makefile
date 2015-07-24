@@ -1,4 +1,4 @@
-CC=		g++-4.9
+CC=		g++
 #CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze

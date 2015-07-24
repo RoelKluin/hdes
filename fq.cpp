@@ -87,17 +87,17 @@ fq_print(seqb2_t *fq)
     uint8_t seqrc[(KEY_LENGTH+1)<<1];
     uint8_t *const s = fq->s + SEQ_OFFSET_BYTES + BUF_OFFSET_BYTES;
 
-    register uint64_t j = KEYNT_BUFSZ - 1ul;
+    uint64_t j = KEYNT_BUFSZ - 1ul;
     uint32_t* look = &fq->lookup[j];
     const unsigned bufm = 1u << 20;
     char buf[bufm];
     uint8_t *w = (uint8_t *)buf;
     int ret = 0;
-    register unsigned c = 0;
+    unsigned c = 0;
     struct gzfh_t* fh = fq->fh +ARRAY_SIZE(fq->fh) - 1;
 
     do {
-        register uint32_t i = *look--;
+        uint32_t i = *look--;
         if (i != 1u) { // has keys
             decode_key(seqrc, j);
             do {
@@ -110,7 +110,7 @@ fq_print(seqb2_t *fq)
                     w = (uint8_t *)buf;
                 }
 
-                register uint8_t *b = s + i - 1;
+                uint8_t *b = s + i - 1;
                 i = *b; i <<= 8;
                 i |= *--b; i <<= 8;
                 i |= *--b; i <<= 8;
@@ -125,7 +125,7 @@ fq_print(seqb2_t *fq)
                 w += sprints(w, seqrc) - w; // and regexp
                 *++w = '\n';
 
-                register uint8_t *d = w;
+                uint8_t *d = w;
                 w += readlength + 1; // jump to second header and write the '+' line
                 *++w = '+'; *++w = '\n'; //XXX valgrind
 
@@ -164,7 +164,7 @@ fq_print(seqb2_t *fq)
 int
 fq_b2(seqb2_t *fq)
 {
-    register int c;
+    int c;
     fputs("==Initializing memory", stderr);
     if ((c = init_fq(fq)) < 0) {
         fprintf(stderr, "ERROR: init_fq() returned %d\n", c);
@@ -177,7 +177,7 @@ fq_b2(seqb2_t *fq)
     unsigned nr = fq->nr, key_ct = fq->key_ct;
     const unsigned phred_offset = fq->phred_offset;
     unsigned fq_ent_max = (fq->readlength << 1) + SEQ_MAX_NAME_ETC;
-    register uint8_t *b = s + l;
+    uint8_t *b = s + l;
 
     void* g;
     int (*gc) (void*);
@@ -192,7 +192,7 @@ fq_b2(seqb2_t *fq)
     while ((c = gc(g)) != '@') /* skip to first header */
         if (c == -1 || c == '>') goto out;
     do {
-        register unsigned i = 0;
+        unsigned i = 0;
         assert((uint64_t)l + fq_ent_max < (1ul << 32));
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
@@ -235,7 +235,7 @@ fq_b2(seqb2_t *fq)
         if_ever (nr++ == fq->maxreads) break;
 
         // initialize key
-        register uint64_t dna = 0ul, rev = 0ul;
+        uint64_t dna = 0ul, rev = 0ul;
         c = gc(g);
 
         do {

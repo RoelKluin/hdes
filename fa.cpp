@@ -70,18 +70,11 @@ scope_key(kct_t* kc, uint64_t infior, uint64_t infior_pos, unsigned i)
 }
 
 static void
-decr_excise(kct_t const *const kc, uint64_t infior, uint32_t i)
+decr_excise(kct_t const *const kc, uint32_t i)
 {
     dbg |= i == dbgndxkct ?  8 : 0;
 
     kc->kct[i + 1] -= ONE_CT;         // excise it..
-    //XXX: shouldnt be needed here, but removal deteriorates mapability.
-    uint64_t k = kc->kct[i];
-    if (infior > k) {
-        maxinfior = max(maxinfior, infior);
-        k ^= infior;
-        kc->kct[i] ^= k & INFIOR_MASK;
-    }
 
     uint64_t nt = kc->kct[i + 1];
     uint64_t offs = nt >> BIG_SHFT;
@@ -127,7 +120,6 @@ decr_excise(kct_t const *const kc, uint64_t infior, uint32_t i)
     return;
 }
 
-// XXX: inferiority ok? XXX: store deviant bit when unique,
 // reverse seq could be required for mapping - maybe 
 // N-stretches, later also skips, future: SNVs, splice sites?
 static int
@@ -143,10 +135,12 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
     uint32_t b2pos = last->s + last->l;
     uint64_t dna = last->dna;   // first seq after skip
-    uint64_t rc = revcmp(dna);
-    uint64_t ct = 1; // treat last boundary as a first unique
+    uint64_t ct, rc = revcmp(dna);
     running r = {0};
-    unsigned rest = kc->ext;
+    unsigned rest = kc->ext - 1;
+    for (unsigned i=0; i != kc->ext; ++i)
+        kc->wbuf[i] = -1u;
+    uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
 
     if (dbg > 5) show_list(kc, h->bnd);
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
@@ -162,15 +156,10 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
  */
 
         r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
-        unsigned i = kc->wbuf[--r.rot];
-        if (b2pos > last->s + last->l + kc->ext && // <= ensure wbuf is set
-                scope_key(kc, r.infior + INFIOR, 0, i))
-            ASSERT((kc->kct[i] & B2POS_MASK) < kc->s_l, return -EFAULT,
-                    "pos not yet set?");
+        --r.rot;
 
         // get offset to first of keys' next Nt
-        uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
-        i = kc->ndxkct[ndx];
+        unsigned i = kc->ndxkct[ndx];
         EPQ(dbg > 6, "prev path ct:%lu", ct);
         EPQ(dbg > 6, "[0]:0x%lx\t[1]:%lx", kc->kct[i], kc->kct[i+1]);
 
@@ -182,7 +171,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ct = kc->kct[i + 1] >> BIG_SHFT; // remaining nextNts
         EPQ(ct == 0, "No nextNts for 0x%x\tct:%lu", i, ct); // can happen at boundaries
 
-        ct = ct == 1ul; // if only one, the key has become uniq
         t |= b2pos + h->s_s + 1;
         if (scope_key(kc, r.infior + INFIOR, t, i))
             r.infior = t;
@@ -190,7 +178,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         EPQ(dbg > 6, "[0]:0x%lx\t[1]:%lx", kc->kct[i], kc->kct[i+1]);
 
         // get next Nt offset for this key
-        t = ct ? 0 : kc->kct[i]++; // passed this key, if not yet unique and b2pos
+        t = ct == 1ul ? 0 : kc->kct[i]++; // passed this key, if not yet unique and b2pos
         t = (t + kc->kct[i + 1]) & B2POS_MASK;
 
         // TODO: if all nextNts are the same increase keylength.
@@ -215,7 +203,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         EPQ(dbg > 6, "next path ct:%lu", ct);
         EPQ0(dbg > 5, "%u:\t", b2pos); print_2dna(dna, rc, dbg > 5);
         // set position for unique
-        kc->kct[i] ^= -ct & (kc->kct[i] ^ r.infior) & STRAND_POS;
+        kc->kct[i] ^= -(ct == 1ul) & (kc->kct[i] ^ r.infior) & STRAND_POS;
 
         // within scope of unique key or when leaving it
         switch(rest) {
@@ -235,14 +223,14 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
 case 0:     r.last = r.rot;
             break;
 default:    --rest;
-            if (ct) {
+            if (ct == 1ul) {
                 unsigned j = r.last;
                 j |= -!j & kc->ext; // skip first (unique).
                 while(--j != r.rot) {
                     uint32_t kcwb = kc->wbuf[j];
                     // no movement if only one left, write genomic position
                     if ((kc->kct[kcwb + 1] & REMAIN_MASK) != ONE_CT)
-                        decr_excise(kc, r.infior + INFIOR, kcwb);
+                        decr_excise(kc, kcwb);
                     // else occurs, but position seems to be written later anyway.
 
                     j |= -!j & kc->ext;
@@ -255,11 +243,10 @@ default:    --rest;
                     kc->kct[i] ^= k & INFIOR_MASK;
                 }
             }
-            ct |= 2;
         }
         // when in scope of an uniq key - keylength minus keywidth distance,
         // ct==2 - keep this keys' inferiority above that infior.
-        if (ct & 1) {
+        if (ct == 1ul) {
             if (rest) {
                 // 2nd or later uniq within scope => region insertion or update.
                 EPQ (dbg > 7, "dbg excision");
@@ -282,11 +269,12 @@ default:    --rest;
         } else if (!rest) {
             r.infior = 0;
         }
+        t = _ndxkct_and_infior(ndx, t, dna, rc);
 
     }
     EPQ(dbg > 5, "Last inter: s:%u, l:%u", inter->s, inter->l);
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
-    if (r.rot != r.last || ct == 3) {
+    if (r.rot != r.last || (ct == 1ul && rest)) {
         EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
         if (r.rot != r.last) {
             ++kc->uqct;
@@ -296,7 +284,7 @@ default:    --rest;
                 uint32_t kcwb = kc->wbuf[--j];
                 // no movement if only one left, write genomic position
                 if ((kc->kct[kcwb + 1] & REMAIN_MASK) != ONE_CT)
-                    decr_excise(kc, r.infior + INFIOR, kcwb);
+                    decr_excise(kc, kcwb);
             }
         }
         inter->dna = dna;
