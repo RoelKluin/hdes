@@ -159,7 +159,7 @@ struct kct_t {
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
-    uint32_t* wbuf; // later req
+    uint64_t** wbuf; // later req
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
     unsigned ext; // not stored
