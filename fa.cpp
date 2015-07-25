@@ -259,7 +259,7 @@ default:    --rest;
 
     }
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
-    if (r.rot != r.last || (ct == 1ul && rest)) {
+    if (rest) {
         EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
         if (r.rot != r.last) {
             ++kc->uqct;
