@@ -68,6 +68,16 @@ scope_key(kct_t* kc, uint64_t infior, uint64_t* kct)
     return false;
 }
 
+static inline bool
+verify_seq(kct_t const *const kc, uint64_t p, const uint64_t t)
+{
+    p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
+    if (t == p)
+        return true;
+    WARN("assertion 'next_b2 != sb2' failed: sb2:%c, got %c", b6(p<<1), b6(t<<1));
+    return false;
+}
+
 static void
 decr_excise(kct_t const *const kc, uint64_t* kct)
 {
@@ -156,8 +166,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         --r.rot;
 
         // insertion of kct index for new complement insensitive index
-        kct = kc->kct + kc->ndxkct[ndx];
-        kc->wbuf[r.rot] = kct;
+        kc->wbuf[r.rot] = kct = kc->kct + kc->ndxkct[ndx];
 
         // get offset to this keys nextNts
         ct = kct[1] >> BIG_SHFT; // remaining nextNts
@@ -175,15 +184,9 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
         // get current next nucleotide for this key
         t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3;
-        if (kc->s) {
-            uint64_t p = b2pos + h->s_s;
-            p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
-            if (t != p) {
-                WARN("assertion 'next_b2 != sb2' failed [%u]: sb2:%c, got %c",
-                    b2pos,b6(p<<1), b6(t<<1));
-                return print_2dna(dna, rc);
-            }
-        }
+        if (kc->s && verify_seq(kc, b2pos + h->s_s, t) == false)
+            return print_2dna(dna, rc);
+
         ++b2pos;
         dna = _seq_next(t, dna, rc);
         // set position for unique
