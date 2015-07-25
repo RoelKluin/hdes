@@ -52,9 +52,8 @@ free_kc(kct_t* kc)
 static unsigned iter = 0;
 static uint64_t maxinfior = 0;
 
-// for key leaving scope infior_pos is zero.
 static inline bool
-scope_key(kct_t* kc, uint64_t infior, uint64_t infior_pos, uint64_t* kct)
+scope_key(kct_t* kc, uint64_t infior, uint64_t* kct)
 {
     QARN((kct[1] >> BIG_SHFT) == 0ul, "\n\t=>\tzero remain\t????\n");
     if ((kct[1] >> BIG_SHFT) == 1ul)
@@ -118,6 +117,13 @@ decr_excise(kct_t const *const kc, uint64_t* kct)
     return;
 }
 
+/*
+ * A first uniq marks a potential start of a region, a 2nd or later uniq, within
+ * scope - keylength minus keywidth distance - triggers a region insertion or
+ * update. Also retrieve for this index the offset.
+ */
+
+
 // reverse seq could be required for mapping - maybe 
 // N-stretches, later also skips, future: SNVs, splice sites?
 static int
@@ -143,18 +149,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
-    EPQ(b2pos >= next->s, "boundary %u >= %u ??", b2pos, next->s); // I guess this shouldn't happen?
-    while(b2pos < next->s) { // until next event
-/*
- * A first uniq marks a potential start of a region, a 2nd or later uniq, within
- * scope - keylength minus keywidth distance - triggers a region insertion or
- * update. Also retrieve for this index the offset.
- */
+
+    while(b2pos < next->s) { // until next uniq region,  stretch or contig
 
         r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
         --r.rot;
-
-        unsigned i = kc->ndxkct[ndx];
 
         // insertion of kct index for new complement insensitive index
         kct = kc->kct + kc->ndxkct[ndx];
@@ -164,8 +163,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         ct = kct[1] >> BIG_SHFT; // remaining nextNts
         EPQ(ct == 0, "No nextNts, ct:%lu", ct); // can happen at boundaries
 
-        t |= b2pos + h->s_s + 1;
-        if (scope_key(kc, r.infior + INFIOR, t, kct))
+        t |= b2pos + h->s_s + 1; // position is one based.
+        if (scope_key(kc, r.infior + INFIOR, kct))
             r.infior = t;
 
         // get next Nt offset for this key
