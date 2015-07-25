@@ -78,6 +78,8 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
+#define IS_UQ(k) ((k[1] & REMAIN_MASK) == ONE_CT)
+
 #define _ndxkct_and_infior(ndx, t, dna, rc) ({\
     _get_ndx(ndx, t, dna, rc);\
     t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\
