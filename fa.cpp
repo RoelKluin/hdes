@@ -155,7 +155,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     uint64_t dna = last->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
     running r = {0};
-    unsigned rest = kc->ext - 1;
+
+    unsigned rest = kc->ext;
     uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
     uint64_t* kct;
 
@@ -170,10 +171,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         kct = kc->kct + kc->ndxkct[ndx];
 
         t |= ++b2pos + h->s_s; // position in sam is one based.
-        if (IS_UQ(kct))
+        if (IS_UQ(kct)) {
             r.infior = t;
-        else // for non-unique ensure infior is above last uniq infior.
+        } else { // for non-unique ensure infior is above last uniq infior.
             update_max_infior(r.infior + INFIOR, kct);
+        }
 
         // TODO: if all nextNts are the same increase keylength.
 
@@ -181,7 +183,6 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         t = get_nextnt(kc, t, kct);
         if (t == -1ul)
             return -EFAULT & print_2dna(dna, rc);
-        dna = _seq_next(t, dna, rc);
 
         // within scope of unique key or when leaving it
         switch(rest) {
@@ -228,25 +229,29 @@ default:    --rest;
         }
         // when in scope of an uniq key - keylength minus keywidth distance,
         if (IS_UQ(kct)) {
-            if (r.rot != r.last) {
+            if (rest) {
                 // 2nd or later uniq within scope => region insertion or update.
-                ++kc->uqct;
+                if (inter != last)
+                    ++kc->uqct;
+                // Sucessively overwritten until region completed - left became 0.
+                inter->dna = dna;
+                inter->l = b2pos - inter->s - 1;
             } else {
                 //XXX: make sure this is not off by one or two.
                 h->mapable += b2pos - max(last->s + last->l + kc->ext, b2pos - kc->ext);
                 h->mapable += kc->ext;
-                inter->s = b2pos;
+                inter->s = b2pos - 1;
                 inter->at_dna = dna;
                 // A first uniq marks a potential start of a region
+                inter->dna = dna;
+                inter->l = 0;
             }
             r.last = r.rot % kc->ext;
             rest = kc->ext;
-            // Sucessively overwritten until region completed - left became 0.
-            inter->dna = dna;
-            inter->l = b2pos - inter->s;
         } else if (r.rot == r.last) {
             r.infior = 0;
         }
+        dna = _seq_next(t, dna, rc);
         t = _ndxkct_and_infior(ndx, t, dna, rc);
 
     }
