@@ -150,7 +150,7 @@ default:            dna = _seq_next(b, dna, rc);
                     uint32_t k = kc->ndxkct[ndx];
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l ||
-                            (kc->kct[k + 1] >> BIG_SHFT) > 1ul) {
+                            (kc->kct[k + 1] >> BIG_SHFT) != 1ul) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
@@ -185,7 +185,7 @@ default:            dna = _seq_next(b, dna, rc);
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         ASSERT(k != -2u, c = -EFAULT; goto out);
-                        if ( kc->kct[k] > kc->kct[t]) {
+                        if (kc->kct[k] > kc->kct[t]) {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
 		            bufi[i - KEY_WIDTH] = i ^ wx;
 			} else {
