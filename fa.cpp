@@ -52,8 +52,8 @@ free_kc(kct_t* kc)
 static unsigned iter = 0;
 static uint64_t maxinfior = 0;
 
-static inline void 
-update_max_infior(uint64_t infior, uint64_t* kct)
+static inline void
+maximize_infior(uint64_t* kct, uint64_t infior)
 {
     uint64_t k = *kct;
     if (infior > k) {
@@ -63,31 +63,35 @@ update_max_infior(uint64_t infior, uint64_t* kct)
 }
 
 static inline uint64_t
-get_nextnt(kct_t const *const kc, uint64_t p, uint64_t* kct)
+get_nextnt(kct_t const *const kc, uint64_t* kct, uint64_t p)
 {
-    uint64_t t = IS_UQ(kct) ? 0 : (*kct)++; // mark that we passed it, if not yet unique
-    *kct ^= -!t & (*kct ^ p) & STRAND_POS; // otherwise, set position
+    uint64_t t = IS_UQ(kct) ? 0 : (*kct)++;         // passed this key, if not yet unique
 
-    t = (t + kct[1]) & B2POS_MASK;
-    t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3;
-    if (kc->s == NULL) // if possible verify observed twobit
+    *kct ^= -!t & (*kct ^ p) & B2POS_MASK; // otherwise set b2pos
+    t = (t + kct[1]) & B2POS_MASK;         // next Nt offset for this key
+
+    t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3; // next Nt
+    if (kc->s == NULL)
         return t;
 
     p = --p & B2POS_MASK; // zero based.
     p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
     if (t == p)
         return t;
-    WARN("Twobit verification failed: sb2:%c, got %c", b6(p<<1), b6(t<<1));
+
+    WARN("nextnt didn't match twobit at b2pos %lu: sb2:%c, got %c, ndxkct 0x%lx",
+            p, b6(p<<1), b6(t<<1), kct - kc->kct);
     return -1ul;
 }
 
-static void
+
+static int
 decr_excise(kct_t const *const kc, uint64_t* kct)
 {
-    if (!IS_UQ(kct))
-        kct[1] -= ONE_CT;         // excise it..
+    if (IS_UQ(kct))
+        return -EFAULT;
 
-    uint64_t nt = kct[1];
+    uint64_t nt = kct[1] -= ONE_CT; // excise it: one less remains..
     uint64_t offs = nt >> BIG_SHFT;
     nt &= B2POS_MASK; // ts offset
     offs += nt;
@@ -97,38 +101,34 @@ decr_excise(kct_t const *const kc, uint64_t* kct)
         // also if at last nextNt we can skip.
         // TODO: maybe check here whether all nextNts are the same - for
         // extended key in next iterations, set remain to 0? ts offset obsolete.
-        return;
+        return 0;
     }
+    ASSERT((offs >> 2) < kc->ts_l, return -EFAULT);
+    ASSERT((nt >> 2) + 1 < kc->ts_l, return -EFAULT);
 
     // excise out twobits, i.e. shift 2bits above current 2bit down.
     uint8_t* q = &kc->ts[nt >> 2];
     uint8_t* qe = &kc->ts[offs >> 2];
+    ASSERT(q <= qe, return -EFAULT, "%lu\t%lu", nt, offs);
 
     // shift for past Nt;
-    EPQ0(dbg > 5, "before excision:");print_2dna(*q,q[1], dbg > 5);
     uint8_t c = ((nt & 3) + 1) << 1;
     uint8_t t = *q & ((1ul << c) - 1ul); // capture this and past Nts.
     if (c) c -= 2;
     *q = ((*q ^ t) >> 2) | (*q & ((1ul << c) - 1ul)); // excise out Nt.
     t >>= c;
-    EPQ(dbg > 5, "moving %c from %lu to %lu", b6(t << 1), nt, offs);
 
-    EPQ(dbg > 6, "=====> excised <======, became %x",
-            *q | (q != qe ? (q[1] & 3) << 6 : 0));
     // mask to cover this and past nucleotide.
     while (q != qe) {
-        *q |= (q[1] & 3) << 6;
-        EPQ0(dbg > 6, "became; next:");print_2dna(*q,q[1]>>2, dbg > 6);
+        *q |= (q[1] & 3) << 6; //XXX
         *++q >>= 2;
     }
     // append excised Nt to end.
     offs = (offs & 3) << 1;        // set shift
-    EPQ(dbg > 5, "%lu, %c", offs, b6(t << 1));
     t <<= offs;                    // move excised in position
     offs = *q & ((1u << offs) - 1u); // below 2bits were shifted correctly
     *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
-    EPQ0(dbg > 5, "after append:");print_dna(*q, dbg > 5);
-    return;
+    return 0;
 }
 
 /*
@@ -179,8 +179,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
         // TODO: if all nextNts are the same increase keylength.
 
-        // get current next nucleotide for this key
-        t = get_nextnt(kc, t, kct);
+        t = get_nextnt(kc, kct, t);
         if (t == -1ul)
             return -EFAULT & print_2dna(dna, rc);
 
@@ -337,9 +336,9 @@ ext_uq_iter(kct_t* kc)
             mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"), maxinfior);
     //dbg = 7;
     // FIXME: reset upon last occurance for non-uniq in inner loop
-    for (uint64_t *w = kc->kct; w != kc->kct + kc->kct_l; w+=2)
-        if ((w[1] & REMAIN_MASK) > ONE_CT) // at least one left (if unique position genomic 2bit)
-            *w &= REMAIN_MASK; // reset position tracking
+    for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2)
+        if (!IS_UQ(k)) // at least one left (if unique position genomic 2bit)
+            *k &= REMAIN_MASK; // reset position tracking
 
     return kc->uqct;
 }
