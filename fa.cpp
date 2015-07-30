@@ -53,7 +53,7 @@ static unsigned iter = 0;
 static uint64_t maxinfior = 0;
 
 static inline void
-maximize_infior(uint64_t* kct, uint64_t infior)
+update_max_infior(uint64_t* kct, uint64_t infior)
 {
     uint64_t k = *kct;
     if (infior > k) {
@@ -67,7 +67,7 @@ get_nextnt(kct_t const *const kc, uint64_t* kct, uint64_t p)
 {
     uint64_t t = IS_UQ(kct) ? 0 : (*kct)++;         // passed this key, if not yet unique
 
-    *kct ^= -!t & (*kct ^ p) & B2POS_MASK; // otherwise set b2pos
+    *kct ^= -!t & (*kct ^ p) & STRAND_POS; // otherwise set b2pos
     t = (t + kct[1]) & B2POS_MASK;         // next Nt offset for this key
 
     t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3; // next Nt
@@ -86,15 +86,13 @@ get_nextnt(kct_t const *const kc, uint64_t* kct, uint64_t p)
 
 
 static int
-decr_excise(kct_t const *const kc, uint64_t* kct)
+decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t infior)
 {
-    if (IS_UQ(kct))
-        return -EFAULT;
-
     uint64_t nt = kct[1] -= ONE_CT; // excise it: one less remains..
     uint64_t offs = nt >> BIG_SHFT;
     nt &= B2POS_MASK; // ts offset
     offs += nt;
+    //update_max_infior(kct, infior);
 
     nt += --(*kct) & B2POS_MASK; // ..instead of passing
     if (nt == offs) {
@@ -174,7 +172,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         if (IS_UQ(kct)) {
             r.infior = t;
         } else { // for non-unique ensure infior is above last uniq infior.
-            update_max_infior(r.infior + INFIOR, kct);
+            update_max_infior(kct, r.infior + INFIOR);
         }
 
         // TODO: if all nextNts are the same increase keylength.
@@ -197,7 +195,7 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
             inter = kc->bd + kc->bd_l; // no longer last at least
             inter->l = inter->s = 0;
             --rest;
-            //r.infior = 0;
+            break;
 case 0:     r.last = r.rot;
             break;
 default:    --rest;
@@ -210,7 +208,7 @@ default:    --rest;
                     uint64_t* k = kc->wbuf[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
-                        decr_excise(kc, k);
+                        decr_excise(kc, k, r.infior + INFIOR);
                     } else {
                         uint64_t tp = b2pos + h->s_s + j - r.rot;
                         if (j > r.rot) tp -= kc->ext;
@@ -218,10 +216,7 @@ default:    --rest;
                             EPQ((*k & B2POS_MASK) != 1ul,"%lu, %lu", *k & B2POS_MASK, tp);
                             *k ^= (*k ^ tp) & B2POS_MASK;
                         }
-
-                        // else occurs, but position seems to be written later anyway.
                     }
-
                     j |= -!j & kc->ext;
                 }
             }
@@ -264,8 +259,16 @@ default:    --rest;
                 j |= -!j & kc->ext;
                 kct = kc->wbuf[--j];
                 // no movement if only one left, write genomic position
-                if ((kct[1] & REMAIN_MASK) != ONE_CT)
-                    decr_excise(kc, kct);
+                if (IS_UQ(kct) == false) {
+                    decr_excise(kc, kct, r.infior + INFIOR);
+                } else {
+                    uint64_t tp = b2pos + h->s_s + j - r.rot;
+                    if (j > r.rot) tp -= kc->ext;
+                    if ((*kct & B2POS_MASK) != tp) {
+                        EPQ((*kct & B2POS_MASK) != 1ul,"%lu, %lu", *kct & B2POS_MASK, tp);
+                        *kct ^= (*kct ^ tp) & B2POS_MASK;
+                    }
+                }
             }
         }
         inter->dna = dna;
