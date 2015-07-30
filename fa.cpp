@@ -200,12 +200,12 @@ case 0:     r.last = r.rot;
             break;
 default:    --rest;
             r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
-            kc->wbuf[--r.rot] = kct;
+            kc->kct_scope[--r.rot] = kct;
             if (IS_UQ(kct)) {
                 unsigned j = r.last;
                 j |= -!j & kc->ext; // skip first (unique).
                 while(--j != r.rot) {
-                    uint64_t* k = kc->wbuf[j];
+                    uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
                         decr_excise(kc, k, r.infior + INFIOR);
@@ -257,7 +257,7 @@ default:    --rest;
 
             for(unsigned j = r.last; j != r.rot;) {
                 j |= -!j & kc->ext;
-                kct = kc->wbuf[--j];
+                kct = kc->kct_scope[--j];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
                     decr_excise(kc, kct, r.infior + INFIOR);
@@ -358,13 +358,13 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
         kc->kct[i] = 0ul;
 
     t = kc->ext;
-    kc->wbuf = (uint64_t**)malloc(t * sizeof(uint64_t*));
-    ASSERT(kc->wbuf != NULL, goto err);
+    kc->kct_scope = (uint64_t**)malloc(t * sizeof(uint64_t*));
+    ASSERT(kc->kct_scope != NULL, goto err);
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc);
     } while (res > 0);
-    _buf_free(kc->wbuf);
+    _buf_free(kc->kct_scope);
     if (res == 0) {
         _ACTION(save_boundaries(fhout[0], kc), "writing unique boundaries file");
         _ACTION(save_kc(fhout[2], kc), "writing unique keycounts file");

@@ -135,6 +135,8 @@ packed_struct running {
     uint64_t infior;
     unsigned last;
     unsigned rot;
+    unsigned b_last;
+    unsigned b_rot;
 };
 
 packed_struct kct_ext {
@@ -161,7 +163,7 @@ struct kct_t {
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
-    uint64_t** wbuf; // later req
+    uint64_t** kct_scope; // later req
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
     unsigned ext; // not stored
