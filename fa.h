@@ -80,9 +80,10 @@
 
 #define IS_UQ(k) ((k[1] & REMAIN_MASK) == ONE_CT)
 
-#define _ndxkct_and_infior(ndx, t, dna, rc) ({\
+#define _ndxkct_and_infior(kc, ndx, t, dna, rc) ({\
     _get_ndx(ndx, t, dna, rc);\
     t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\
+    ASSERT(kc->ndxkct[ndx] < kc->kct_l, return -EFAULT);\
     t | (kc->kct[kc->ndxkct[ndx]] & INFIOR_MASK);\
 });
 

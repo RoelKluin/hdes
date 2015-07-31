@@ -56,6 +56,7 @@ static inline void
 update_max_infior(uint64_t* kct, uint64_t infior)
 {
     uint64_t k = *kct;
+    infior += INFIOR;
     if (infior > k) {
         maxinfior = max(maxinfior, infior);
         *kct ^= (k ^ infior) & INFIOR_MASK;
@@ -69,12 +70,14 @@ get_nextnt(kct_t const *const kc, uint64_t* kct, uint64_t p)
 
     *kct ^= -!t & (*kct ^ p) & STRAND_POS; // otherwise set b2pos
     t = (t + kct[1]) & B2POS_MASK;         // next Nt offset for this key
+    ASSERT(t < (kc->ts_l << 2), return -1ul);
 
     t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3; // next Nt
     if (kc->s == NULL)
         return t;
 
     p = --p & B2POS_MASK; // zero based.
+    ASSERT(p < (kc->s_l << 2), return -1ul, "%lu/%lu", p, kc->s_l);
     p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
     if (t == p)
         return t;
@@ -155,7 +158,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     running r = {0};
 
     unsigned rest = kc->ext;
-    uint64_t ndx, t = _ndxkct_and_infior(ndx, t, dna, rc);
+    uint64_t ndx, t = _ndxkct_and_infior(kc, ndx, t, dna, rc);
     uint64_t* kct;
 
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
@@ -172,7 +175,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
         if (IS_UQ(kct)) {
             r.infior = t;
         } else { // for non-unique ensure infior is above last uniq infior.
-            update_max_infior(kct, r.infior + INFIOR);
+            update_max_infior(kct, r.infior);
         }
 
         // TODO: if all nextNts are the same increase keylength.
@@ -246,7 +249,7 @@ default:    --rest;
             r.infior = 0;
         }
         dna = _seq_next(t, dna, rc);
-        t = _ndxkct_and_infior(ndx, t, dna, rc);
+        t = _ndxkct_and_infior(kc, ndx, t, dna, rc);
 
     }
     ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
