@@ -64,40 +64,34 @@ update_max_infior(uint64_t* kct, uint64_t infior)
 }
 
 static inline uint64_t
-get_nextnt(kct_t const *const kc, uint64_t* kct, uint64_t p)
+get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
 {
-    uint64_t t = IS_UQ(kct) ? 0 : (*kct)++;         // passed this key, if not yet unique
-
-    *kct ^= -!t & (*kct ^ p) & STRAND_POS; // otherwise set b2pos
-    t = (t + kct[1]) & B2POS_MASK;         // next Nt offset for this key
-    ASSERT(t < (kc->ts_l << 2), return -1ul);
-
-    t = (kc->ts[t>>2] >> ((t&3) << 1)) & 3; // next Nt
+    ASSERT(nt < (kc->ts_l << 2), return -1ul);
+    nt = (kc->ts[nt>>2] >> ((nt&3) << 1)) & 3; // next Nt
     if (kc->s == NULL)
-        return t;
+        return nt;
 
-    p = --p & B2POS_MASK; // zero based.
     ASSERT(p < (kc->s_l << 2), return -1ul, "%lu/%lu", p, kc->s_l);
     p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
-    if (t == p)
-        return t;
+    if (nt == p)
+        return nt;
 
-    WARN("nextnt didn't match twobit at b2pos %lu: sb2:%c, got %c, ndxkct 0x%lx",
-            p, b6(p<<1), b6(t<<1), kct - kc->kct);
+    WARN("nextnt didn't match twobit: sb2:%c, got %c", b6(p<<1), b6(nt<<1));
     return -1ul;
 }
 
 
 static int
-decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t infior)
+decr_excise(kct_t const *const kc, uint64_t* kct)
 {
-    uint64_t nt = kct[1] -= ONE_CT; // excise it: one less remains..
+    kct[1] -= ONE_CT; // excise it: one less remains..
+    --(*kct); // ..instead of passing
+    uint64_t nt = kct[1];
     uint64_t offs = nt >> BIG_SHFT;
     nt &= B2POS_MASK; // ts offset
     offs += nt;
-    //update_max_infior(kct, infior);
 
-    nt += --(*kct) & B2POS_MASK; // ..instead of passing
+    nt += *kct & B2POS_MASK;
     if (nt == offs) {
         // also if at last nextNt we can skip.
         // TODO: maybe check here whether all nextNts are the same - for
@@ -158,31 +152,25 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     running r = {0};
 
     unsigned rest = kc->ext;
-    uint64_t ndx, t = _ndxkct_and_infior(kc, ndx, t, dna, rc);
+    uint64_t ndx, t;
     uint64_t* kct;
 
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
             hdr, b2pos, next->s, next->s + next->l);
     print_dna(dna, dbg > 3);
+    t = _ndxkct_and_infior(kc, ndx, t, dna, rc);
 
     while(b2pos < next->s) { // until next uniq region,  stretch or contig
 
+        r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
+        --r.rot;
         // insertion of kct index for new complement insensitive index
         kct = kc->kct + kc->ndxkct[ndx];
-
-        t |= ++b2pos + h->s_s; // position in sam is one based.
         if (IS_UQ(kct)) {
-            r.infior = t;
-        } else { // for non-unique ensure infior is above last uniq infior.
-            update_max_infior(kct, r.infior);
         }
 
         // TODO: if all nextNts are the same increase keylength.
-
-        t = get_nextnt(kc, kct, t);
-        if (t == -1ul)
-            return -EFAULT & print_2dna(dna, rc);
 
         // within scope of unique key or when leaving it
         switch(rest) {
@@ -202,8 +190,7 @@ case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inte
 case 0:     r.last = r.rot;
             break;
 default:    --rest;
-            r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
-            kc->kct_scope[--r.rot] = kct;
+            kc->kct_scope[r.rot] = kct;
             if (IS_UQ(kct)) {
                 unsigned j = r.last;
                 j |= -!j & kc->ext; // skip first (unique).
@@ -211,9 +198,9 @@ default:    --rest;
                     uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
-                        decr_excise(kc, k, r.infior + INFIOR);
+                        decr_excise(kc, k);
                     } else {
-                        uint64_t tp = b2pos + h->s_s + j - r.rot;
+                        uint64_t tp = p - 1 + j - r.rot;
                         if (j > r.rot) tp -= kc->ext;
                         if ((*k & B2POS_MASK) != tp) {
                             EPQ((*k & B2POS_MASK) != 1ul,"%lu, %lu", *k & B2POS_MASK, tp);
@@ -224,8 +211,12 @@ default:    --rest;
                 }
             }
         }
+        t |= p; // position in sam is one based.
+        uint64_t nt;
+
         // when in scope of an uniq key - keylength minus keywidth distance,
         if (IS_UQ(kct)) {
+            r.infior = t;
             if (rest) {
                 // 2nd or later uniq within scope => region insertion or update.
                 if (inter != last)
@@ -243,11 +234,20 @@ default:    --rest;
                 inter->dna = dna;
                 inter->l = 0;
             }
+            *kct ^= (*kct ^ t) & STRAND_POS; // XXX: do this when leaving
+            nt = kct[1];
             r.last = r.rot % kc->ext;
             rest = kc->ext;
-        } else if (r.rot == r.last) {
-            r.infior = 0;
+        } else {
+            update_max_infior(kct, r.infior);
+            // passed this key, TODO: excise (2nd) it by default
+            nt = (*kct)++ + kct[1];
+            if (rest == 0)
+                r.infior = 0;
         }
+        t = get_nextnt(kc, nt & B2POS_MASK, (t - 1) & B2POS_MASK);
+        ASSERT(t != -1ul, return -EFAULT & print_2dna(dna, rc), "at %lu", b2pos);
+
         dna = _seq_next(t, dna, rc);
         t = _ndxkct_and_infior(kc, ndx, t, dna, rc);
 
@@ -263,7 +263,7 @@ default:    --rest;
                 kct = kc->kct_scope[--j];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
-                    decr_excise(kc, kct, r.infior + INFIOR);
+                    decr_excise(kc, kct);
                 } else {
                     uint64_t tp = b2pos + h->s_s + j - r.rot;
                     if (j > r.rot) tp -= kc->ext;
