@@ -163,8 +163,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
     while(b2pos < next->s) { // until next uniq region,  stretch or contig
 
-        r.rot |= -!r.rot & kc->ext; // if zero, rotate to kc->ext
-        --r.rot;
+        r.rot &= -(++r.rot != kc->ext); // if kc->ext, rotate to zero
+        uint64_t p = ++b2pos + h->s_s;
         // insertion of kct index for new complement insensitive index
         kct = kc->kct + kc->ndxkct[ndx];
         if (IS_UQ(kct)) {
@@ -193,21 +193,20 @@ default:    --rest;
             kc->kct_scope[r.rot] = kct;
             if (IS_UQ(kct)) {
                 unsigned j = r.last;
-                j |= -!j & kc->ext; // skip first (unique).
-                while(--j != r.rot) {
+                // skip first (unique).
+                while((j &= -(++j != kc->ext)) != r.rot) {
                     uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
                         decr_excise(kc, k);
                     } else {
-                        uint64_t tp = p - 1 + j - r.rot;
-                        if (j > r.rot) tp -= kc->ext;
+                        uint64_t tp = p - 1 + r.rot - j;
+                        if (r.rot > j) tp -= kc->ext;
                         if ((*k & B2POS_MASK) != tp) {
                             EPQ((*k & B2POS_MASK) != 1ul,"%lu, %lu", *k & B2POS_MASK, tp);
                             *k ^= (*k ^ tp) & B2POS_MASK;
                         }
                     }
-                    j |= -!j & kc->ext;
                 }
             }
         }
@@ -236,7 +235,7 @@ default:    --rest;
             }
             *kct ^= (*kct ^ t) & STRAND_POS; // XXX: do this when leaving
             nt = kct[1];
-            r.last = r.rot % kc->ext;
+            r.last = r.rot;
             rest = kc->ext;
         } else {
             update_max_infior(kct, r.infior);
@@ -259,14 +258,14 @@ default:    --rest;
             ++kc->uqct;
 
             for(unsigned j = r.last; j != r.rot;) {
-                j |= -!j & kc->ext;
-                kct = kc->kct_scope[--j];
+                j &= -(++j != kc->ext);
+                kct = kc->kct_scope[j];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
                     decr_excise(kc, kct);
                 } else {
-                    uint64_t tp = b2pos + h->s_s + j - r.rot;
-                    if (j > r.rot) tp -= kc->ext;
+                    uint64_t tp = b2pos + h->s_s + r.rot - j;
+                    if (r.rot > j) tp -= kc->ext;
                     if ((*kct & B2POS_MASK) != tp) {
                         EPQ((*kct & B2POS_MASK) != 1ul,"%lu, %lu", *kct & B2POS_MASK, tp);
                         *kct ^= (*kct ^ tp) & B2POS_MASK;
