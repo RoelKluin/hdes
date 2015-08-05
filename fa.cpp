@@ -163,9 +163,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
     while(b2pos < next->s) { // until next uniq region,  stretch or contig
 
-        r.rot &= -(++r.rot != kc->ext); // if kc->ext, rotate to zero
+        KC_ROT(kc, r.rot); // if kc->ext, rotate to zero
         uint64_t p = ++b2pos + h->s_s;
-        // insertion of kct index for new complement insensitive index
         kct = kc->kct + kc->ndxkct[ndx];
         if (IS_UQ(kct)) {
         }
@@ -194,7 +193,7 @@ default:    --rest;
             if (IS_UQ(kct)) {
                 unsigned j = r.last;
                 // skip first (unique).
-                while((j &= -(++j != kc->ext)) != r.rot) {
+                while((KC_ROT(kc, j)) != r.rot) {
                     uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
@@ -239,7 +238,7 @@ default:    --rest;
             rest = kc->ext;
         } else {
             update_max_infior(kct, r.infior);
-            // passed this key, TODO: excise (2nd) it by default
+            // passed this key
             nt = (*kct)++ + kct[1];
             if (rest == 0)
                 r.infior = 0;
@@ -258,8 +257,7 @@ default:    --rest;
             ++kc->uqct;
 
             for(unsigned j = r.last; j != r.rot;) {
-                j &= -(++j != kc->ext);
-                kct = kc->kct_scope[j];
+                kct = kc->kct_scope[KC_ROT(kc, j)];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
                     decr_excise(kc, kct);

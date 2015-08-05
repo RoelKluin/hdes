@@ -78,6 +78,9 @@
     _seq_ ## direction (b, dna, rc);\
 })
 
+// if kc->ext, rotate to zero
+#define KC_ROT(kc, x) (x &= -(++x != kc->ext))
+
 #define IS_UQ(k) ((k[1] & REMAIN_MASK) == ONE_CT)
 
 #define _ndxkct_and_infior(kc, ndx, t, dna, rc) ({\
@@ -136,8 +139,6 @@ packed_struct running {
     uint64_t infior;
     unsigned last;
     unsigned rot;
-    unsigned b_last;
-    unsigned b_rot;
 };
 
 packed_struct kct_ext {
@@ -198,6 +199,8 @@ struct kct_t {
  * bit and the 40th bit contains the orientation of the complement independent index
  * on reference once unique. Once unique the low 40 bits are used instead for the
  * (genomic) b2pos storage.
+ * [0]: pos:40, strand:1, infior:23;
+ * [1] ts_offs:40, remain:24;
  */
 void show_list(kct_t*, std::list<uint32_t> &bnd);
 void free_kc(kct_t* kc);
