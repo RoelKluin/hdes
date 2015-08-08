@@ -79,7 +79,7 @@
 })
 
 // if kc->ext, rotate to zero
-#define KC_ROT(kc, x) (x &= -(++x != kc->ext))
+#define KC_ROT(kc, x) (x &= -(++x != (kc)->ext))
 
 #define IS_UQ(k) ((k[1] & REMAIN_MASK) == ONE_CT)
 
@@ -139,6 +139,7 @@ packed_struct running {
     uint64_t infior;
     unsigned last;
     unsigned rot;
+    unsigned last_uq;
 };
 
 packed_struct kct_ext {
@@ -166,6 +167,7 @@ struct kct_t {
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope; // later req
+    uint64_t* excision_pos;
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
     unsigned ext; // not stored
