@@ -49,21 +49,6 @@ free_kc(kct_t* kc)
     _buf_free(kc->ndxkct);
 }
 
-static unsigned iter = 0;
-static uint64_t maxinfior = 0;
-
-static inline void
-update_max_infior(uint64_t* kct, uint64_t* exception, uint64_t infior)
-{
-    if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
-        infior += INFIOR;
-        if (infior > *kct) {
-            maxinfior = max(maxinfior, infior);
-            *kct ^= (*kct ^ infior) & INFIOR_MASK;
-        }
-    }
-}
-
 static inline unsigned
 pot_region_start(Bnd **reg, const uint64_t dna, const uint32_t b2pos, const unsigned ext)
 {
@@ -119,6 +104,21 @@ adjoining_boundary(kct_t *const kc, Bnd **reg, Hdr* h, const uint64_t dna, const
         reg[2]->corr += reg[0]->corr;
     }
     return 0;
+}
+
+static unsigned iter = 0;
+static uint64_t maxinfior = 0;
+
+static inline void
+update_max_infior(uint64_t* kct, uint64_t* exception, uint64_t infior)
+{
+    if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
+        infior += INFIOR;
+        if (infior > *kct) {
+            maxinfior = max(maxinfior, infior);
+            *kct ^= (*kct ^ infior) & INFIOR_MASK;
+        }
+    }
 }
 
 static inline uint64_t
@@ -214,51 +214,14 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     _buf_grow0(kc->bd, 2ul);    // one extra must be available for inter.
     Bnd *reg[3] = { kc->bd + lastx, kc->bd + lastx, kc->bd + *kc->bdit };
 
-    uint32_t b2pos = reg[1]->s + reg[1]->l;
     uint64_t dna = reg[1]->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
+    uint64_t dummy[2] = {0ul, ONE_CT};
     running r = {0};
-    r.last_uq = -1;
     uint64_t* kct;
+    uint32_t b2pos = reg[1]->s + reg[1]->l;
     int res;
-
-    while (r.rot != kc->ext && b2pos < reg[2]->s) {
-        uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
-
-        uint64_t nt = kct[1];
-        if (IS_UQ(kct)) {
-            r.infior = *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-
-            // 2nd or later uniq within scope
-            elongate_region(*reg, dna, b2pos); // continuously, until complete.
-            uint64_t infior = r.infior;
-            if (r.last_uq != -1) {
-                if (*kc->kct_scope[r.last_uq] > infior)
-                    infior = *kc->kct_scope[r.last_uq];
-                ++kc->uqct;
-            } else {
-                if (r.rot) // don't count regions of size zero.
-                    ++kc->uqct;
-                ++r.last_uq;
-            }
-
-            // elevate all inbetween non-uniques by the max of these:
-            while (r.last_uq != r.rot) {
-                _ACTION(decr_excise(kc, kc->kct_scope[r.last_uq++], kct, infior), "");
-            }
-        } else {
-            // ts_offs + passed => current Nt, passed this key
-            nt += (*kct)++;
-            update_max_infior(kct, NULL, r.infior);
-        }
-        nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
-        ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
-        dna = _seq_next(nt, dna, rc);
-        ++r.rot;
-        ++b2pos;
-    }
-    --r.rot;
-    if (r.last_uq == -1) r.last_uq = 0;
+    kc->kct_scope[0] = dummy;
 
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
@@ -286,7 +249,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
             } else if (IS_UQ(kc->kct_scope[r.last_uq])) {
                 // 2nd or later uniq within scope
-                ++kc->uqct;
+                if (kc->kct_scope[r.last_uq] != dummy)
+                    ++kc->uqct;
                 elongate_region(*reg, dna, b2pos);
 
                 // elevate all inbetween non-uniques by the max of these:
