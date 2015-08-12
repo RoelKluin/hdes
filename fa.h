@@ -140,7 +140,6 @@ packed_struct Bnd {
 };
 
 packed_struct running {
-    uint64_t infior;
     unsigned rot;
     unsigned last_uq;
 };

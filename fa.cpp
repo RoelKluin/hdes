@@ -150,7 +150,7 @@ decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t* exception, uint64_t 
             *kct ^= (*kct ^ infior) & INFIOR_MASK;
         }
         // if exception and unique, the same key occured multiple times in same region
-        if (IS_UQ(kct))
+        if (IS_UQ(kct)) // XXX does not seem to happen.
             return 0;
     }
 
@@ -235,11 +235,10 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
         /* process new key */
         uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
-
         uint64_t nt = kct[1];
 
         if (IS_UQ(kct)) {
-            r.infior = *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
+            *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
             // when the leaving and new key were both unique we cannot consider it
             // a complete region.
             if (r.last_uq == r.rot) {
@@ -266,9 +265,8 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             // ts_offs + passed => current Nt, passed this key
             nt += (*kct)++;
             if (IS_UQ(kc->kct_scope[r.last_uq])) {
-                update_max_infior(kct, NULL, r.infior);
+                update_max_infior(kct, NULL, *kc->kct_scope[r.last_uq]);
             } else if (r.last_uq == r.rot) {
-                r.infior = 0;
                 _ACTION(end_region(kc, reg, h), "");
             } else {
                 r.last_uq = r.rot;
@@ -286,7 +284,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
         if (r.rot != r.last_uq) {
             ++kc->uqct;
-            uint64_t infior = kc->kct_scope[r.last_uq][1];
+            uint64_t infior = *kc->kct_scope[r.last_uq];
 
             while (r.last_uq != r.rot) {
                 _ACTION(decr_excise(kc, kc->kct_scope[KC_ROT(kc, r.last_uq)], NULL, infior), "");
