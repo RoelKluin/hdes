@@ -50,7 +50,7 @@ free_kc(kct_t* kc)
 }
 
 static inline unsigned
-pot_region_start(Bnd **reg, const uint64_t dna, const uint32_t b2pos, const unsigned ext)
+pot_region_start(Bnd **C reg, C uint64_t dna, C uint32_t b2pos, C unsigned ext)
 {
     reg[0]->s = b2pos;
     reg[0]->at_dna = dna;
@@ -60,13 +60,13 @@ pot_region_start(Bnd **reg, const uint64_t dna, const uint32_t b2pos, const unsi
     return b2pos + ext - max(reg[1]->s + reg[1]->l + ext, b2pos - ext);
 }
 static inline void
-elongate_region(Bnd *inter, uint64_t dna, uint32_t b2pos)
+elongate_region(Bnd *C inter, C uint64_t dna, C uint32_t b2pos)
 {
     inter->l = b2pos - inter->s;
     inter->dna = dna;
 }
 static inline int
-end_region(kct_t *const kc, Bnd **reg, Hdr* h)
+end_region(kct_t *C kc, Bnd **C reg, Hdr* h)
 {
     EPQ(dbg > 3 && reg[0]->l, "[%u]\t%u - %u\t", kc->bd_l, reg[0]->s, reg[0]->s + reg[0]->l);
     h->mapable += reg[0]->l;
@@ -82,7 +82,7 @@ end_region(kct_t *const kc, Bnd **reg, Hdr* h)
     return 0;
 }
 static inline int
-adjoining_boundary(kct_t *const kc, Bnd **reg, Hdr* h, const uint64_t dna, const uint32_t b2pos)
+adjoining_boundary(kct_t *C kc, Bnd **C reg, Hdr *C h, C uint64_t dna, C uint32_t b2pos)
 {
     reg[0]->dna = dna;
     reg[0]->l = b2pos - reg[0]->s;
@@ -106,23 +106,23 @@ adjoining_boundary(kct_t *const kc, Bnd **reg, Hdr* h, const uint64_t dna, const
     return 0;
 }
 
-static unsigned iter = 0;
-static uint64_t maxinfior = 0;
 
-static inline void
-update_max_infior(uint64_t* kct, uint64_t* exception, uint64_t infior)
+static inline int
+update_max_infior(uint64_t *C kct, uint64_t C*C exception, uint64_t infior)
 {
     if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
-        infior += INFIOR;
-        if (infior > *kct) {
-            maxinfior = max(maxinfior, infior);
-            *kct ^= (*kct ^ infior) & INFIOR_MASK;
+        expect(infior < MAX_INFIOR) {
+            infior += INFIOR;
+        } else {
+            WARN("MAX_INFIOR reached");
         }
+        if (infior > *kct)
+            *kct ^= (*kct ^ infior) & INFIOR_MASK;
     }
 }
 
-static inline uint64_t
-get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
+static inline C uint64_t
+get_nextnt(kct_t C*C kc, uint64_t nt, uint64_t p)
 {
     ASSERT(nt < (kc->ts_l << 2), return -1ul);
     nt = (kc->ts[nt>>2] >> ((nt&3) << 1)) & 3; // next Nt
@@ -131,7 +131,7 @@ get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
 
     ASSERT(p < (kc->s_l << 2), return -1ul, "%lu/%lu", p, kc->s_l);
     p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
-    if (nt == p)
+    expect(nt == p)
         return nt;
 
     WARN("nextnt didn't match twobit: sb2:%c, got %c", b6(p<<1), b6(nt<<1));
@@ -139,18 +139,21 @@ get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
 }
 
 static int
-decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t* exception, uint64_t infior)
+decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t infior)
 {
 
     if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
         // update max inferiority
-        infior += INFIOR;
-        if (infior > *kct) {
-            maxinfior = max(maxinfior, infior);
-            *kct ^= (*kct ^ infior) & INFIOR_MASK;
+        expect(infior < MAX_INFIOR) {
+            infior += INFIOR;
+        } else {
+            WARN("MAX_INFIOR reached");
         }
+        if (infior > *kct)
+            *kct ^= (*kct ^ infior) & INFIOR_MASK;
+
         // if exception and unique, the same key occured multiple times in same region
-        if (IS_UQ(kct)) // XXX does not seem to happen.
+        if_ever(IS_UQ(kct))
             return 0;
     }
 
@@ -206,10 +209,10 @@ decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t* exception, uint64_t 
 // reverse seq could be required for mapping - maybe 
 // N-stretches, later also skips, future: SNVs, splice sites?
 static int
-ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
+ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 {
 
-    const char* hdr = kc->id + h->part[0];
+    C char* hdr = kc->id + h->part[0];
 
     _buf_grow0(kc->bd, 2ul);    // one extra must be available for inter.
     Bnd *reg[3] = { kc->bd + lastx, kc->bd + lastx, kc->bd + *kc->bdit };
@@ -265,7 +268,7 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             // ts_offs + passed => current Nt, passed this key
             nt += (*kct)++;
             if (IS_UQ(kc->kct_scope[last_uq])) {
-                update_max_infior(kct, NULL, *kc->kct_scope[last_uq]);
+                _ACTION(update_max_infior(kct, NULL, *kc->kct_scope[last_uq]), "");
             } else if (last_uq == rot) {
                 _ACTION(end_region(kc, reg, h), "");
             } else {
@@ -326,7 +329,7 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
 }
 
 static int
-ext_uq_iter(kct_t* kc)
+ext_uq_iter(kct_t* kc, unsigned *C iter)
 {
     kc->uqct = 0u;
     uint64_t mapable = 0ul;
@@ -339,8 +342,8 @@ ext_uq_iter(kct_t* kc)
         totNts += ret;
     }
     EPQ(dbg > 0, "extended %u unique ranges in iteration %u, using %u boundaries\n"
-            "\t%lu/%lu => %.2f%% mapable\n\tmaxinfior: %lx", kc->uqct, iter++, kc->bd_l,
-            mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"), maxinfior);
+            "\t%lu/%lu => %.2f%% mapable", kc->uqct, ++*iter, kc->bd_l,
+            mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"));
     //dbg = 7;
     // FIXME: reset upon last occurance for non-uniq in inner loop
     for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2)
@@ -356,6 +359,7 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
 {
     int res = -ENOMEM;
     size_t t;
+    unsigned iter = 0;
 
     // was ndx for storage, unset for pos, strand & infiority;
     for (unsigned i=0u; i != kc->kct_l; i += 2)
@@ -366,7 +370,7 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
     ASSERT(kc->kct_scope != NULL, goto err);
 
     do { // until no no more new uniques
-        res = ext_uq_iter(kc);
+        res = ext_uq_iter(kc, &iter);
     } while (res > 0);
     _buf_free(kc->kct_scope);
     if (res == 0) {
@@ -387,7 +391,7 @@ fa_index(struct seqb2_t* seq)
     kc.ext = seq->readlength - KEY_WIDTH;
     unsigned mode;
 
-    const char* ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
+    C char* ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
 
     if (fhio[0]->name) {
         len = strlen(fhio[0]->name);

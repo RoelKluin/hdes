@@ -43,6 +43,7 @@
 #define STRAND_POS (INFERIORITY - 1ul)
 #define INFIOR_MASK (~STRAND_POS)
 #define INFIOR INFERIORITY //((uint64_t)(iter+1) << INFIOR_SHFT)  //INFERIORITY
+#define MAX_INFIOR 0xFFFFFF0000000000
 
 #define ONE_CT (1ul << BIG_SHFT)
 #define B2POS_MASK (ONE_CT -1ul)

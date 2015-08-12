@@ -21,6 +21,8 @@ static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
 static int dbg = 3;
 
+#define C const
+
 #ifndef kroundup32
 #define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
 #endif
@@ -35,31 +37,31 @@ static int dbg = 3;
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
 #define OPR0(...) fprintf (stdout, __VA_ARGS__)
 
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+#define if_ever(err)    if (unlikely(err))
+#define expect(T)       if (likely(T))
+
 // the comma before the ## is deleted in absense of an argument
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 #define QARN(d, msg, ...) EPQ(d, "Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 
 #define ASSERT(cond, action, ...) \
-if (!(cond)) { \
+if_ever (!(cond)) { \
     WARN("assertion '" #cond "' failed " __VA_ARGS__);\
     action;\
 }
 
 #define _ACTION0(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg ".", ##__VA_ARGS__);\
+    ASSERT(res >= 0, goto err, msg " %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
 
 
 #define _ACTION(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg ".", ##__VA_ARGS__);\
+    ASSERT(res >= 0, goto err, msg " at %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);
-
-#define likely(x)       __builtin_expect((x),1)
-#define unlikely(x)     __builtin_expect((x),0)
-#define if_ever(err)    if (unlikely(err))
-#define expect(T)       if (likely(T))
 
 #define packed_struct struct __attribute__ ((__packed__))
 
