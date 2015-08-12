@@ -116,10 +116,10 @@ get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
 }
 
 static int
-decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t offs)
+decr_excise(kct_t const *const kc, uint64_t* kct)
 {
-    offs >>= BIG_SHFT; // remaining
     uint64_t nt = kct[1];
+    uint64_t offs = nt >> BIG_SHFT; // remaining
     nt &= B2POS_MASK; // ts offset
     offs += nt; // add current position
 
@@ -189,32 +189,40 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
 
     while (r.rot != kc->ext && b2pos < reg[2]->s) {
         ++max_ext;
+        kc->old_dna[r.rot] = dna;
         uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
 
         uint64_t nt = kct[1];
         if (IS_UQ(kct)) {
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-            if (r.last_uq == 0 || IS_UQ(kc->kct_scope[r.last_uq])) {
 
-                // 2nd or later uniq within scope
-                elongate_region(*reg, dna, b2pos); // continuously, until complete.
-
-                uint64_t infior = *kct;
-                if (r.last_uq == 0) {
-                    if (r.rot) // don't count boundaries of zero.
-                        ++kc->uqct;
-                } else {
-                    ++kc->uqct;
-                    infior = max(*kc->kct_scope[r.last_uq], infior);
-                    ++r.last_uq;
-                }
-
-                // elevate all inbetween non-uniques by the max of these:
-                while (r.last_uq != r.rot)
-                    update_max_infior(kc->kct_scope[r.last_uq++], kct, infior);
-
+            // 2nd or later uniq within scope
+            elongate_region(*reg, dna, b2pos); // continuously, until complete.
+            uint64_t infior = *kct;
+            if (r.last_uq) {
+                infior = max(*kc->kct_scope[r.last_uq], infior);
+                ++kc->uqct;
             } else {
-                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
+                if (r.rot) // don't count boundaries of zero.
+                    ++kc->uqct;
+            }
+
+            // elevate all inbetween non-uniques by the max of these:
+            while (r.last_uq != r.rot) {
+
+                update_max_infior(kc->kct_scope[r.last_uq], kct, infior);
+#if defined(TEST_ROT)
+                uint64_t* k = kc->kct_scope[r.last_uq];
+                ASSERT(k != kct, return -EFAULT);// or  || k == kct below?
+                if (IS_UQ(k) == false) {
+                    k[1] -= ONE_CT;
+                    --(*k);
+                    _ACTION(decr_excise(kc, k), "");
+                } else {
+                    // correct infior (loop back?)
+                }
+#endif
+                ++r.last_uq;
             }
             r.infior = p;
         } else {
@@ -223,12 +231,11 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
             // passed this key
             update_max_infior(kct, NULL, r.infior);
         }
-
         // within scope of unique key or when leaving it
+#if !defined(TEST_ROT)
         switch(rest) {
 case 1:
-            res = end_region(kc, reg, h);
-            ASSERT(res >= 0, return -EFAULT);
+            _ACTION(end_region(kc, reg, h), "");
             --rest;
             break;
 case 0:     r.last = r.rot;
@@ -243,7 +250,7 @@ default:    --rest;
                     if (IS_UQ(k) == false) {
                         k[1] -= ONE_CT; // excise it: one less remains..
                         --(*k); // ..instead of passing
-                        decr_excise(kc, k, k[1]);
+                        _ACTION(decr_excise(kc, k), "");
                     } else {
                         uint64_t tp = (p & B2POS_MASK) + r.rot - j;
                         if (r.rot > j) tp -= kc->ext;
@@ -264,6 +271,7 @@ default:    --rest;
             if (rest == 0)
                 r.infior = 0;
         }
+#endif
         nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
         ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         dna = _seq_next(nt, dna, rc);
@@ -282,14 +290,8 @@ default:    --rest;
         /* process leaving key */
         kct = kc->kct_scope[KC_ROT(kc, r.rot)];
 
-        // correct incorrectly presumed excision.
-        if (r.last_uq == r.rot) { // should be first out of range TODO: check
-        } else if (IS_UQ(kc->kct_scope[r.last_uq]) == false) { // out of range for sure until new uq
-            // keep rotating to prevent branch above - until uq is encountered
-            KC_ROT(kc, r.last_uq);
-        }
-
         /* process new key */
+        kc->old_dna[r.rot] = dna;
         uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
 
         uint64_t nt = kct[1];
@@ -297,25 +299,59 @@ default:    --rest;
         if (IS_UQ(kct)) {
             r.infior = p;
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-            if (IS_UQ(kc->kct_scope[r.last_uq])) {
+            // when the leaving and new key were both unique we cannot consider it
+            // a complete region.
+            if (IS_UQ(kc->kct_scope[r.last_uq]) && r.last_uq != r.rot) {
                 // 2nd or later uniq within scope
                 ++kc->uqct;
+#if defined(TEST_ROT)
+                elongate_region(*reg, dna, b2pos);
+#endif
 
                 // elevate all inbetween non-uniques by the max of these:
                 uint64_t infior = max(*kc->kct_scope[r.last_uq], *kct);
-                while (KC_ROT(kc, r.last_uq) != r.rot)
+                while (KC_ROT(kc, r.last_uq) != r.rot) {
                     update_max_infior(kc->kct_scope[r.last_uq], kct, infior);
+#if defined(TEST_ROT)
+                    uint64_t* k = kc->kct_scope[r.last_uq];
+                    if (IS_UQ(k) == false) {
+                        k[1] -= ONE_CT;
+                        --(*k);
+                        _ACTION(decr_excise(kc, k), "");
+                    }
+#endif
+                }
+            } else if (r.last_uq == r.rot) {
+#if defined(TEST_ROT)
+                _ACTION(end_region(kc, reg, h), "");
+                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
+#endif
+            } else {
+                r.last_uq = r.rot;
+#if defined(TEST_ROT)
+                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
+#endif
             }
         } else {
             // ts_offs + passed => current Nt
             nt += (*kct)++;
             // passed this key
-            update_max_infior(kct, NULL, r.infior);
+            if (IS_UQ(kc->kct_scope[r.last_uq])) {
+                update_max_infior(kct, NULL, r.infior);
+#if defined(TEST_ROT)
+            } else if (r.last_uq == r.rot) {
+                r.infior = 0;
+                _ACTION(end_region(kc, reg, h), "");
+            } else {
+                r.last_uq = r.rot;
+#endif
+            }
         }
-
         // within scope of unique key or when leaving it
+#if !defined(TEST_ROT)
         switch(rest) {
 case 1:
+            _ACTION(end_region(kc, reg, h), "");
             --rest;
             break;
 case 0:     r.last = r.rot;
@@ -330,7 +366,7 @@ default:    --rest;
                     if (IS_UQ(k) == false) {
                         k[1] -= ONE_CT;
                         --(*k);
-                        decr_excise(kc, k, k[1]);
+                        _ACTION(decr_excise(kc, k), "");
                     } else {
                         uint64_t tp = (p & B2POS_MASK) + r.rot - j;
                         if (r.rot > j) tp -= kc->ext;
@@ -347,7 +383,6 @@ default:    --rest;
         if (IS_UQ(kct)) {
             if (rest) {
                 // 2nd or later uniq within scope
-                ++kc->uqct;
                 elongate_region(*reg, dna, b2pos);
             } else {
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
@@ -358,36 +393,42 @@ default:    --rest;
             if (rest == 0)
                 r.infior = 0;
         }
+#endif
         nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
         ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         ++b2pos;
         dna = _seq_next(nt, dna, rc);
     }
-    ASSERT(b2pos == reg[2]->s, return -EFAULT, "%u, %u", b2pos, reg[2]->s);
-    while (max_ext--) {
-        /* process leaving key */
+    ASSERT(b2pos == reg[2]->s, return -EFAULT, "[%u] %u", b2pos, reg[2]->s);
+    
+    /*while (max_ext--) {
+        //process leaving key
         kct = kc->kct_scope[KC_ROT(kc, r.rot)];
-
-        // correct incorrectly presumed excision.
-        if (IS_UQ(kc->kct_scope[r.last_uq]) == false) {
+        if (IS_UQ(kc->kct_scope[r.last_uq]) == false)
             KC_ROT(kc, r.last_uq);
-        }
-    }
+    }*/
 
 
-    if (rest) {
+    if (IS_UQ(kc->kct_scope[r.last_uq])) { // there was a unique in scope
         EPQ (dbg > 4, "Post loop boundary handling [%u]", b2pos);
-        if (r.rot != r.last) {
+#if defined(TEST_ROT)
+        unsigned j = r.last_uq; 
+#else
+        unsigned j = r.last;
+#endif
+        if (r.rot != j) {
             ++kc->uqct;
 
-            for(unsigned j = r.last; j != r.rot;) {
+            while (j != r.rot) {
                 kct = kc->kct_scope[KC_ROT(kc, j)];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
                     kct[1] -= ONE_CT;
                     --(*kct);
-                    decr_excise(kc, kct, kct[1]);
-                } else {
+                    _ACTION(decr_excise(kc, kct), "");
+                }
+#if !defined(TEST_ROT)
+                else { // XXX: never true, can go if TEST_ROT -- OR only first.
                     uint64_t tp = b2pos + h->s_s + r.rot - j;
                     if (r.rot > j) tp -= kc->ext;
                     if ((*kct & B2POS_MASK) != tp) {
@@ -395,6 +436,7 @@ default:    --rest;
                         *kct ^= (*kct ^ tp) & B2POS_MASK;
                     }
                 }
+#endif
             }
         }
         reg[0]->dna = dna;
@@ -419,7 +461,10 @@ default:    --rest;
     } else {
         h->mapable -= max(reg[1]->s + reg[1]->l + kc->ext, b2pos) - b2pos;
     }
-    return 0;
+    res = 0;
+err:
+    EPQ(res < -1, "[%u]", b2pos);
+    return res;
 }
 
 static int
@@ -488,12 +533,15 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
     ASSERT(kc->kct_scope != NULL, goto err);
     kc->excision_pos = (uint64_t*)malloc(t * sizeof(uint64_t));
     ASSERT(kc->excision_pos != NULL, goto err);
+    kc->old_dna = (uint64_t*)malloc(t * sizeof(uint64_t));
+    ASSERT(kc->old_dna != NULL, goto err);
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc);
     } while (res > 0);
     _buf_free(kc->kct_scope);
     _buf_free(kc->excision_pos);
+    _buf_free(kc->old_dna);
     if (res == 0) {
         _ACTION(save_boundaries(fhout[0], kc), "writing unique boundaries file");
         _ACTION(save_kc(fhout[2], kc), "writing unique keycounts file");

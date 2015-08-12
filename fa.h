@@ -17,6 +17,8 @@
 #include "klib/khash.h"
 #include "gz.h"
 
+#define TEST_ROT
+
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
 #define B2LEN_SHFT 58
@@ -168,7 +170,8 @@ struct kct_t {
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
-    uint64_t** kct_scope; // later req
+    uint64_t** kct_scope;
+    uint64_t* old_dna;
     uint64_t* excision_pos;
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
