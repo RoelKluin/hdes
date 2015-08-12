@@ -83,12 +83,14 @@
 
 #define IS_UQ(k) ((k[1] & REMAIN_MASK) == ONE_CT)
 
-#define _ndxkct_and_infior(kc, ndx, t, dna, rc) ({\
-    _get_ndx(ndx, t, dna, rc);\
-    t <<= BIG_SHFT - KEY_WIDTH;/*store orient and infior in t*/\
-    ASSERT(kc->ndxkct[ndx] < kc->kct_l, return -EFAULT);\
-    t | (kc->kct[kc->ndxkct[ndx]] & INFIOR_MASK);\
-});
+#define _get_new_kct(kc, kct, pos, dna, rc, rot) ({\
+    typeof(dna) __ndx, __t;\
+    _get_ndx(__ndx, __t, dna, rc);\
+    __t <<= BIG_SHFT - KEY_WIDTH; /*store orient and infior in t*/\
+    kc->kct_scope[rot] = kct = kc->kct + kc->ndxkct[__ndx];\
+    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
+    __t | (*kct & INFIOR_MASK) | (pos);\
+})
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
     dna = __rdsq(direction, b, s, b2pos, dna, rc);\

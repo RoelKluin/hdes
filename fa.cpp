@@ -53,27 +53,49 @@ static unsigned iter = 0;
 static uint64_t maxinfior = 0;
 
 static inline void
-update_max_infior(uint64_t* kct, uint64_t infior)
+update_max_infior(uint64_t* kct, uint64_t* exception, uint64_t infior)
 {
-    uint64_t k = *kct;
+    if (kct == exception) // .. don't elevate key if it is the same as the one at r.rot.
+        return;
+
     infior += INFIOR;
-    if (infior > k) {
+    if (infior > *kct) {
         maxinfior = max(maxinfior, infior);
-        *kct ^= (k ^ infior) & INFIOR_MASK;
+        *kct ^= (*kct ^ infior) & INFIOR_MASK;
     }
 }
 
-static inline void
-pot_region_start(kct_t *const kc, Hdr* h, Bnd *inter,
-        uint64_t dna, uint32_t last_sl, uint32_t b2pos)
+static inline unsigned
+pot_region_start(Bnd **reg, const uint64_t dna, const uint32_t b2pos, const unsigned ext)
 {
-    h->mapable += b2pos - max(last_sl + kc->ext, b2pos - kc->ext);
-    h->mapable += kc->ext;
-    inter->s = b2pos;
-    inter->at_dna = dna;
+    reg[0]->s = b2pos;
+    reg[0]->at_dna = dna;
     // A first uniq marks a potential start of a region
+    reg[0]->dna = dna;
+    reg[0]->l = 0;
+    return b2pos + ext - max(reg[1]->s + reg[1]->l + ext, b2pos - ext);
+}
+static inline void
+elongate_region(Bnd *inter, uint64_t dna, uint32_t b2pos)
+{
+    inter->l = b2pos - inter->s;
     inter->dna = dna;
-    inter->l = 0;
+}
+static inline int
+end_region(kct_t *const kc, Bnd **reg, Hdr* h)
+{
+    EPQ(dbg > 3 && reg[0]->l, "[%u]\t%u - %u\t", kc->bd_l, reg[0]->s, reg[0]->s + reg[0]->l);
+    h->mapable += reg[0]->l;
+    if (reg[0] != reg[1]) {
+        reg[0]->corr = reg[1]->corr;
+        _buf_grow0(kc->bd, 2ul);
+        h->bnd.insert(kc->bdit, kc->bd_l);
+        reg[1] = kc->bd + kc->bd_l++;
+        reg[2] = kc->bd + *kc->bdit;
+    }
+    reg[0] = kc->bd + kc->bd_l; // no longer last at least
+    reg[0]->l = reg[0]->s = 0;
+    return 0;
 }
 
 static inline uint64_t
@@ -94,14 +116,12 @@ get_nextnt(kct_t const *const kc, uint64_t nt, uint64_t p)
 }
 
 static int
-decr_excise(kct_t const *const kc, uint64_t* kct)
+decr_excise(kct_t const *const kc, uint64_t* kct, uint64_t offs)
 {
-    kct[1] -= ONE_CT; // excise it: one less remains..
-    --(*kct); // ..instead of passing
+    offs >>= BIG_SHFT; // remaining
     uint64_t nt = kct[1];
-    uint64_t offs = nt >> BIG_SHFT;
     nt &= B2POS_MASK; // ts offset
-    offs += nt;
+    offs += nt; // add current position
 
     nt += *kct & B2POS_MASK;
     if (nt == offs) {
@@ -155,47 +175,60 @@ ext_uq_bnd(kct_t* kc, Hdr* h, uint32_t lastx)
     const char* hdr = kc->id + h->part[0];
 
     _buf_grow0(kc->bd, 2ul);    // one extra must be available for inter.
-    Bnd *next = kc->bd + *kc->bdit;
-    Bnd *last = kc->bd + lastx;
-    Bnd *inter = last;          // running storage for boundary [ins or mod].
+    Bnd *reg[3] = { kc->bd + lastx, kc->bd + lastx, kc->bd + *kc->bdit };
 
-    uint32_t b2pos = last->s + last->l;
-    uint64_t dna = last->dna;   // first seq after skip
+    uint32_t b2pos = reg[1]->s + reg[1]->l;
+    uint64_t dna = reg[1]->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
     running r = {0};
     r.last = kc->ext - 1;
     unsigned rest = kc->ext;
+    unsigned max_ext = 0;
     uint64_t* kct;
     int res;
 
-    while (r.rot != kc->ext && b2pos < next->s) {
-        uint64_t ndx, p = _ndxkct_and_infior(kc, ndx, p, dna, rc);
-        p |= b2pos + h->s_s;
-        kc->kct_scope[r.rot] = kct = kc->kct + kc->ndxkct[ndx];
+    while (r.rot != kc->ext && b2pos < reg[2]->s) {
+        ++max_ext;
+        uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
 
         uint64_t nt = kct[1];
         if (IS_UQ(kct)) {
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
+            if (r.last_uq == 0 || IS_UQ(kc->kct_scope[r.last_uq])) {
+
+                // 2nd or later uniq within scope
+                elongate_region(*reg, dna, b2pos); // continuously, until complete.
+
+                uint64_t infior = *kct;
+                if (r.last_uq == 0) {
+                    if (r.rot) // don't count boundaries of zero.
+                        ++kc->uqct;
+                } else {
+                    ++kc->uqct;
+                    infior = max(*kc->kct_scope[r.last_uq], infior);
+                    ++r.last_uq;
+                }
+
+                // elevate all inbetween non-uniques by the max of these:
+                while (r.last_uq != r.rot)
+                    update_max_infior(kc->kct_scope[r.last_uq++], kct, infior);
+
+            } else {
+                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
+            }
             r.infior = p;
         } else {
-            // passed this key
+            // ts_offs + passed => current Nt
             nt += (*kct)++;
-            update_max_infior(kct, r.infior);
+            // passed this key
+            update_max_infior(kct, NULL, r.infior);
         }
 
         // within scope of unique key or when leaving it
         switch(rest) {
-case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
-            h->mapable += inter->l;
-            if (inter != last) {
-                inter->corr = last->corr;
-                _buf_grow0(kc->bd, 2ul);
-                h->bnd.insert(kc->bdit, kc->bd_l);
-                last = kc->bd + kc->bd_l++;
-                next = kc->bd + *kc->bdit;
-            }
-            inter = kc->bd + kc->bd_l; // no longer last at least
-            inter->l = inter->s = 0;
+case 1:
+            res = end_region(kc, reg, h);
+            ASSERT(res >= 0, return -EFAULT);
             --rest;
             break;
 case 0:     r.last = r.rot;
@@ -208,7 +241,9 @@ default:    --rest;
                     uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
-                        decr_excise(kc, k);
+                        k[1] -= ONE_CT; // excise it: one less remains..
+                        --(*k); // ..instead of passing
+                        decr_excise(kc, k, k[1]);
                     } else {
                         uint64_t tp = (p & B2POS_MASK) + r.rot - j;
                         if (r.rot > j) tp -= kc->ext;
@@ -223,16 +258,6 @@ default:    --rest;
 
         // when in scope of an uniq key - keylength minus keywidth distance,
         if (IS_UQ(kct)) {
-            if (rest) {
-                // 2nd or later uniq within scope
-                if (inter != last)
-                    ++kc->uqct;
-                // continuously elongate stretch, jump dna, until is region complete.
-                inter->l = b2pos - inter->s;
-                inter->dna = dna;
-            } else {
-                pot_region_start(kc, h, inter, dna, last->s + last->l, b2pos);
-            }
             r.last = r.rot;
             rest = kc->ext;
         } else {
@@ -240,7 +265,7 @@ default:    --rest;
                 r.infior = 0;
         }
         nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
-        ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx at %u", kc->ndxkct[ndx], b2pos);
+        ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         dna = _seq_next(nt, dna, rc);
         ++r.rot;
         ++b2pos;
@@ -249,43 +274,48 @@ default:    --rest;
 
     //else dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
-            hdr, b2pos, next->s, next->s + next->l);
+            hdr, b2pos, reg[2]->s, reg[2]->s + reg[2]->l);
     print_dna(dna, dbg > 3);
 
-    while(b2pos < next->s) { // until next uniq region,  stretch or contig
+    while(b2pos < reg[2]->s) { // until next uniq region,  stretch or contig
 
         /* process leaving key */
         kct = kc->kct_scope[KC_ROT(kc, r.rot)];
 
+        // correct incorrectly presumed excision.
+        if (r.last_uq == r.rot) { // should be first out of range TODO: check
+        } else if (IS_UQ(kc->kct_scope[r.last_uq]) == false) { // out of range for sure until new uq
+            // keep rotating to prevent branch above - until uq is encountered
+            KC_ROT(kc, r.last_uq);
+        }
+
         /* process new key */
-	uint64_t ndx, p = _ndxkct_and_infior(kc, ndx, p, dna, rc);
-        p |= b2pos + h->s_s;
-        kc->kct_scope[r.rot] = kct = kc->kct + kc->ndxkct[ndx];
+        uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, r.rot);
 
         uint64_t nt = kct[1];
 
         if (IS_UQ(kct)) {
             r.infior = p;
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
+            if (IS_UQ(kc->kct_scope[r.last_uq])) {
+                // 2nd or later uniq within scope
+                ++kc->uqct;
+
+                // elevate all inbetween non-uniques by the max of these:
+                uint64_t infior = max(*kc->kct_scope[r.last_uq], *kct);
+                while (KC_ROT(kc, r.last_uq) != r.rot)
+                    update_max_infior(kc->kct_scope[r.last_uq], kct, infior);
+            }
         } else {
-            // passed this key
+            // ts_offs + passed => current Nt
             nt += (*kct)++;
-            update_max_infior(kct, r.infior);
+            // passed this key
+            update_max_infior(kct, NULL, r.infior);
         }
 
         // within scope of unique key or when leaving it
         switch(rest) {
-case 1:     EPQ(dbg > 3 && inter->l, "[%u]\t%u - %u\t", kc->bd_l, inter->s, inter->s + inter->l);
-            h->mapable += inter->l;
-            if (inter != last) {
-                inter->corr = last->corr;
-                _buf_grow0(kc->bd, 2ul);
-                h->bnd.insert(kc->bdit, kc->bd_l);
-                last = kc->bd + kc->bd_l++;
-                next = kc->bd + *kc->bdit;
-            }
-            inter = kc->bd + kc->bd_l; // no longer last at least
-            inter->l = inter->s = 0;
+case 1:
             --rest;
             break;
 case 0:     r.last = r.rot;
@@ -298,7 +328,9 @@ default:    --rest;
                     uint64_t* k = kc->kct_scope[j];
                     // no movement if only one left, write genomic position
                     if (IS_UQ(k) == false) {
-                        decr_excise(kc, k);
+                        k[1] -= ONE_CT;
+                        --(*k);
+                        decr_excise(kc, k, k[1]);
                     } else {
                         uint64_t tp = (p & B2POS_MASK) + r.rot - j;
                         if (r.rot > j) tp -= kc->ext;
@@ -315,13 +347,10 @@ default:    --rest;
         if (IS_UQ(kct)) {
             if (rest) {
                 // 2nd or later uniq within scope
-                if (inter != last)
-                    ++kc->uqct;
-                // continuously elongate stretch, jump dna, until is region complete.
-                inter->l = b2pos - inter->s;
-                inter->dna = dna;
+                ++kc->uqct;
+                elongate_region(*reg, dna, b2pos);
             } else {
-                pot_region_start(kc, h, inter, dna, last->s + last->l, b2pos);
+                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
             }
             r.last = r.rot;
             rest = kc->ext;
@@ -330,14 +359,24 @@ default:    --rest;
                 r.infior = 0;
         }
         nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
-        ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx at %u", kc->ndxkct[ndx], b2pos);
+        ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         ++b2pos;
         dna = _seq_next(nt, dna, rc);
     }
-    ASSERT(b2pos == next->s, return -EFAULT, "%u, %u", b2pos, next->s);
+    ASSERT(b2pos == reg[2]->s, return -EFAULT, "%u, %u", b2pos, reg[2]->s);
+    while (max_ext--) {
+        /* process leaving key */
+        kct = kc->kct_scope[KC_ROT(kc, r.rot)];
+
+        // correct incorrectly presumed excision.
+        if (IS_UQ(kc->kct_scope[r.last_uq]) == false) {
+            KC_ROT(kc, r.last_uq);
+        }
+    }
+
 
     if (rest) {
-        EPQ (dbg > 4, "Post loop boundary handling at %u", b2pos);
+        EPQ (dbg > 4, "Post loop boundary handling [%u]", b2pos);
         if (r.rot != r.last) {
             ++kc->uqct;
 
@@ -345,7 +384,9 @@ default:    --rest;
                 kct = kc->kct_scope[KC_ROT(kc, j)];
                 // no movement if only one left, write genomic position
                 if (IS_UQ(kct) == false) {
-                    decr_excise(kc, kct);
+                    kct[1] -= ONE_CT;
+                    --(*kct);
+                    decr_excise(kc, kct, kct[1]);
                 } else {
                     uint64_t tp = b2pos + h->s_s + r.rot - j;
                     if (r.rot > j) tp -= kc->ext;
@@ -356,27 +397,27 @@ default:    --rest;
                 }
             }
         }
-        inter->dna = dna;
-        inter->l = b2pos - inter->s;
-        ASSERT(inter->s + inter->l == next->s, return -EFAULT)
-        if (inter == last) {
-            EPQ(dbg > 4, "Removing boundary after loop at %u", b2pos);
+        reg[0]->dna = dna;
+        reg[0]->l = b2pos - reg[0]->s;
+        ASSERT(reg[0]->s + reg[0]->l == reg[2]->s, return -EFAULT)
+        if (*reg == reg[1]) {
+            EPQ(dbg > 4, "Removing boundary after loop [%u]", b2pos);
             // TODO: return *kc->bdit to a pool of to be inserted boundaries
-            last->l += next->l;
-            last->dna = next->dna;
-            last->corr = next->corr;
+            reg[1]->l += reg[2]->l;
+            reg[1]->dna = reg[2]->dna;
+            reg[1]->corr = reg[2]->corr;
             kc->bdit = h->bnd.erase(kc->bdit);
-            next = kc->bd + *--kc->bdit;
+            reg[2] = kc->bd + *--kc->bdit;
         } else {
-            inter->corr = last->corr;
-            EPQ (dbg > 4, "Next boundary joined after loop at %u", b2pos);
-            next->at_dna = inter->at_dna;
-            next->l += next->s - inter->s;
-            next->s = inter->s;
-            next->corr += inter->corr;
+            reg[0]->corr = reg[1]->corr;
+            EPQ (dbg > 4, "Next boundary joined after loop [%u]", b2pos);
+            reg[2]->at_dna = reg[0]->at_dna;
+            reg[2]->l += reg[2]->s - reg[0]->s;
+            reg[2]->s = reg[0]->s;
+            reg[2]->corr += reg[0]->corr;
         }
     } else {
-        h->mapable -= max(last->s + last->l + kc->ext, b2pos) - b2pos;
+        h->mapable -= max(reg[1]->s + reg[1]->l + kc->ext, b2pos) - b2pos;
     }
     return 0;
 }
