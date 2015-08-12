@@ -139,11 +139,6 @@ packed_struct Bnd {
     uint32_t corr;// real position correction
 };
 
-packed_struct running {
-    unsigned rot;
-    unsigned last_uq;
-};
-
 packed_struct kct_ext {
     uint64_t m: 8;
     uint64_t l: 40;
