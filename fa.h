@@ -170,8 +170,6 @@ struct kct_t {
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
-    uint64_t* old_dna;
-    uint64_t* excision_pos;
     uint64_t ts_l, s_l;
     uint32_t id_l, bd_l, kct_l, uqct;
     unsigned ext; // not stored
