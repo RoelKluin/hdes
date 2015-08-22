@@ -107,35 +107,39 @@ adjoining_boundary(kct_t *C kc, Bnd **C reg, Hdr *C h, C uint64_t dna, C uint32_
 }
 
 
-static inline int
-update_max_infior(uint64_t *C kct, uint64_t C*C exception, uint64_t infior)
+static inline void
+update_max_infior(uint64_t *C kct, uint64_t infior)
 {
-    if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
-        expect(infior < MAX_INFIOR) {
-            infior += INFIOR;
-        } else {
-            WARN("MAX_INFIOR reached");
-        }
-        if (infior > *kct)
-            *kct ^= (*kct ^ infior) & INFIOR_MASK;
+    expect(infior < MAX_INFIOR) {
+        infior += INFIOR;
+    } else {
+        WARN("MAX_INFIOR reached");
     }
+    if (infior > *kct)
+        *kct ^= (*kct ^ infior) & INFIOR_MASK;
 }
 
-static inline C uint64_t
-get_nextnt(kct_t C*C kc, uint64_t nt, uint64_t p)
+static inline C int
+check_nt(kct_t C*C kc, C uint64_t nt, uint64_t p)
 {
-    ASSERT(nt < (kc->ts_l << 2), return -1ul);
-    nt = (kc->ts[nt>>2] >> ((nt&3) << 1)) & 3; // next Nt
     if (kc->s == NULL)
-        return nt;
+        return 0;
 
-    ASSERT(p < (kc->s_l << 2), return -1ul, "%lu/%lu", p, kc->s_l);
+    ASSERT(p < (kc->s_l << 2), return -EFAULT, "%lu/%lu", p, kc->s_l);
     p = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
     expect(nt == p)
-        return nt;
+        return 0;
 
     WARN("nextnt didn't match twobit: sb2:%c, got %c", b6(p<<1), b6(nt<<1));
-    return -1ul;
+    return -EFAULT;
+
+}
+
+static inline C int
+get_nextnt(kct_t C*C kc, C uint64_t nt)
+{
+    ASSERT(nt < (kc->ts_l << 2), return -EFAULT);
+    return _GET_NEXT_NT(kc, nt); // next Nt
 }
 
 static int
@@ -152,26 +156,25 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
         if (infior > *kct)
             *kct ^= (*kct ^ infior) & INFIOR_MASK;
 
-        // if exception and unique, the same key occured multiple times in same region
-        if_ever(IS_UQ(kct))
-            return 0;
     }
-
-    uint64_t nt = kct[1] -= ONE_CT;
-    --*kct;
-    uint64_t offs = nt >> BIG_SHFT; // remaining
-    nt &= B2POS_MASK; // ts offset
-    offs += nt; // add current position
-
-    nt += *kct & B2POS_MASK;
-    if (nt == offs) {
-        // also if at last nextNt we can skip.
-        // TODO: maybe check here whether all nextNts are the same - for
-        // extended key in next iterations, set remain to 0? ts offset obsolete.
+    if(IS_UQ(kct))
         return 0;
-    }
+    if (IS_LAST(kct))
+        return 0;
+
+    kct[1] -= ONE_CT;
+
+    --*kct;
+    if (IS_LAST(kct)) // also if at last nextNt we can skip.
+        return 0;
+    uint64_t nt = kct[1] & B2POS_MASK;// ts offset
+
+    uint64_t offs = REMAIN(kct); // remaining
+    offs += nt; // remaining + ts offset => target of nt movement
+
+    nt += *kct & B2POS_MASK; // add current position => src Nt (which is moved)
     ASSERT((offs >> 2) < kc->ts_l, return -EFAULT);
-    ASSERT((nt >> 2) + 1 < kc->ts_l, return -EFAULT);
+    ASSERT((nt >> 2) + 1 < kc->ts_l, return -EFAULT, "%lx\t%lx", kct[0], kct[1]);
 
     // excise out twobits, i.e. shift 2bits above current 2bit down.
     uint8_t* q = &kc->ts[nt >> 2];
@@ -219,7 +222,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
     uint64_t dna = reg[1]->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
-    uint64_t dummy[2] = {0ul, ONE_CT};
+    uint64_t dummy[2] = {0ul, UNIQUE};
     uint64_t* kct;
     unsigned rot = 0, last_uq = 0;
     uint32_t b2pos = reg[1]->s + reg[1]->l;
@@ -233,14 +236,19 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
     while(b2pos < reg[2]->s) { // until next uniq region,  stretch or contig
 
-        /* process leaving key */
+        /* could process leaving key first. */
         KC_ROT(kc, rot);
 
         /* process new key */
-        uint64_t p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, rot);
-        uint64_t nt = kct[1];
+        uint64_t nt, p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, rot);
 
         if (IS_UQ(kct)) {
+            nt = kct[1] & B2POS_MASK;
+            _ACTION(get_nextnt(kc, nt), "");
+            nt = res;
+            EPQ((kct[1] & B2POS_MASK) == 2943350, "uniq?[%u:%u]<", b2pos, nt);
+
+
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
             // when the leaving and new key were both unique we cannot consider it
             // a complete region.
@@ -266,16 +274,48 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             }
         } else {
             // ts_offs + passed => current Nt, passed this key
-            nt += (*kct)++;
-            if (IS_UQ(kc->kct_scope[last_uq])) {
-                _ACTION(update_max_infior(kct, NULL, *kc->kct_scope[last_uq]), "");
+            nt = (kct[1] + *kct) & B2POS_MASK;
+            _ACTION(get_nextnt(kc, nt), "");
+            nt = res;
+            uint64_t *k = kc->kct_scope[last_uq];
+            if (IS_ALL_SAME_NTS(kct, nt)) { // yes, kct. XXX why not ALREADY_ALL_SAME_NTS(kct) ??
+                nt = kct[1] >> 62;
+                print_2dna(dna, rc, (kct[1] & B2POS_MASK) == 2943350);
+//                EPR("%u, %u\t%u", kct[1] & B2POS_MASK, b2pos, nt);
+            } else if (IS_UQ(k)) {
+                EPQ((kct[1] & B2POS_MASK) == 2943350, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
+                update_max_infior(kct, *k);
             } else if (last_uq == rot) {
                 _ACTION(end_region(kc, reg, h), "");
+                // set DISTINCT for each stored key if Nt does not match last 
+                if (k != dummy) {
+                    do {
+                        //EPQ((k[1] & B2POS_MASK) == 2943350, "recap:[%u:%u]<next:%lu>", b2pos, kc->nts[last_uq], kc->kct_scope[last_uq][1] & B2POS_MASK);
+                        k = kc->kct_scope[last_uq];
+                        if (IS_UQ(k) == false && IS_ALL_SAME_NTS(k, nt)) {
+                            // nextNts all the same. Extend key from buffer
+//                                EPR0("(");
+                            while (KC_ROT(kc, last_uq) != rot) {
+                                k = kc->kct_scope[last_uq];
+                                // TODO: improve mapa
+                                if (!IS_ALL_SAME_NTS(k, kc->nts[last_uq])) {
+                                    break;
+                                }
+                            }
+                        } else {
+                            KC_ROT(kc, last_uq);
+                        }
+                    } while (last_uq != rot);
+                }
             } else {
                 last_uq = rot;
+                IS_ALL_SAME_NTS(kct, nt);
             }
+            ++*kct;
         }
-        nt = get_nextnt(kc, nt & B2POS_MASK, p & B2POS_MASK);
+        _ACTION(check_nt(kc, nt, p & B2POS_MASK), "");
+        kc->nts[rot] = nt;
+
         ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         ++b2pos;
         dna = _seq_next(nt, dna, rc);
@@ -299,7 +339,10 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     }
     res = 0;
 err:
-    EPQ(res < -1, "[%u]", b2pos);
+    if (res < -1) {
+        EPR0("[%u]\t", b2pos);
+        print_2dna(dna, rc);
+    }
     return res;
 }
 
@@ -348,11 +391,10 @@ ext_uq_iter(kct_t* kc, unsigned *C iter)
     // FIXME: reset upon last occurance for non-uniq in inner loop
     for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2)
         if (!IS_UQ(k)) // at least one left (if unique position genomic 2bit)
-            *k &= REMAIN_MASK; // reset position tracking
+            *k &= ~B2POS_MASK; // reset position tracking
 
     return kc->uqct;
 }
-
 
 static int
 extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
@@ -368,11 +410,14 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
     t = kc->ext;
     kc->kct_scope = (uint64_t**)malloc(t * sizeof(uint64_t*));
     ASSERT(kc->kct_scope != NULL, goto err);
+    kc->nts = (char*)malloc(t * sizeof(char));
+    ASSERT(kc->nts != NULL, goto err);
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc, &iter);
     } while (res > 0);
     _buf_free(kc->kct_scope);
+    _buf_free(kc->nts);
     if (res == 0) {
         _ACTION(save_boundaries(fhout[0], kc), "writing unique boundaries file");
         _ACTION(save_kc(fhout[2], kc), "writing unique keycounts file");

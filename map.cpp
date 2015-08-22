@@ -149,8 +149,7 @@ default:            dna = _seq_next(b, dna, rc);
                     _get_ndx(ndx, wx, dna, rc);
                     uint32_t k = kc->ndxkct[ndx];
 		    // put not recognized and multimapper keys to end - unused.
-                    if (k >= kc->kct_l ||
-                            (kc->kct[k + 1] >> BIG_SHFT) != 1ul) {
+                    if (k >= kc->kct_l || !IS_UQ(kc->kct + k)) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
@@ -216,10 +215,9 @@ default:            dna = _seq_next(b, dna, rc);
         //                    kc->kct[ndx],
         //                    (int)(kc->kct[ndx] & B2POS_MASK));
 
-        if (((uint32_t)ndx < kc->kct_l) &&
-                (kc->kct[ndx + 1] >> BIG_SHFT) == 1ul) {
+        if (((uint32_t)ndx < kc->kct_l) && IS_UQ(kc->kct + ndx)) {
             mq = 37;
-            flag = (wx ^ (kc->kct[ndx] >> BIG_SHFT)) & 1;
+            flag = (wx ^ 1) & 1;
             if ((wx & 1)) { //XXX
                 while ((c = gc(g)) != -1 && c != '@') {}
                 continue;
