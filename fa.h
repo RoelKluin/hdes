@@ -49,8 +49,8 @@
 #define B2POS_MASK (ONE_CT -1ul)
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
-#define UNIQUE 0x1000000000000000
-#define DISTINCT 0x2000000000000000
+#define DISTINCT 0x8000000000000000
+#define UNIQUE 0x4000000000000000
 #define ALL_SAME_NTS (DISTINCT|UNIQUE)
 
 #define MAX_UQ (UNIQUE-ONE_CT)
@@ -71,27 +71,23 @@
 
 #define _GET_NEXT_NT(kc, p) (((kc)->ts[(p)>>2] >> (((p)&3) << 1)) & 3)
 
-//        _GET_NEXT_NT(kc, (k[1] + *k) & B2POS_MASK) ^ \
-//            _GET_NEXT_NT(kc, (k[1] + *k - 1) & B2POS_MASK)) {\
 // check here whether all nextNts are the same - for key extension in
 // next iterations, set remain to 0? ts offset obsolete.
-#define ALREADY_ALL_SAME_NTS(k) (((k)[1] & (ALL_SAME_NTS)) == ALL_SAME_NTS)
+#define ALREADY_ALL_SAME_NTS(k) (((k)[1] & ALL_SAME_NTS) == ALL_SAME_NTS)
 //
-#define IS_ALL_SAME_NTS(k, nt) ({\
+#define IS_ALL_SAME_NTS(k) ({\
     ASSERT(!IS_UQ(k), return -EFAULT);\
     if (((k)[1] & ALL_SAME_NTS) != ALL_SAME_NTS) {\
-        if (IS_FIRST(k)) {\
-            k[1] &= (DISTINCT - 1ul);\
-            k[1] |= nt << 62;\
-            EPQ((k[1] & B2POS_MASK) == 2943350, "=> %u, %u", k[1] & B2POS_MASK, nt);\
-        } else if ((k[1] >> 62) ^ nt) {\
-            EPQ((k[1] & B2POS_MASK) == 2943350, "<= %u, %u", k[1] & B2POS_MASK, nt);\
+        ASSERT(!IS_FIRST(k), return -EFAULT, "below one subtraction may be invaled");\
+        if (_GET_NEXT_NT(kc, (k[1] + *k) & B2POS_MASK) ^ \
+                _GET_NEXT_NT(kc, (k[1] + *k - 1) & B2POS_MASK)) {\
+            EPQ((k[1] & B2POS_MASK) == dbgb2pos, "<= %u, %u", k[1] & B2POS_MASK);\
             k[1] |= DISTINCT;\
         } else if (IS_LAST(k) && SAME_NTS(k)) {\
-            EPQ((k[1] & B2POS_MASK) == 2943350, "** %u, %u", k[1] & B2POS_MASK, nt);\
+            EPQ((k[1] & B2POS_MASK) == dbgb2pos, "** %u, %u", k[1] & B2POS_MASK);\
             (k)[1] ^= ALL_SAME_NTS;\
         }\
-        EPQ((k[1] & B2POS_MASK) == 2943350, "L%u\t%u(%lu <> %lu), same_Nts:%u", __LINE__, \
+        EPQ((k[1] & B2POS_MASK) == dbgb2pos, "L%u\t%u(%lu <> %lu), same_Nts:%u", __LINE__, \
             IS_LAST(k), REMAIN(k), (*(k) & B2POS_MASK), SAME_NTS(k));\
     }\
     ALREADY_ALL_SAME_NTS(k);\
@@ -205,7 +201,7 @@ struct Hdr {
 
 struct kct_t {
     Bnd* bd;
-    char* id, *nts;
+    char* id;
     uint8_t* ts; // next nts(nn)
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct

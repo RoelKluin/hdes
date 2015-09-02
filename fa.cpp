@@ -246,7 +246,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             nt = kct[1] & B2POS_MASK;
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
-            EPQ((kct[1] & B2POS_MASK) == 2943350, "uniq?[%u:%u]<", b2pos, nt);
+            EPQ((kct[1] & B2POS_MASK) == dbgb2pos, "uniq?[%u:%u]<", b2pos, nt);
 
 
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
@@ -266,7 +266,8 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 // elevate all inbetween non-uniques by the max of these:
                 uint64_t infior = max(*kc->kct_scope[last_uq], *kct);
                 while (KC_ROT(kc, last_uq) != rot) {
-                    _ACTION(decr_excise(kc, kc->kct_scope[last_uq], kct, infior), "");
+                    uint64_t *k = kc->kct_scope[last_uq];
+                    _ACTION(decr_excise(kc, k, kct, infior), "");
                 }
             } else {
                 last_uq = rot;
@@ -278,43 +279,33 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
             uint64_t *k = kc->kct_scope[last_uq];
-            if (IS_ALL_SAME_NTS(kct, nt)) { // yes, kct. XXX why not ALREADY_ALL_SAME_NTS(kct) ??
+            if (ALREADY_ALL_SAME_NTS(kct)) { // yes, kct.
                 nt = kct[1] >> 62;
-                print_2dna(dna, rc, (kct[1] & B2POS_MASK) == 2943350);
+                print_2dna(dna, rc, (kct[1] & B2POS_MASK) == dbgb2pos);
 //                EPR("%u, %u\t%u", kct[1] & B2POS_MASK, b2pos, nt);
             } else if (IS_UQ(k)) {
-                EPQ((kct[1] & B2POS_MASK) == 2943350, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
+
+                EPQ((kct[1] & B2POS_MASK) == dbgb2pos, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
                 update_max_infior(kct, *k);
             } else if (last_uq == rot) {
                 _ACTION(end_region(kc, reg, h), "");
                 // set DISTINCT for each stored key if Nt does not match last 
-                if (k != dummy) {
-                    do {
-                        //EPQ((k[1] & B2POS_MASK) == 2943350, "recap:[%u:%u]<next:%lu>", b2pos, kc->nts[last_uq], kc->kct_scope[last_uq][1] & B2POS_MASK);
+                /*if (k != dummy) { // XXX optional
+                    while (KC_ROT(kc, last_uq) != rot) {
                         k = kc->kct_scope[last_uq];
-                        if (IS_UQ(k) == false && IS_ALL_SAME_NTS(k, nt)) {
+                        if (IS_ALL_SAME_NTS(k)) {
                             // nextNts all the same. Extend key from buffer
-//                                EPR0("(");
-                            while (KC_ROT(kc, last_uq) != rot) {
-                                k = kc->kct_scope[last_uq];
-                                // TODO: improve mapa
-                                if (!IS_ALL_SAME_NTS(k, kc->nts[last_uq])) {
-                                    break;
-                                }
-                            }
-                        } else {
-                            KC_ROT(kc, last_uq);
                         }
-                    } while (last_uq != rot);
-                }
+                    } while (KC_ROT(kc, last_uq) != rot);
+                }*/
             } else {
                 last_uq = rot;
-                IS_ALL_SAME_NTS(kct, nt);
+                ASSERT(IS_FIRST(kct) || IS_ALL_SAME_NTS(kct) == false, return -EFAULT);
+                //EPQ0(IS_ALL_SAME_NTS(kct), "%lu ", __LINE__);
             }
             ++*kct;
         }
         _ACTION(check_nt(kc, nt, p & B2POS_MASK), "");
-        kc->nts[rot] = nt;
 
         ASSERT(nt != -1ul,  return print_2dna(dna, rc), "ndxkct 0x%lx [%u]", *kct, b2pos);
         ++b2pos;
@@ -410,14 +401,11 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t** fhout)
     t = kc->ext;
     kc->kct_scope = (uint64_t**)malloc(t * sizeof(uint64_t*));
     ASSERT(kc->kct_scope != NULL, goto err);
-    kc->nts = (char*)malloc(t * sizeof(char));
-    ASSERT(kc->nts != NULL, goto err);
 
     do { // until no no more new uniques
         res = ext_uq_iter(kc, &iter);
     } while (res > 0);
     _buf_free(kc->kct_scope);
-    _buf_free(kc->nts);
     if (res == 0) {
         _ACTION(save_boundaries(fhout[0], kc), "writing unique boundaries file");
         _ACTION(save_kc(fhout[2], kc), "writing unique keycounts file");
