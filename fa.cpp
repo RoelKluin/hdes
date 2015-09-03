@@ -250,14 +250,15 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
 
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-            // when the leaving and new key were both unique we cannot consider it
-            // a complete region.
-            if (last_uq == rot) {
-
-                _ACTION(end_region(kc, reg, h), "");
+            // if leaving and new key were only unique, the two are still just out of scope.
+            if (last_uq == rot || IS_UQ(kc->kct_scope[last_uq]) == false) {
+                if (last_uq == rot) {
+                    _ACTION(end_region(kc, reg, h), "");
+                } else {
+                    last_uq = rot;
+                }
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
-
-            } else if (IS_UQ(kc->kct_scope[last_uq])) {
+            } else {
                 // 2nd or later uniq within scope
                 if (kc->kct_scope[last_uq] != dummy)
                     ++kc->uqct;
@@ -269,9 +270,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                     uint64_t *k = kc->kct_scope[last_uq];
                     _ACTION(decr_excise(kc, k, kct, infior), "");
                 }
-            } else {
-                last_uq = rot;
-                h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
             }
         } else {
             // ts_offs + passed => current Nt, passed this key
@@ -280,24 +278,31 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             nt = res;
             uint64_t *k = kc->kct_scope[last_uq];
             if (ALREADY_ALL_SAME_NTS(kct)) { // yes, kct.
-                nt = kct[1] >> 62;
+                nt = _GET_NEXT_NT(kc, (kct[1] + *kct) & B2POS_MASK);
                 print_2dna(dna, rc, (kct[1] & B2POS_MASK) == dbgb2pos);
 //                EPR("%u, %u\t%u", kct[1] & B2POS_MASK, b2pos, nt);
+            } else if (last_uq == rot) {
+                _ACTION(end_region(kc, reg, h), "");
+                // set DISTINCT for each stored key if Nt does not match last 
+                if (k != dummy) { // XXX optional
+                    do {
+                        if (k != kc->kct_scope[last_uq]) {
+                            k = kc->kct_scope[last_uq];
+                            if (IS_FIRST(k) == false &&
+                                    ALREADY_ALL_SAME_NTS(k) == false &&
+                                    IS_UQ(k) == false &&
+                                    !(IS_LAST(k) && SAME_NTS(k)) && 
+                                    IS_ALL_SAME_NTS(k)) {
+                                // nextNts all the same. Extend key from buffer
+                            }
+                        }
+                    } while (KC_ROT(kc, last_uq) != rot);
+
+                }
             } else if (IS_UQ(k)) {
 
                 EPQ((kct[1] & B2POS_MASK) == dbgb2pos, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
                 update_max_infior(kct, *k);
-            } else if (last_uq == rot) {
-                _ACTION(end_region(kc, reg, h), "");
-                // set DISTINCT for each stored key if Nt does not match last 
-                /*if (k != dummy) { // XXX optional
-                    while (KC_ROT(kc, last_uq) != rot) {
-                        k = kc->kct_scope[last_uq];
-                        if (IS_ALL_SAME_NTS(k)) {
-                            // nextNts all the same. Extend key from buffer
-                        }
-                    } while (KC_ROT(kc, last_uq) != rot);
-                }*/
             } else {
                 last_uq = rot;
                 ASSERT(IS_FIRST(kct) || IS_ALL_SAME_NTS(kct) == false, return -EFAULT);
