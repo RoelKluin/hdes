@@ -65,12 +65,12 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
         --bd;
         ASSERT(*bd < kc->bd_l, return -EFAULT);
         //position beyond end of last boundary of this contig must be on a later one.
-        if (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) < *pos)
+        if (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l + bufi) < *pos)
             continue;
         EPQ(dbg > 16, "%s", kc->id + (*hdr)->part[0]);
-        while ((((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) > *pos) &&
+        while ((((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l + bufi) > *pos) &&
                 bd != (*hdr)->bnd.begin()) {
-            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l), pos);
+            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l), *pos);
             --bd;
         }
         ASSERT (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) <= *pos, return -EFAULT);
@@ -165,7 +165,11 @@ default:            dna = _seq_next(b, dna, rc);
                     if (dbg > 6) {
                         uint64_t pos = kc->kct[k] & B2POS_MASK;
                         c = get_tid_and_pos(kc, &pos, i);
-			if (c < 0) continue;
+			if (c < 0) {
+                            buf[i - KEY_WIDTH] = ~0ul;
+                            bufi[i - KEY_WIDTH] = i ^ wx;
+                            continue;
+                        }
                         ASSERT(c >= 0, goto out, "%lu", kc->kct[k] & B2POS_MASK);
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
                                 kc->kct[k] >> INFIOR_SHFT, ndx);
@@ -230,7 +234,7 @@ default:            dna = _seq_next(b, dna, rc);
 
             uint64_t pos = kc->kct[ndx] & B2POS_MASK;
 
-            EPQ(dbg > 6, "pos:%lu", pos);
+            EPQ(dbg >> 6, "pos:%lu", pos);
             c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
 	    if (c < 0) {	
 		while ((c = gc(g)) != '@' && c != -1) {}
