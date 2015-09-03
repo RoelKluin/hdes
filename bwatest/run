@@ -5,36 +5,68 @@ else
   samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
 fi
 
+die() {
+  echo -e "$1"
+  [ -z "$2" ] && exit 1 || exit $2;
+}
+USAGE="$0 [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] fasta.gz"
+
+TEMP=`getopt -o m:L: --long make:length: -n "$0" -- "$@"`
+if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
+
+# Note the quotes around `$TEMP': they are essential!
+eval set -- "$TEMP"
+
+MAKE=
+LENGTH=51
+while true; do
+  case "$1" in
+    -m|--make) MAKE="$2"; shift;;
+    -L|--length) LENGTH="$2"; shift;;
+    -- ) shift; break;;
+    * ) break;;
+  esac
+  shift;
+done
+[ $# -ne 1 ] && die "$USAGE\n\nneed fasta.gz"
+F="$1"
+[[ "$F" =~ \.gz$ ]] || die "$USAGE\n\nnot gzipped"
+[ -e "$F" ] || "$USAGE\n\nno such file: $F"
+
+
+BN="$(basename "$F" ".fa.gz")"
+
 # compile
-if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(fa\.cpp\|fa\.h\)" -amin -2)" ]; then
-  ../tst hg19_GL.fa.gz -c -m 12
+if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
+  ../tst ${BN}.fa.gz -c -m ${MAKE}
 else
   cd ..;
   make clean 
-  DEFINES="-DKEY_LENGTH=12" make;
+  DEFINES="-DKEY_LENGTH=${MAKE}" make;
   cd -
 fi
 
-if [ -f hg19_GL.1.uqct.bam ]; then
-  mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam
+BA=${BN}-SE_true-RL_${LENGTH}.1.uqct
+if [ -f ${BA}.bam ]; then
+  mv ${BA}.bam ${BA}_prev.bam
 fi
 
-(cat hg19_GL.1.hdr.sam
-../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
+(cat ${BN}.1.hdr.sam
+../uqct ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ../${BN}.2b.gz -l 51) |
 $samtools view -Sub - |
-$samtools sort - hg19_GL.1.uqct
+$samtools sort - ${BA}
 
-if [ ! -f "hg19_GL.1.uqct.bam" -o $(stat -c "%s" hg19_GL.1.uqct.bam) -lt 10000 ]; then # revert
-  mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam
+if [ ! -f "${BN}.1.uqct.bam" -o $(stat -c "%s" ${BA}.bam) -lt 10000 ]; then # revert
+  mv ${BA}_prev.bam ${BA}.bam
   echo reverted
 else # compare
-  mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai
-  $samtools index hg19_GL.1.uqct.bam &&
-diff -u <($samtools view hg19_GL.1.uqct.bam)\
- <($samtools view hg19_GL.1.uqct_prev.bam) |
- ./samdiff2batch.pl > batchfile &&
+  mv ${BA}.bam.bai ${BA}_prev.bam.bai
+  $samtools index ${BA}.bam &&
+diff -u <($samtools view ${BA}.bam)\
+ <($samtools view ${BA}_prev.bam) |
+ ./samdiff2batch.pl "${BA%.uqct}" > batchfile &&
 ~/dev/git/IGV/igv.sh -b batchfile
 fi
-
+#~/dev/git/IGV/igv.sh -g ../${BN}.fa ${BA}.bam
 
 

@@ -4,7 +4,7 @@ die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
 }
-USAGE="$0 [-c|--clean] [-p|--part] [-m|--make <KEY_LENGTH>] [-v|--valgrind] [-l|--leak-check] fasta.gz"
+USAGE="$0 [-c|--clean] [-p|--part] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] [-v|--valgrind] [-l|--leak-check] fasta.gz"
 
 TEMP=`getopt -o m:L:pcvl --long make:,length:,clean,part,valgrind,leak-check -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi

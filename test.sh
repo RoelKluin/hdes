@@ -156,14 +156,15 @@ valgrind ./uqct hg19_chr1_2.fa.gz -l 51 2>&1 | tee hg19_1_2uqct.err
 rm test.x*.gz; DEFINES="-DKEY_LENGTH=11" make && ./uqct test.fa.gz -l 51 2>&1 | tee test_uqct.err
 
 mkdir fakeq
-for ref in hg19_GL.fa.gz; do
-  for simerr in "" "-SE true"; do
-    out="fakeq/${ref%.fa.gz}${simerr// /_}"
+RL="-RL 51"
+for simerr in "" "-SE true"; do
+  for ref in hg19_chr1_2.fa.gz hg19_GL.fa.gz; do
+    out="fakeq/${ref%.fa.gz}${simerr// /_}${RL// /_}"
     echo $out
-    /opt/java/jre1.8.0_45/bin/java \
--jar  /home/roel/dev/git/hdes/external/ArtificialFastqGenerator.jar \
--R <(zcat hg19_GL.fa.gz) -O $out -RL 51 -RCNF 1 -SE true \
--S $(zcat hg19_GL.fa.gz | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
+    /opt/java/jre1.8.0_60/bin/java \
+-jar  /home/roel/dev/src/ArtificialFastqGenerator/ArtificialFastqGenerator.jar \
+-R <(zcat ${ref}) -O $out ${RL} -RCNF 1 $simerr \
+-S $(zcat ${ref} | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
   done
 done
 

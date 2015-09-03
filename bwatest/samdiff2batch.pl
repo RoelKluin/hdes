@@ -3,9 +3,14 @@
 use warnings;
 use strict;
 
+my $bn = shift;
+
 my %h;
 my $end = 0;
-my $ch = "new\nload hg19_GL.1.bwa.bam\nload hg19_GL.1.uqct_prev.bam\nload hg19_GL.1.uqct.bam\nsnapshotDirectory snaps\n";
+my $ch = "new\n";
+$ch .= "load ${bn}.bwa.bam\n" if -f "${bn}.bwa.bam";
+$ch .= "load ${bn}.uqct_prev.bam\n" if -f "${bn}.uqct_prev.bam";
+$ch .= "load ${bn}.uqct.bam\nsnapshotDirectory snaps\n";
 my $start;
 my $i = 0;
 
