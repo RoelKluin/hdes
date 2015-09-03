@@ -113,7 +113,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     while (c >= 0) {
         if (c != '>') { // N-stretch
             kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
-            t = KEY_WIDTH;
             do {
                 if (c != '\n') {
                     if (c != 'N') {
@@ -137,6 +136,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
                 EPQ(kc->s_l - h->s_s + corr != h->end_pos,
                         "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%u) == %u",
                         kc->s_l - h->s_s, corr, h->end_pos);
+                t = 0;
                 continue;
             }
             kc->bd[kc->bd_l].corr = corr;
@@ -160,6 +160,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
             EPQ(dbg > 5, "header %s", kc->id + h->part[0]);
             c = gc(g);
             if (!isb6(b6(c))) {
+                t = 0;
                 continue;
             }
         }
@@ -173,7 +174,7 @@ case 'C': case 'c': b = 2;
 case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
-default: // include 'N's and such to make sure the key is completed.
+default: // include 'N's and such to make sure the key is completed. FIXME: extend stretch instead?
                     dna = _seq_next(b, dna, rc);
                     continue;
             }
@@ -187,6 +188,7 @@ default: // include 'N's and such to make sure the key is completed.
                 EPQ(dbg > 1, "Key incomplete before next boundary - merging");
             }
             EPQ(dbg > 1, "jump at %lu", kc->s_l - h->s_s + corr);
+            t = KEY_WIDTH; // right? [or zero]
             continue; // join regions.
         }
         // ndx (key) is 2nd cNt bit excised, rc or dna
@@ -283,6 +285,9 @@ case 'A': case 'a':
             EPQ(kc->s_l - h->s_s + corr != h->end_pos,
                     "pos != h->end_pos: %lu == %u",
                     kc->s_l - h->s_s + corr, h->end_pos);
+            t = 0ul;
+        } else {
+            t = KEY_WIDTH;
         }
     }
     if (h == NULL)
