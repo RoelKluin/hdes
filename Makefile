@@ -5,7 +5,7 @@ CC=		ccache g++
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.015
+VERSION=	0.016
 LOBJS=
 PROG=		uqct
 INCLUDES=	
