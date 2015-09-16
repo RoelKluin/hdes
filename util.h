@@ -55,13 +55,13 @@ if_ever (!(cond)) { \
 
 #define _ACTION0(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg " %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
+    ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
 
 
 #define _ACTION(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg " at %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
+    ASSERT(res >= 0, goto err, msg "(%u) at %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);
 
 #define packed_struct struct __attribute__ ((__packed__))
