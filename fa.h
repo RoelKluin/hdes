@@ -49,15 +49,15 @@
 #define B2POS_MASK (ONE_CT -1ul)
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
-#define DISTINCT 0x8000000000000000
-#define UNIQUE 0x4000000000000000
-#define ALL_SAME_NTS (DISTINCT|UNIQUE)
+#define UNIQUE 0x8000000000000000
+#define DISTINCT 0x4000000000000000
+#define ALL_SAME_NTS (UNIQUE|DISTINCT)
 
-#define MAX_UQ (UNIQUE-ONE_CT)
+#define MAX_UQ (DISTINCT-ONE_CT)
 #define IS_UQ(k) (((k)[1] & (ALL_SAME_NTS|MAX_UQ)) == UNIQUE)
 
 
-#define REMAIN(k) (((k)[1] & (UNIQUE - 1ul)) >> BIG_SHFT)
+#define REMAIN(k) (((k)[1] & MAX_UQ) >> BIG_SHFT)
 
 #define NEXT_NT_NR(k) (*(k) & B2POS_MASK)
 
