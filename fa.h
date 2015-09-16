@@ -51,10 +51,9 @@
 
 #define UNIQUE 0x8000000000000000
 #define DISTINCT 0x4000000000000000
-#define ALL_SAME_NTS (UNIQUE|DISTINCT)
 
 #define MAX_UQ (DISTINCT-ONE_CT)
-#define IS_UQ(k) (((k)[1] & (ALL_SAME_NTS|MAX_UQ)) == UNIQUE)
+#define IS_UQ(k) (((k)[1] & 0xFFFFFE0000000000) == UNIQUE)
 
 
 #define REMAIN(k) (((k)[1] & MAX_UQ) >> BIG_SHFT)
@@ -71,7 +70,9 @@
 
 // check here whether all nextNts are the same - for key extension in
 // next iterations, set remain to 0? ts offset obsolete.
-#define ALREADY_ALL_SAME_NTS(k) (((k)[1] & ALL_SAME_NTS) == ALL_SAME_NTS)
+#define ALL_SAME_NTS(k) (((k)[1] & 0xFFFFFE0000000000) > UNIQUE)
+
+#define SAME_OR_UQ(k) (((k)[1] & UNIQUE) == UNIQUE)
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped

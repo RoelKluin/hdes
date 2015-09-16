@@ -139,15 +139,15 @@ static inline void mark_kct(kct_t C*C kc, uint64_t *C k)
 {
     if ((k[1] & B2POS_MASK) == dbgtsoffs) {
         EPQ(IS_FIRST(k), "IS_FIRST(k)");
-        EPQ(ALREADY_ALL_SAME_NTS(k), "ALREADY_ALL_SAME_NTS(k)");
+        EPQ(ALL_SAME_NTS(k), "ALL_SAME_NTS(k)");
         EPQ(IS_UQ(k), "IS_UQ(k)");
         EPR("REMAIN:%d", REMAIN(k) - (*(k) & B2POS_MASK));
         EPQ(SAME_NTS(k), "SAME_NTS(k)");
     }
-    if (ALREADY_ALL_SAME_NTS(k) || IS_UQ(k))
+    if (SAME_OR_UQ(k))
         return;
-    if ((k[1] & (ALL_SAME_NTS|MAX_UQ)) == ONE_CT) { // mark as uniq
-        k[1] ^= UNIQUE | ONE_CT | (k[1] & DISTINCT);
+    if ((k[1] & 0xBFFFFE0000000000) == 0ul) { // mark as uniq
+        k[1] |= UNIQUE | (k[1] & DISTINCT);
         EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "became uniq");
     }
 }
@@ -155,8 +155,7 @@ static inline void mark_kct(kct_t C*C kc, uint64_t *C k)
 static inline int mark_leaving_kct(kct_t C*C kc, uint64_t *C k)
 {
     EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "__LINE__\t%u", __LINE__);
-    ASSERT(IS_UQ(k) == false, return -EFAULT);
-    if (ALREADY_ALL_SAME_NTS(k))
+    if (SAME_OR_UQ(k))
         return 0;
     ASSERT((*k & B2POS_MASK) <= REMAIN(k), return -EFAULT);
 
@@ -169,7 +168,8 @@ static inline int mark_leaving_kct(kct_t C*C kc, uint64_t *C k)
         k[1] |= DISTINCT;
     } else if (IS_LAST(k)) {
         EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "** %lu", k[1] & B2POS_MASK);
-        k[1] |= ALL_SAME_NTS;
+        k[1] |= UNIQUE;
+        // now we need to rearange nextnts in next key(s)
     }
     EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "L%u\t%u(%lu <> %lu), same_Nts:%u", __LINE__, 
         IS_LAST(k), REMAIN(k), (*k & B2POS_MASK), SAME_NTS(k));
@@ -189,30 +189,23 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
 
     if (kct != exception) {// .. don't elevate key if it is the same as the one at r.rot.
         // update max inferiority
-        expect(infior < MAX_INFIOR) {
+        expect(infior < MAX_INFIOR)
             infior += INFIOR;
-        } else {
+        else
             WARN("MAX_INFIOR reached");
-        }
+
         if (infior > *kct)
             *kct ^= (*kct ^ infior) & INFIOR_MASK;
-
     }
     if(IS_UQ(kct))
         return 0;
-    //ASSERT(IS_LAST(kct) == false, return -EFAULT);
-    if (IS_LAST(kct)) //We can't assert this, why??
+    if (IS_LAST(kct))
         return 0;
-
-    if (ALREADY_ALL_SAME_NTS(kct)) // also if all same.
-        return 0;
-    
-    //if (((kct[1]) & (ALL_SAME_NTS|MAX_UQ)) == ALL_SAME_NTS) // also if all same.
-    //    return 0;
-    kct[1] -= ONE_CT;
-    // can't mark kct here since multiple same nt-keys may occur within scope.
 
     --*kct;
+    kct[1] -= ONE_CT;
+
+    // can't mark kct here since multiple same nt-keys may occur within scope.
 
     if (IS_LAST(kct)) // also if at last nextNt we can skip.
         return 0;
@@ -288,9 +281,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
         /* could process leaving key first. */
         k = kc->kct_scope[rot];
-        if (IS_UQ(k) == false) {
-            _ACTION(mark_leaving_kct(kc, k), "");
-        }
+        _ACTION(mark_leaving_kct(kc, k), "");
         KC_ROT(kc, rot);
 
         /* process new key */
@@ -326,14 +317,15 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             }
         } else {
             // ts_offs + passed => current Nt, passed this key
-            if (ALREADY_ALL_SAME_NTS(kct)) { // evaluated in previous iteration
+            if (ALL_SAME_NTS(kct)) { // evaluated in previous iteration
                 nt = _GET_NEXT_NT(kc, kct[1] & B2POS_MASK);
                 print_2dna(dna, rc, (kct[1] & B2POS_MASK) == dbgtsoffs);
             } else {
-                nt = (kct[1] + (*kct)++) & B2POS_MASK;
+                nt = (kct[1] + *kct) & B2POS_MASK;
                 _ACTION(get_nextnt(kc, nt), "");
                 nt = res;
             }
+            ++*kct;
             k = kc->kct_scope[last_uq];
             if (last_uq == rot) { // first out of scope
                 ASSERT(IS_UQ(k) == false, return -EFAULT);
@@ -373,9 +365,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     last_uq = rot;
     do {
         k = kc->kct_scope[rot];
-        if (IS_UQ(k) == false) {
-            _ACTION(mark_leaving_kct(kc, k), "");
-        }
+        _ACTION(mark_leaving_kct(kc, k), "");
     } while(KC_ROT(kc, rot) != last_uq);
     res = 0;
 err:
@@ -430,10 +420,9 @@ ext_uq_iter(kct_t* kc, unsigned *C iter)
     //dbg = 7;
     // FIXME: reset upon last occurance for non-uniq in inner loop
     for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2)
-        if (!IS_UQ(k)) {// at least one left (if unique position genomic 2bit)
+        if (IS_UQ(k) == false) {// at least one left (if unique position genomic 2bit)
             *k &= ~B2POS_MASK; // reset position tracking
-            if ((k[1] & ALL_SAME_NTS) != ALL_SAME_NTS)
-                k[1] &= ~ALL_SAME_NTS;
+            k[1] &= ~DISTINCT;
         }
 
     return kc->uqct;
