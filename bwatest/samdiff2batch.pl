@@ -8,9 +8,11 @@ my $bn = shift;
 my %h;
 my $end = 0;
 my $ch = "new\n";
+$ch .= "genome ${bn}.fa\n";
 $ch .= "load ${bn}.bwa.bam\n" if -f "${bn}.bwa.bam";
 $ch .= "load ${bn}.uqct_prev.bam\n" if -f "${bn}.uqct_prev.bam";
 $ch .= "load ${bn}.uqct.bam\nsnapshotDirectory snaps\n";
+print $ch;
 my $start;
 my $i = 0;
 
@@ -22,8 +24,6 @@ while (<>) {
  if (($p > $end) || ($ch ne $e[2])) {
      if (defined $start) {
          print "goto $ch:$start-$end\nsort base\ncollapse\nsnapshot ".$i++.".jpg\n";
-     } else {
-         print $ch;
      }
      $ch = $e[2];
      $start = $e[3];

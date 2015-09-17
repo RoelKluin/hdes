@@ -1,6 +1,45 @@
 #!/bin/bash
+ref="$1"
+[ -z "$ref" ] && ref="hg19_GL"
+KL=12
+RL=51 #TODO: configurable
+if [ "$ref" = "hg19" ]; then
+    KL=16
+elif [ "$ref" = "hg19_chr1_2" ]; then
+    KL=16
+fi
 
-cd /home/roel/dev/git/hdes
-gvim -p -geometry 212x90+0+0 -c "so dodev.vim"
+cd /home/roel/dev/git/hdes/bwatest
+samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
 
+BN="${ref}"
+BA=${BN}-SE_true-RL_${RL}.1
 
+while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa or continue?" k; do
+    if [ "$k" = "q" ]; then
+        break;
+    elif [ "$k" = "o" ]; then
+        git gui&
+        ../dodev&
+    elif [ "$k" = "r" ]; then
+        mv ${BA}.uqct_prev.bam ${BA}.uqct.bam
+        mv ${BA}.uqct_prev.bam.bai ${BA}.uqct.bam.bai
+    elif [ "$k" = "i" ]; then
+        echo "loading ${ref}.batchfile" 2>&1
+        ~/dev/git/IGV/igv.sh -g ${ref}.fa -b <(head ${ref}.batchfile)&
+    elif [ "$k" = "s" ]; then
+        diff -u <($samtools view ${BA}.uqct.bam)\
+        <($samtools view ${BA}.uqct_prev.bam) |
+        gview -
+    elif [ "$k" = "n" ]; then
+        ../tst ${ref}.fa.gz -c -m ${KL}
+    elif [ "$k" = "v" ]; then
+        ../tst ${ref}.fa.gz -c -m ${KL} -v
+    elif [ "$k" = "b" ]; then
+        ./run -B -m ${KL} -L ${RL} ../${ref}.fa.gz;
+    else
+        ./run -m ${KL} -L ${RL} ../${ref}.fa.gz;
+    fi
+done
+
+echo

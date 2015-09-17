@@ -1,6 +1,7 @@
 #!/bin/bash
 if [ "$(hostname)" = "Z" ]; then
   samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
+  bwa=/home/roel/dev/git/bwa/orig/bwa/bwa
 else
   samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
 fi
@@ -9,19 +10,21 @@ die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
 }
-USAGE="$0 [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] fasta.gz"
+USAGE="$0 [-B] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] fasta.gz"
 
-TEMP=`getopt -o m:L: --long make:length: -n "$0" -- "$@"`
+TEMP=`getopt -o m:L:B --long make:length:use-bwa -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
 eval set -- "$TEMP"
 
+USEBWA=
 MAKE=
 LENGTH=51
 while true; do
   case "$1" in
     -m|--make) MAKE="$2"; shift;;
+    -B|--use-bwa) USEBWA=1;;
     -L|--length) LENGTH="$2"; shift;;
     -- ) shift; break;;
     * ) break;;
@@ -35,6 +38,17 @@ F="$1"
 
 
 BN="$(basename "$F" ".fa.gz")"
+BA=${BN}-SE_true-RL_${LENGTH}.1
+
+if [ -n "${USEBWA}" ]; then
+  ls -lh ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz
+  (time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz | $samtools view -Sub - |
+  $samtools sort - ${BA}.bwa) 2>&1 |tee ${BA}.bwa.log && 
+  $samtools index ${BA}.bwa.bam
+  $samtools view -H ${BA}.bwa.bam > ${BA}.1.hdr.sam
+  exit 0;
+fi
+BA="${BA}.uqct"
 
 # compile
 if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
@@ -46,17 +60,16 @@ else
   cd -
 fi
 
-BA=${BN}-SE_true-RL_${LENGTH}.1.uqct
 if [ -f ${BA}.bam ]; then
   mv ${BA}.bam ${BA}_prev.bam
 fi
 
-(cat ${BN}.1.hdr.sam
+time (cat ${BN}.1.hdr.sam
 ../uqct ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ../${BN}.2b.gz -l 51) |
 $samtools view -Sub - |
-$samtools sort - ${BA}
+$samtools sort -m 2000000000 - ${BA}
 
-if [ ! -f "${BN}.1.uqct.bam" -o $(stat -c "%s" ${BA}.bam) -lt 10000 ]; then # revert
+if [ ! -f "${BA}.bam" -o $(stat -c "%s" ${BA}.bam) -lt 10000 ]; then # revert
   mv ${BA}_prev.bam ${BA}.bam
   echo reverted
 else # compare
@@ -64,8 +77,8 @@ else # compare
   $samtools index ${BA}.bam &&
 diff -u <($samtools view ${BA}.bam)\
  <($samtools view ${BA}_prev.bam) |
- ./samdiff2batch.pl "${BA%.uqct}" > batchfile &&
-~/dev/git/IGV/igv.sh -b batchfile
+ ./samdiff2batch.pl "${BA%.uqct}" > ${BN}.batchfile &&
+~/dev/git/IGV/igv.sh -b ${BN}.batchfile
 fi
 #~/dev/git/IGV/igv.sh -g ../${BN}.fa ${BA}.bam
 
