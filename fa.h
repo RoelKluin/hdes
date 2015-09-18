@@ -17,9 +17,6 @@
 #include "klib/khash.h"
 #include "gz.h"
 
-#define TEST_ROT
-//#define PROCESS_LEAVING
-
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
 #define B2LEN_SHFT 58
@@ -65,7 +62,7 @@
 //#define IS_LAST_PRE(k) (REMAIN(k) - (*(k) & B2POS_MASK) == 1ul)
 #define IS_LAST(k) (REMAIN(k) == NEXT_NT_NR(k))
 
-#define SAME_NTS(k) (((k)[1] & DISTINCT) == 0ul)
+#define IS_DISTINCT(k) (((k)[1] & DISTINCT) != 0ul)
 
 #define _GET_NEXT_NT(kc, p) (((kc)->ts[(p & B2POS_MASK)>>2] >> (((p)&3) << 1)) & 3)
 
@@ -118,7 +115,6 @@
     kc->kct_scope[rot] = k = kc->kct + kc->ndxkct[__ndx];\
     ASSERT(REMAIN(k) != 0, return -EFAULT, "%lu", k[1] & B2POS_MASK);\
     ASSERT(IS_UQ(k) || NEXT_NT_NR(k) < REMAIN(k), return -EFAULT, "%lu", k[1] & B2POS_MASK);\
-    EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "dbgtsoffs:%lu", k[1] & B2POS_MASK);\
     mark_uq_kct(kc, k);\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
     *k ^= (*k ^ __t) & STRAND_BIT;\

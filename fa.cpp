@@ -142,39 +142,34 @@ static inline void mark_uq_kct(kct_t C*C kc, uint64_t *C k)
         EPQ(ALL_SAME_NTS(k), "ALL_SAME_NTS(k)");
         EPQ(IS_UQ(k), "IS_UQ(k)");
         EPR("REMAIN:%d", REMAIN(k) - (*(k) & B2POS_MASK));
-        EPQ(SAME_NTS(k), "SAME_NTS(k)");
+        EPQ(IS_DISTINCT(k), "IS_DISTINCT(k)");
+        EPR("tsoffs:%lu", k[1] & B2POS_MASK);
     }
     if (SAME_OR_UQ(k))
         return;
     uint64_t p = k[1] + *k;
     if ((k[1] & 0xBFFFFE0000000000) == 0ul) { // mark as uniq
         k[1] ^= UNIQUE ^ (k[1] & DISTINCT);
-        EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "became uniq");
     } else if (IS_FIRST(k)) {
         // cleaning up for prev iteration here?
     } else if (_GET_NEXT_NT(kc, p) ^ _GET_NEXT_NT(kc, p - 1)) {
-        EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "<= %lu", k[1] & B2POS_MASK);
         k[1] |= DISTINCT;
     }
 }
 
 static inline int mark_same_kct(kct_t C*C kc, uint64_t *C k)
 {
-    EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "__LINE__\t%u", __LINE__);
     if (SAME_OR_UQ(k))
         return 0;
     ASSERT((*k & B2POS_MASK) <= REMAIN(k), return -EFAULT);
 
-    if (SAME_NTS(k) == false)
+    if (IS_DISTINCT(k))
         return 0;
 
     if (IS_LAST(k)) {
-        EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "** %lu", k[1] & B2POS_MASK);
         k[1] |= UNIQUE;
         // now we need to rearange nextnts in next key(s)
     }
-    EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "L%u\t%u(%lu <> %lu), same_Nts:%u", __LINE__, 
-        IS_LAST(k), REMAIN(k), (*k & B2POS_MASK), SAME_NTS(k));
     return 0;
 }
 
@@ -286,29 +281,15 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
         uint64_t nt;
         p = b2pos + h->s_s;
         KC_ROT(kc, rot);
-#if defined(PROCESS_LEAVING)
-        /* process leaving key first. */
-        k = kc->kct_scope[rot];
-        if(k != dummy) {
-            if (IS_UQ(k)) {
-                *k ^= (*k ^ (p - kc->ext + 1)) & B2POS_MASK;
-            } else {
-                _ACTION(mark_same_kct(kc, k), "");
-            }
-        }
-#endif
 
         /* process new key */
         _get_new_kct(kc, kct, dna, rc, rot);
     
         if (IS_UQ(kct)) {
-#if !defined(PROCESS_LEAVING)
             *kct ^= (*kct ^ (p + 1)) & B2POS_MASK;
-#endif
             nt = kct[1] & B2POS_MASK;
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
-            EPQ((kct[1] & B2POS_MASK) == dbgtsoffs, "uniq?[%u:%u]<", b2pos, nt);
 
             if (IS_UQ(kc->kct_scope[last_uq]) == false) { // first uniq
                 last_uq = rot;
@@ -330,13 +311,10 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
             }
         } else {
-#if !defined(PROCESS_LEAVING)
             _ACTION(mark_same_kct(kc, kct), "");
-#endif
             // ts_offs + passed => current Nt, passed this key
             if (ALL_SAME_NTS(kct)) { // evaluated in previous iteration
                 nt = _GET_NEXT_NT(kc, kct[1] & B2POS_MASK);
-                print_2dna(dna, rc, (kct[1] & B2POS_MASK) == dbgtsoffs);
             } else {
                 nt = (kct[1] + *kct) & B2POS_MASK;
                 _ACTION(get_nextnt(kc, nt), "");
@@ -350,7 +328,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
             } else if (IS_UQ(k)) { // may be in scope, or not - then handled later.
 
-                EPQ((kct[1] & B2POS_MASK) == dbgtsoffs, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
                 update_max_infior(kct, *k);
             } else { // out of scope, not first.
                 last_uq = rot;
@@ -379,20 +356,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     } else {
         h->mapable -= max(reg[1]->s + reg[1]->l + kc->ext, b2pos) - b2pos;
     }
-#if defined(PROCESS_LEAVING)
-    last_uq = rot;
-    p -= kc->ext;
-    do {
-        k = kc->kct_scope[rot];
-        ++p;
-        if(k != dummy)  continue;
-        if (IS_UQ(k)) {
-            *k ^= (*k ^ p) & B2POS_MASK;
-        } else {
-            _ACTION(mark_same_kct(kc, k), "");
-        }
-    } while(KC_ROT(kc, rot) != last_uq);
-#endif
     res = 0;
 err:
     if (res < -1) {
