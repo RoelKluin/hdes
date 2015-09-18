@@ -135,7 +135,7 @@ check_nt(kct_t C*C kc, C uint64_t nt, uint64_t p)
 
 }
 
-static inline void mark_kct(kct_t C*C kc, uint64_t *C k)
+static inline void mark_uq_kct(kct_t C*C kc, uint64_t *C k)
 {
     if ((k[1] & B2POS_MASK) == dbgtsoffs) {
         EPQ(IS_FIRST(k), "IS_FIRST(k)");
@@ -146,27 +146,29 @@ static inline void mark_kct(kct_t C*C kc, uint64_t *C k)
     }
     if (SAME_OR_UQ(k))
         return;
+    uint64_t p = k[1] + *k;
     if ((k[1] & 0xBFFFFE0000000000) == 0ul) { // mark as uniq
-        k[1] |= UNIQUE | (k[1] & DISTINCT);
+        k[1] ^= UNIQUE ^ (k[1] & DISTINCT);
         EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "became uniq");
+    } else if (IS_FIRST(k)) {
+        // cleaning up for prev iteration here?
+    } else if (_GET_NEXT_NT(kc, p) ^ _GET_NEXT_NT(kc, p - 1)) {
+        EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "<= %lu", k[1] & B2POS_MASK);
+        k[1] |= DISTINCT;
     }
 }
 
-static inline int mark_leaving_kct(kct_t C*C kc, uint64_t *C k)
+static inline int mark_same_kct(kct_t C*C kc, uint64_t *C k)
 {
     EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "__LINE__\t%u", __LINE__);
     if (SAME_OR_UQ(k))
         return 0;
     ASSERT((*k & B2POS_MASK) <= REMAIN(k), return -EFAULT);
 
-    if (IS_FIRST(k) || !SAME_NTS(k))
+    if (SAME_NTS(k) == false)
         return 0;
 
-    uint64_t p = k[1] + *k;
-    if (_GET_NEXT_NT(kc, p) ^ _GET_NEXT_NT(kc, p - 1)) {
-        EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "<= %lu", k[1] & B2POS_MASK);
-        k[1] |= DISTINCT;
-    } else if (IS_LAST(k)) {
+    if (IS_LAST(k)) {
         EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "** %lu", k[1] & B2POS_MASK);
         k[1] |= UNIQUE;
         // now we need to rearange nextnts in next key(s)
@@ -249,7 +251,6 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
  * scope - keylength minus keywidth distance - triggers a region insertion or
  * update. Also retrieve for this index the offset.
  */
-
         // TODO: if all nextNts are the same increase keylength.
 
 // reverse seq could be required for mapping - maybe 
@@ -263,7 +264,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     _buf_grow0(kc->bd, 2ul);    // one extra must be available for inter.
     Bnd *reg[3] = { kc->bd + lastx, kc->bd + lastx, kc->bd + *kc->bdit };
 
-    uint64_t dna = reg[1]->dna;   // first seq after skip
+    uint64_t p, dna = reg[1]->dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
     uint64_t dummy[2] = {0ul, UNIQUE};
     uint64_t* k, *kct = dummy;
@@ -271,6 +272,9 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     uint32_t b2pos = reg[1]->s + reg[1]->l;
     int res;
     kc->kct_scope[0] = dummy;
+    for (unsigned i = 0; i != kc->ext; ++i)
+        kc->kct_scope[i] = dummy;
+
 
     //dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
@@ -279,23 +283,33 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
 
     while(b2pos < reg[2]->s) { // until next uniq region,  stretch or contig
 
-        /* could process leaving key first. */
-        k = kc->kct_scope[rot];
-        _ACTION(mark_leaving_kct(kc, k), "");
+        uint64_t nt;
+        p = b2pos + h->s_s;
         KC_ROT(kc, rot);
+#if defined(PROCESS_LEAVING)
+        /* process leaving key first. */
+        k = kc->kct_scope[rot];
+        if(k != dummy) {
+            if (IS_UQ(k)) {
+                *k ^= (*k ^ (p - kc->ext + 1)) & B2POS_MASK;
+            } else {
+                _ACTION(mark_same_kct(kc, k), "");
+            }
+        }
+#endif
 
         /* process new key */
-        uint64_t nt, p = _get_new_kct(kc, kct, b2pos + h->s_s, dna, rc, rot);
+        _get_new_kct(kc, kct, dna, rc, rot);
     
         if (IS_UQ(kct)) {
+#if !defined(PROCESS_LEAVING)
+            *kct ^= (*kct ^ (p + 1)) & B2POS_MASK;
+#endif
             nt = kct[1] & B2POS_MASK;
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
             EPQ((kct[1] & B2POS_MASK) == dbgtsoffs, "uniq?[%u:%u]<", b2pos, nt);
 
-
-            *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-            
             if (IS_UQ(kc->kct_scope[last_uq]) == false) { // first uniq
                 last_uq = rot;
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
@@ -316,6 +330,9 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
             }
         } else {
+#if !defined(PROCESS_LEAVING)
+            _ACTION(mark_same_kct(kc, kct), "");
+#endif
             // ts_offs + passed => current Nt, passed this key
             if (ALL_SAME_NTS(kct)) { // evaluated in previous iteration
                 nt = _GET_NEXT_NT(kc, kct[1] & B2POS_MASK);
@@ -362,11 +379,20 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     } else {
         h->mapable -= max(reg[1]->s + reg[1]->l + kc->ext, b2pos) - b2pos;
     }
+#if defined(PROCESS_LEAVING)
     last_uq = rot;
+    p -= kc->ext;
     do {
         k = kc->kct_scope[rot];
-        _ACTION(mark_leaving_kct(kc, k), "");
+        ++p;
+        if(k != dummy)  continue;
+        if (IS_UQ(k)) {
+            *k ^= (*k ^ p) & B2POS_MASK;
+        } else {
+            _ACTION(mark_same_kct(kc, k), "");
+        }
     } while(KC_ROT(kc, rot) != last_uq);
+#endif
     res = 0;
 err:
     if (res < -1) {

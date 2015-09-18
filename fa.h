@@ -18,6 +18,7 @@
 #include "gz.h"
 
 #define TEST_ROT
+//#define PROCESS_LEAVING
 
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
@@ -46,7 +47,7 @@
 #define MAX_INFIOR 0xFFFFFF0000000000
 
 #define ONE_CT (1ul << BIG_SHFT)
-#define B2POS_MASK (ONE_CT -1ul)
+#define B2POS_MASK 0x000000FFFFFFFFFF
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
 #define UNIQUE 0x8000000000000000
@@ -107,17 +108,20 @@
 
 // if kc->ext, rotate to zero
 #define KC_ROT(kc, x) (x &= -(++x != (kc)->ext))
+#define KC_LEFT_ROT(kc, x) (x += (-(x == 0) & (kc)->ext) - 1)
 
 
-#define _get_new_kct(kc, k, pos, dna, rc, rot) ({\
+#define _get_new_kct(kc, k, dna, rc, rot) ({\
     typeof(dna) __ndx, __t;\
     _get_ndx(__ndx, __t, dna, rc);\
     __t <<= BIG_SHFT - KEY_WIDTH; /*store orient and infior in t*/\
     kc->kct_scope[rot] = k = kc->kct + kc->ndxkct[__ndx];\
+    ASSERT(REMAIN(k) != 0, return -EFAULT, "%lu", k[1] & B2POS_MASK);\
+    ASSERT(IS_UQ(k) || NEXT_NT_NR(k) < REMAIN(k), return -EFAULT, "%lu", k[1] & B2POS_MASK);\
     EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "dbgtsoffs:%lu", k[1] & B2POS_MASK);\
-    mark_kct(kc, k);\
+    mark_uq_kct(kc, k);\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
-    __t | (*k & INFIOR_MASK) | (pos);\
+    *k ^= (*k ^ __t) & STRAND_BIT;\
 })
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
