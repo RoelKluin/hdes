@@ -198,8 +198,12 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
     if(IS_UQ(kct) || IS_LAST(kct))
         return 0;
 
-    --*kct;
+    // because it is only incremented in the other case
     kct[1] -= ONE_CT;
+    if (ALL_SAME_NTS(kct) == false)
+        --*kct;
+    if (IS_UQ(kct))
+        return 0;
 
     // can't mark kct here since multiple same nt-keys may occur within scope.
 
@@ -312,8 +316,9 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 nt = (kct[1] + *kct) & B2POS_MASK;
                 _ACTION(get_nextnt(kc, nt), "");
                 nt = res;
+                ++*kct;
             }
-            ++*kct;
+
             k = kc->kct_scope[last_uq];
             if (last_uq == rot) { // first out of scope
                 ASSERT(IS_UQ(k) == false, return -EFAULT);

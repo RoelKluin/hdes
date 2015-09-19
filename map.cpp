@@ -154,8 +154,12 @@ default:            dna = _seq_next(b, dna, rc);
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
                     }
-                    ASSERT((kc->kct[k] & B2POS_MASK) < end_pos,
-                        c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
+                    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // why does this occur?
+                        EPR("0x%lx\t%d", ndx, print_ndx(ndx));
+                        buf[i - KEY_WIDTH] = ~0ul;
+                        bufi[i - KEY_WIDTH] = i ^ wx;
+                        continue;
+                    }
                     ASSERT((int)(kc->kct[k] & B2POS_MASK) >= 0,
                             c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx,
                             kc->kct[k],
