@@ -59,7 +59,6 @@
 #define NEXT_NT_NR(k) (*(k) & B2POS_MASK)
 
 #define IS_FIRST(k) (NEXT_NT_NR(k) == 0ul)
-//#define IS_LAST_PRE(k) (REMAIN(k) - (*(k) & B2POS_MASK) == 1ul)
 #define IS_LAST(k) (REMAIN(k) == NEXT_NT_NR(k))
 
 #define IS_DISTINCT(k) (((k)[1] & DISTINCT) != 0ul)
@@ -71,6 +70,8 @@
 #define ALL_SAME_NTS(k) (((k)[1] & 0xFFFFFE0000000000) > UNIQUE)
 
 #define SAME_OR_UQ(k) (((k)[1] & UNIQUE) == UNIQUE)
+
+#define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (UNIQUE|DISTINCT)) == UNIQUE)
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped
@@ -105,7 +106,8 @@
 
 // if kc->ext, rotate to zero
 #define KC_ROT(kc, x) (x &= -(++x != (kc)->ext))
-#define KC_LEFT_ROT(kc, x) (x += (-(x == 0) & (kc)->ext) - 1)
+#define KC_LEFT_LAST(kc, x) (x + (-(x == 0) & (kc)->ext) - 1)
+#define KC_LEFT_ROT(kc, x) (x = KC_LEFT_LAST(kc, x))
 
 
 #define _get_new_kct(kc, k, dna, rc, rot) ({\
@@ -115,8 +117,8 @@
     kc->kct_scope[rot] = k = kc->kct + kc->ndxkct[__ndx];\
     ASSERT(REMAIN(k) != 0, return -EFAULT, "%lu", k[1] & B2POS_MASK);\
     ASSERT(IS_UQ(k) || NEXT_NT_NR(k) < REMAIN(k), return -EFAULT, "%lu", k[1] & B2POS_MASK);\
-    mark_uq_kct(kc, k);\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
+    mark_uq_kct(kc, k);\
     *k ^= (*k ^ __t) & STRAND_BIT;\
 })
 

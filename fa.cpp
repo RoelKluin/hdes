@@ -141,7 +141,7 @@ static inline void mark_uq_kct(kct_t C*C kc, uint64_t *C k)
         EPQ(IS_FIRST(k), "IS_FIRST(k)");
         EPQ(ALL_SAME_NTS(k), "ALL_SAME_NTS(k)");
         EPQ(IS_UQ(k), "IS_UQ(k)");
-        EPR("REMAIN:%d", REMAIN(k) - (*(k) & B2POS_MASK));
+        EPR("REMAIN:%lu\tNEXT_NT_NR:%lu(+1)", REMAIN(k), NEXT_NT_NR(k));
         EPQ(IS_DISTINCT(k), "IS_DISTINCT(k)");
         EPR("tsoffs:%lu", k[1] & B2POS_MASK);
     }
@@ -166,7 +166,8 @@ static inline int mark_same_kct(kct_t C*C kc, uint64_t *C k)
     if (IS_DISTINCT(k))
         return 0;
 
-    if (IS_LAST(k)) {
+    // *k is not yet incremented.
+    if (REMAIN(k) == NEXT_NT_NR(k) + 1) {
         k[1] |= UNIQUE;
         // now we need to rearange nextnts in next key(s)
     }
@@ -194,18 +195,13 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
         if (infior > *kct)
             *kct ^= (*kct ^ infior) & INFIOR_MASK;
     }
-    if(IS_UQ(kct))
-        return 0;
-    if (IS_LAST(kct))
+    if(IS_UQ(kct) || IS_LAST(kct))
         return 0;
 
     --*kct;
     kct[1] -= ONE_CT;
 
     // can't mark kct here since multiple same nt-keys may occur within scope.
-
-    if (IS_LAST(kct)) // also if at last nextNt we can skip.
-        return 0;
 
     uint64_t nt = kct[1] & B2POS_MASK;// ts offset
 
@@ -267,9 +263,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     uint32_t b2pos = reg[1]->s + reg[1]->l;
     int res;
     kc->kct_scope[0] = dummy;
-    for (unsigned i = 0; i != kc->ext; ++i)
-        kc->kct_scope[i] = dummy;
-
 
     //dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
@@ -306,7 +299,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                     k = kc->kct_scope[last_uq];
                     _ACTION(decr_excise(kc, k, kct, infior), "");
                 }
-            } else { // just 1 out of scope
+            } else { // just 1 out of scope, so end, yet also 1st uniq.
                 _ACTION(end_region(kc, reg, h), "");
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
             }

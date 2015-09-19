@@ -19,7 +19,7 @@ static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const unsigned long dbgb2pos = ~0ul;
+static const unsigned long dbgtsoffs = 4575234;//4216651;//309452038;//187302;//3427726;//4453453;//880912;//~0ul;
 static int dbg = 3;
 
 #define C const
