@@ -58,6 +58,10 @@ if_ever (!(cond)) { \
     ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
 
+#define _EVAL(fun)\
+    res = fun;\
+    ASSERT(res >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
+
 
 #define _ACTION(fun, msg, ...)\
     res = fun;\

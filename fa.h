@@ -47,31 +47,34 @@
 #define B2POS_MASK 0x000000FFFFFFFFFF
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
-#define UNIQUE 0x8000000000000000
+#define MARKED 0x8000000000000000
 #define DISTINCT 0x4000000000000000
 
-#define MAX_UQ (DISTINCT-ONE_CT)
-#define IS_UQ(k) (((k)[1] & 0xFFFFFE0000000000) == UNIQUE)
+#define TSO_NT(k) ((k)[1] & B2POS_MASK)
 
+#define IS_DISTINCT(k) (((k)[1] & DISTINCT) == DISTINCT)
+#define ALL_SAME_NTS(k) (((k)[1] & MARKED) == MARKED)
 
-#define REMAIN(k) (((k)[1] & MAX_UQ) >> BIG_SHFT)
+#define _GET_NEXT_NT(kc, p) (((kc)->ts[((p) & B2POS_MASK)>>2] >> (((p)&3) << 1)) & 3)
+
+//WAS_UQ is not necessary. Decrement no longer occurs if unique
+#define IS_UQ(k) (((k)[1] & ~(MARKED|DISTINCT|ONE_CT)) <= ONE_CT)
+
+// N.B. one baased or zero based dependent on whther it is used before or after increment/decrement
+#define REMAIN(k) (((k)[1] & (DISTINCT-ONE_CT)) >> BIG_SHFT)
 
 #define NEXT_NT_NR(k) (*(k) & B2POS_MASK)
 
 #define IS_FIRST(k) (NEXT_NT_NR(k) == 0ul)
+
 #define IS_LAST(k) (REMAIN(k) == NEXT_NT_NR(k))
+#define WAS_LAST(k) (REMAIN(k) == NEXT_NT_NR(k) +1)
 
-#define IS_DISTINCT(k) (((k)[1] & DISTINCT) != 0ul)
 
-#define _GET_NEXT_NT(kc, p) (((kc)->ts[(p & B2POS_MASK)>>2] >> (((p)&3) << 1)) & 3)
+#define SAME_OR_UQ(k) (IS_UQ(k) || ALL_SAME_NTS(k))
 
-// check here whether all nextNts are the same - for key extension in
-// next iterations, set remain to 0? ts offset obsolete.
-#define ALL_SAME_NTS(k) (((k)[1] & 0xFFFFFE0000000000) > UNIQUE)
-
-#define SAME_OR_UQ(k) (((k)[1] & UNIQUE) == UNIQUE)
-
-#define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (UNIQUE|DISTINCT)) == UNIQUE)
+// TODO:
+#define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (MARKED|DISTINCT)) == MARKED)
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped
@@ -105,20 +108,25 @@
 })
 
 // if kc->ext, rotate to zero
+#define KC_ROT_NEXT(kc, x) ((x+1) & -((x+1) != (kc)->ext))
 #define KC_ROT(kc, x) (x &= -(++x != (kc)->ext))
-#define KC_LEFT_LAST(kc, x) (x + (-(x == 0) & (kc)->ext) - 1)
-#define KC_LEFT_ROT(kc, x) (x = KC_LEFT_LAST(kc, x))
+#define KC_LEFT_ROT_NEXT(kc, x) (x + (-(x == 0) & (kc)->ext) - 1)
+#define KC_LEFT_ROT(kc, x) (x = KC_LEFT_ROT_NEXT(kc, x))
 
 
-#define _get_new_kct(kc, k, dna, rc, rot) ({\
+#define _get_new_kct(kc, k, dna, rc) ({\
     typeof(dna) __ndx, __t;\
     _get_ndx(__ndx, __t, dna, rc);\
     __t <<= BIG_SHFT - KEY_WIDTH; /*store orient and infior in t*/\
-    kc->kct_scope[rot] = k = kc->kct + kc->ndxkct[__ndx];\
+    k = kc->kct + kc->ndxkct[__ndx];\
     ASSERT(REMAIN(k) != 0, return -EFAULT, "%lu", k[1] & B2POS_MASK);\
-    ASSERT(IS_UQ(k) || NEXT_NT_NR(k) < REMAIN(k), return -EFAULT, "%lu", k[1] & B2POS_MASK);\
+    ASSERT(IS_UQ(k) || NEXT_NT_NR(k) <= REMAIN(k), return -EFAULT, "%lu", k[1] & B2POS_MASK);\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
-    mark_uq_kct(kc, k);\
+    EPQ0(TSO_NT(k) == dbgtsoffs, "%s%s%s%s%sREMAIN:%lu\tNEXT_NT_NR:%lu(+1)\t",\
+            IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "", \
+        IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",\
+        IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k));\
+    print_2dna(dna, rc, TSO_NT(k) == dbgtsoffs);\
     *k ^= (*k ^ __t) & STRAND_BIT;\
 })
 
@@ -193,7 +201,7 @@ struct kct_t {
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
     uint64_t ts_l, s_l;
-    uint32_t id_l, bd_l, kct_l, uqct;
+    uint32_t id_l, bd_l, kct_l, uqct, pending;
     unsigned ext; // not stored
     uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
     uint8_t kct_m;
