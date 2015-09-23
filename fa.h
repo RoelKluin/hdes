@@ -17,6 +17,8 @@
 #include "klib/khash.h"
 #include "gz.h"
 
+//#define TEST_CLEARANCE
+
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
 #define B2LEN_SHFT 58

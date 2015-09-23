@@ -141,8 +141,6 @@ mark_leaving(kct_t C*C kc, uint64_t *C k)
     uint64_t t = *k + k[1] - 1; // position of nextnt, to compare with former nextnt.
     EPQ(TSO_NT(k) == dbgtsoffs, "\t%c", b6(_GET_NEXT_NT(kc, t)<<1));
 
-    ASSERT(IS_UQ(k) == false, return -EFAULT);
-
     if (NEXT_NT_NR(k) == 1ul)
         return 0;
 
@@ -163,6 +161,10 @@ mark_leaving(kct_t C*C kc, uint64_t *C k)
     }
     return 0;
 }
+#define mark_leaving(kc, k) ({\
+    EPQ0(TSO_NT(k) == dbgtsoffs, "%s +%u mark_leaving()", __FILE__, __LINE__);\
+    mark_leaving(kc, k);\
+})
 
 static inline C int
 get_nextnt(kct_t C*C kc, C uint64_t nt)
@@ -174,8 +176,6 @@ get_nextnt(kct_t C*C kc, C uint64_t nt)
 static int
 decr_excise(kct_t C*C kc, uint64_t *C k, C uint64_t *C kct, uint64_t infior)
 {
-    EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs exised before unique %lu", TSO_NT(kct));
-
     if (k != kct) // .. don't elevate key if it is the same as the one at r.rot.
         update_max_infior(k, infior);
 
@@ -228,6 +228,11 @@ decr_excise(kct_t C*C kc, uint64_t *C k, C uint64_t *C kct, uint64_t infior)
     *q = ((*q ^ offs) << 2) ^ t ^ offs;  // move top part back up, add rest.
     return 0;
 }
+#define decr_excise(kc, k, kct, infior) ({\
+    EPQ(TSO_NT(k) == dbgtsoffs, "%s +%u decr_excise() before unique %lu",\
+            __FILE__, __LINE__, TSO_NT(kct));\
+    decr_excise(kc, k, kct, infior);\
+})
 
 /*
  * A first uniq marks a potential start of a region, a 2nd or later uniq, within
@@ -309,7 +314,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 EPQ(TSO_NT(kct) == dbgtsoffs, "(kct == dbg: first uniq)");
                 while (last_uq != rot) {
                     ASSERT(IS_UQ(k) == false, return -EFAULT, "uq in scope after all?");
-                    EPQ0(TSO_NT(k) == dbgtsoffs, " ==> first uniq (evaluation)");
                     _EVAL(mark_leaving(kc, k));
                     k = kc->kct_scope[KC_ROT(kc, last_uq)];
                 }
@@ -333,8 +337,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                         ++kc->pending;
                     } else {
                         _EVAL(decr_excise(kc, k, kct, infior));
-                        if (IS_LAST(k) && IS_UQ(k) == false) {
-                            EPQ0(TSO_NT(k) == dbgtsoffs, " ==> decr_excise (evaluation)");
+                        if (IS_LAST(k)) {
                             _EVAL(mark_leaving(kc, k));
                         }
                     }
@@ -343,7 +346,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 EPQ(TSO_NT(kct) == dbgtsoffs, "(kct == dbg: uniq, but just 1 out of scope)");
                 while (KC_ROT(kc, last_uq) != rot) {
                     k = kc->kct_scope[last_uq];
-                    EPQ0(TSO_NT(k) == dbgtsoffs, " ==> just 1 out of scope, so end, yet also 1st uniq (evaluation)");
                     ASSERT(IS_UQ(k) == false, return -EFAULT, "uq in scope after all?");
                     _EVAL(mark_leaving(kc, k));
                 }
@@ -372,12 +374,10 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                     _EVAL(end_region(kc, reg, h));
                 } else { // nth
                     ASSERT(IS_UQ(k) == false, return -EFAULT);
-                    EPQ0(TSO_NT(k) == dbgtsoffs, " ==> out of scope, not first (evaluation)");
                     _EVAL(mark_leaving(kc, k));
                 }
                 while (KC_ROT(kc, last_uq) != rot) {
                     k = kc->kct_scope[last_uq];
-                    EPQ0(TSO_NT(k) == dbgtsoffs, " ==> first out of scope (evaluation)");
                     ASSERT(IS_UQ(k) == false, return -EFAULT, "uq in scope after all?");
                     _EVAL(mark_leaving(kc, k));
                 }
@@ -411,9 +411,8 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 if (IS_UQ(k)) { // Ok. Handle remaining prior position in next iteration.
                     ++kc->pending;
                 } else {
-                    _EVAL(decr_excise(kc, k, NULL, infior));
-                    if (IS_LAST(k) && IS_UQ(k) == false) {
-                        EPQ0(TSO_NT(k) == dbgtsoffs, " ==> post loop adjoining (evaluation)");
+                    _EVAL(decr_excise(kc, k, dummy, infior));
+                    if (IS_LAST(k)) {
                         _EVAL(mark_leaving(kc, k));
                     }
                 }
@@ -424,7 +423,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
                 if (IS_UQ(k)) { // Ok. Handle remaining prior position in next iteration.
                     ++kc->pending;
                 } else {
-                    EPQ0(TSO_NT(k) == dbgtsoffs, " ==> post loop (evaluation)");
                     _EVAL(mark_leaving(kc, k));
                 }
             }
@@ -434,7 +432,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
         h->mapable -= max(reg[1]->s + reg[1]->l + kc->ext, b2pos) - b2pos;
         while (last_uq != rot) {
             ASSERT(IS_UQ(k) == false, return -EFAULT, "uq in scope after all?");
-            EPQ0(TSO_NT(k) == dbgtsoffs, " ==> post loop (evaluation)");
             _EVAL(mark_leaving(kc, k));
             k = kc->kct_scope[KC_ROT(kc, last_uq)];
         }
@@ -492,11 +489,17 @@ ext_uq_iter(kct_t* kc, unsigned *C iter)
             mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"), kc->pending);
     //dbg = 7;
     // FIXME: reset upon last occurance for non-uniq in inner loop
-    for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2)
+    for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2) {
         if (IS_UQ(k) == false) {// at least one left (if unique position genomic 2bit)
+#if defined(TEST_CLEARANCE)
+            ASSERT(NEXT_NT_NR(k) == 0ul, return -EFAULT, "[%lu]", TSO_NT(k));
+            ASSERT(IS_DISTINCT(k), return -EFAULT, "[%lu]", TSO_NT(k));
+#else
             *k &= ~B2POS_MASK; // reset position tracking
             k[1] &= ~DISTINCT;
+#endif
         }
+    }
 
     return kc->uqct | kc->pending;
 }
