@@ -47,13 +47,15 @@
 #define INFIOR INFERIORITY //((uint64_t)(iter+1) << INFIOR_SHFT)  //INFERIORITY
 #define MAX_INFIOR 0xFFFFFF0000000000
 
-#define ONE_CT (1ul << BIG_SHFT)
 #define B2POS_MASK 0x000000FFFFFFFFFF
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 #define MARKED 0x8000000000000000
 #define DISTINCT 0x4000000000000000
+
+#define ONE_CT (1ul << BIG_SHFT)
+#define REMAIN(k) (((k)[1] >> BIG_SHFT) & 0x3FFFFF)
 
 #define TSO_NT(k) ((k)[1] & B2POS_MASK)
 
@@ -62,11 +64,9 @@
 
 #define _GET_NEXT_NT(kc, p) (((kc)->ts[((p) & B2POS_MASK)>>2] >> (((p) & 3) << 1)) & 3)
 
-// N.B. one baased or zero based dependent on whther it is used before or after increment/decrement
-#define REMAIN(k) (((k)[1] >> BIG_SHFT) & 0x3FFFFF)
 
 // Note: if PENDING(k) != 0 then we may or may not want to act.
-#define IS_UQ(k) (REMAIN(k) <= PENDING(k) + 1ul)
+#define IS_UQ(k) (REMAIN(k) <= PENDING(k))
 
 #define NEXT_NT_NR(k) ((*(k) & (ONE_PENDING - 1ul)) + PENDING(k))
 #define NT_OFFS(k) (TSO_NT(k) + NEXT_NT_NR(k))

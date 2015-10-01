@@ -22,6 +22,10 @@ tabnew util.h
 vs 
 winc r
 44sp util.h
+tabnew map.cpp
+vs 
+winc r
+44sp map.h
 tabnew test.sh
 vs 
 winc r

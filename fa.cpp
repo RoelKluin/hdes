@@ -136,8 +136,9 @@ check_nt(kct_t C*C kc, C uint64_t nt, uint64_t p)
 }
 
 static inline C int
-get_nextnt(kct_t C*C kc, C uint64_t nt)
+get_nextnt(kct_t C*C kc, uint64_t nt)
 {
+    nt &= B2POS_MASK;
     ASSERT(nt < (kc->ts_l << 2), return -EFAULT);
     return _GET_NEXT_NT(kc, nt); // next Nt
 }
@@ -196,7 +197,7 @@ static int
 mark_all(kct_t C*C kc, unsigned i, unsigned const end)
 {
     int res = 0;
-    while (i != end)
+    while (i < end)
         _EVAL(mark_leaving(kc, kc->kct_scope[i++]));
 err:
     EPQ(res, "error during mark_all()");
@@ -269,19 +270,15 @@ out:
     return err;
 
 }
-#define decr_excise(kc, k) ({\
-    EPQ(TSO_NT(k) == dbgtsoffs, "%s +%u decr_excise()",\
-            __FILE__, __LINE__);\
-    decr_excise(kc, k);\
-})
 
 static int
 decr_excise_all(kct_t C*C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
 {
     int res = 0;
     uint64_t infior = max(*k, *kct);
-    for (unsigned i = 1; i != end; ++i) {
-        k = kc->kct_scope[i];
+    unsigned i = IS_UQ(k) ? 1 : 0;
+    while (i < end) { // != test won't work for 1st if dummy.
+        k = kc->kct_scope[i++];
         if (k != kct) // .. don't elevate key if it is the one that became uniq
             update_max_infior(k, infior);
                 _EVAL(decr_excise(kc, k));
@@ -291,7 +288,10 @@ err:
     EPQ(res, "before uniq %lu", TSO_NT(kct));
     return res;
 }
-
+#define decr_excise_all(kc, k, kct, end) ({\
+    ASSERT((res = decr_excise_all(kc, k, kct, end)) >= 0, goto err,\
+	"%s +%u decr_excise_all()", __FILE__, __LINE__);\
+})
 
 /*
  * A first uniq marks a potential start of a region, a 2nd or later uniq, within
@@ -323,7 +323,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     index = 0;
 
     //dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
-    EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t":"", 
+    EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
             hdr, b2pos, reg[2]->s, reg[2]->s + reg[2]->l);
     print_dna(dna, dbg > 3);
 
@@ -350,7 +350,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             //KC_ROT(ext, rot); // not here.
         } */
 
-        if (IS_UQ(kct)/* || NEXT_NT_NR(kct) == REMAIN(kct)*/) {
+        if (IS_UQ(kct)) {
 
             *kct ^= (*kct ^ (p + 1)) & B2POS_MASK;
             _EVAL(get_nextnt(kc, kct[1]));
@@ -370,7 +370,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
         	    ++kc->uqct;
 
                 // elevate all inbetween non-uniques by the max of these:
-                _EVAL(decr_excise_all(kc, k, kct, index));
+                decr_excise_all(kc, k, kct, index);
             }
 	    index = 0;
         } else {
@@ -410,7 +410,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     k = kc->kct_scope[0];
     if (IS_UQ(k)) { // there was a unique in scope
         EPQ (dbg > 4, "Post loop boundary handling [%u]", b2pos);
-        _EVAL(decr_excise_all(kc, k, kct, index));
+        decr_excise_all(kc, k, kct, index);
 	if (k != dummy)
             ++kc->uqct;
         _EVAL(adjoining_boundary(kc, reg, h, dna, b2pos));

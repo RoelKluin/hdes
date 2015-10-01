@@ -9,7 +9,7 @@ elif [ "$ref" = "hg19_chr1_2" ]; then
     KL=16
 fi
 
-source environment.sh
+source $(dirname $0)/environment.sh
 
 cd $hdesdir/bwatest
 
@@ -20,7 +20,7 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]a
     if [ "$k" = "q" ]; then
         break;
     elif [ "$k" = "o" ]; then
-        git gui&
+        [ -e /usr/lib/git-core/git-gui ] && git gui&
         cd $hdesdir
         gvim -p -geometry 212x90+0+0 -c "so $hdesdir/dodev.vim"&
         cd $hdesdir/bwatest
@@ -35,18 +35,18 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]a
         <($samtools view ${BA}.uqct_prev.bam) |
         gview -
     elif [ "$k" = "n" ]; then
-        ../tst ${ref}.fa.gz -c -m ${KL}
+        $hdesdir/tst ${ref}.fa.gz -c -m ${KL}
     elif [ "$k" = "v" ]; then
-        ../tst ${ref}.fa.gz -c -m ${KL} -v
+        $hdesdir/tst ${ref}.fa.gz -c -m ${KL} -v
     elif [ "$k" = "b" ]; then
-        (./run -B -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
+        ($hdesdir/bwatest/run -B -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     elif [ "$k" = "l" ]; then
-        gview ../last.log
+        gview $hdesdir/last.log
     elif [ "$k" = "t" ]; then
-        touch ../fa.cpp
-        (./run -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
+        touch $hdesdir/fa.cpp
+        ($hdesdir/bwatest/run -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     else
-        (./run -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
+        ($hdesdir/bwatest/run -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     fi
 done
 

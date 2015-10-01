@@ -1,5 +1,9 @@
 #!/bin/bash
-cd /home/roel/dev/git/hdes/
+
+source $(dirname $0)/environment.sh
+
+
+cd $hdesdir
 die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
@@ -34,11 +38,10 @@ done
 F="$1"
 [ -e "$F" ] || "$USAGE\n\nno such file: $F"
 
-[[ "$F" =~ \.gz$ ]] && BN="$(basename "$F" ".fa.gz")" || BN="$(basename "$F" ".fa")"
+BN="${F%.fa*}"
 
 
 
-BN="$(basename "$F" ".gz")"
 [ -e "${BN}.err" ] && mv "${BN}.err" "${BN}.old.err"
 
 if [ -n "$PART" ]; then

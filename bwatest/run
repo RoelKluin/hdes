@@ -1,5 +1,5 @@
 #!/bin/bash
-source ../environment.sh
+source $(dirname $0)/../environment.sh
 
 die() {
   echo -e "$1"
@@ -44,10 +44,11 @@ fi
 BA="${BA}.uqct"
 
 # compile
-if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
-  ../tst ${F} -c -m ${MAKE}
+if [ -n "$(find $hdesdir/* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
+  echo $hdesdir/tst ${F} -c -m ${MAKE}
+  $hdesdir/tst ${F} -c -m ${MAKE}
 else
-  cd ..;
+  cd $hdesdir;
   make clean
   DEFINES="-DKEY_LENGTH=${MAKE}" make;
   cd -
@@ -59,7 +60,7 @@ if [ -f ${BA}.bam ]; then
 fi
 
 time (cat ${BN}.1.hdr.sam
-../uqct ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ../${F/.fa/.2b} -l 51) |
+$hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l 51) |
 $samtools view -Sub - |
 $samtools sort -m 2000000000 - ${BA}
 
