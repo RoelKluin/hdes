@@ -30,18 +30,17 @@ while true; do
 done
 [ $# -ne 1 ] && die "$USAGE\n\nneed fasta.gz"
 F="$1"
-[[ "$F" =~ \.gz$ ]] || die "$USAGE\n\nnot gzipped"
+#[[ "$F" =~ \.gz$ ]] || die "$USAGE\n\nnot gzipped"
 [ -e "$F" ] || "$USAGE\n\nno such file: $F"
 
-
-BN="$(basename "$F" ".fa.gz")"
+[[ "$F" =~ \.gz$ ]] && BN="$(basename "$F" ".fa.gz")" || BN="$(basename "$F" ".fa")"
 
 # compile
 if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
-  ../tst ${BN}.fa.gz -c -m ${MAKE}
+  ../tst ${F} -c -m ${MAKE}
 else
   cd ..;
-  make clean 
+  make clean
   DEFINES="-DKEY_LENGTH=${MAKE}" make;
   cd -
 fi
@@ -52,7 +51,7 @@ if [ -f ${BA}.bam ]; then
 fi
 
 (cat ${BN}.1.hdr.sam
-../uqct ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ../${BN}.2b.gz -l 51) |
+../uqct ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ../${F/.fa/.2b} -l 51) |
 $samtools view -Sub - |
 $samtools sort - ${BA}
 

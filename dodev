@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd /home/roel/dev/git/hdes
+cd $(dirname $0)/hdes
 gvim -p -geometry 212x90+0+0 -c "so dodev.vim"
 
 

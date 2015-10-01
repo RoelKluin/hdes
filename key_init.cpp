@@ -12,6 +12,7 @@
 #include <ctype.h> // isspace()
 
 #define ENS_HDR_PARTCT 10
+//enum ensembl_parts {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
@@ -128,7 +129,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
             EPR("=>\tN-stretch at Nt %lu (%lu/%u)", kc->s_l - h->s_s + corr, t, corr);
             corr += t;
             if (c == '>' || c == -1) { // skip N's at end.
-                corr -= 2 * KEY_WIDTH;
+                corr -= KEY_WIDTH;
                 kc->bd[kc->bd_l].corr = corr;
 
                 EPR("processed %lu Nts for %s", kc->s_l - h->s_s, kc->id + h->part[0]);
@@ -155,8 +156,8 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
 
             h = new_header(kc, g, gc);
             corr = kc->bd[kc->bd_l].corr;
-            h->s_s = kc->s_l; 
-            if (h == NULL) return -EFAULT;
+            h->s_s = kc->s_l;
+            ASSERT(h != NULL, return -EFAULT);
             EPQ(dbg > 5, "header %s", kc->id + h->part[0]);
             c = gc(g);
             if (!isb6(b6(c))) {
@@ -290,8 +291,7 @@ case 'A': case 'a':
             t = KEY_WIDTH;
         }
     }
-    if (h == NULL)
-        return -EFAULT;
+    ASSERT(h != NULL, return -EFAULT);
     kc->bd[kc->bd_l].l = 0;
     kc->bd[kc->bd_l].corr = corr;
     kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
@@ -306,8 +306,8 @@ static int
 kct_convert(kct_t* kc)
 {
     kc->ts_l = kc->s_l; // about as many next NTs as Nts.
-    // XXX: requirement of + 1 below is strangely needed.
-    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 1;
+    // XXX: requirement of addition below is strangely needed +1 seems to work in most cases. +4 here just to be sure..
+    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 4;
     uint8_t *dest = (uint8_t*)malloc(ts_end);
     ASSERT(dest != NULL, return -ENOMEM);
     kc->ts = dest;

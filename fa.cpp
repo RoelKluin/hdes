@@ -135,6 +135,14 @@ check_nt(kct_t C*C kc, C uint64_t nt, uint64_t p)
 
 }
 
+static inline void mark_kct(kct_t C*C kc, uint64_t *C k)
+{
+    if ((k[1] & (UNIQUE|MAX_UQ)) == ONE_CT) { // mark as uniq
+	k[1] ^= UNIQUE | ONE_CT;
+	EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "became uniq");
+    }
+}
+
 static inline C int
 get_nextnt(kct_t C*C kc, C uint64_t nt)
 {
@@ -163,10 +171,13 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
         return 0;
 
     kct[1] -= ONE_CT;
+    // can't mark kct here since multiple same nt-keys may occur within scope.
 
     --*kct;
+
     if (IS_LAST(kct)) // also if at last nextNt we can skip.
         return 0;
+
     uint64_t nt = kct[1] & B2POS_MASK;// ts offset
 
     uint64_t offs = REMAIN(kct); // remaining
@@ -190,7 +201,7 @@ decr_excise(kct_t C*C kc, uint64_t *C kct, C uint64_t *C exception, uint64_t inf
 
     // mask to cover this and past nucleotide.
     while (q != qe) {
-        *q |= (q[1] & 3) << 6; //XXX
+        *q |= (q[1] & 3) << 6;
         *++q >>= 2;
     }
     // append excised Nt to end.
@@ -246,15 +257,15 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             nt = kct[1] & B2POS_MASK;
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
-            EPQ((kct[1] & B2POS_MASK) == dbgb2pos, "uniq?[%u:%u]<", b2pos, nt);
+            EPQ((kct[1] & B2POS_MASK) == dbgtsoffs, "uniq?[%u:%u]<", b2pos, nt);
 
 
             *kct ^= (*kct ^ (p+1)) & STRAND_POS; //position in sam is one-based.
-            // if leaving and new key were only unique, the two are still just out of scope.
+
             if (last_uq == rot || IS_UQ(kc->kct_scope[last_uq]) == false) {
-                if (last_uq == rot) {
+                if (last_uq == rot) { // just 1 out of scope
                     _ACTION(end_region(kc, reg, h), "");
-                } else {
+                } else { // first uniq
                     last_uq = rot;
                 }
                 h->mapable += pot_region_start(reg, dna, b2pos, kc->ext);
@@ -277,36 +288,16 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             _ACTION(get_nextnt(kc, nt), "");
             nt = res;
             uint64_t *k = kc->kct_scope[last_uq];
-            if (ALREADY_ALL_SAME_NTS(kct)) { // yes, kct.
-                nt = _GET_NEXT_NT(kc, (kct[1] + *kct) & B2POS_MASK);
-                print_2dna(dna, rc, (kct[1] & B2POS_MASK) == dbgb2pos);
-//                EPR("%u, %u\t%u", kct[1] & B2POS_MASK, b2pos, nt);
-            } else if (last_uq == rot) {
+            if (last_uq == rot) { // first out of scope
+                ASSERT(IS_UQ(k) == false, return -EFAULT);
                 _ACTION(end_region(kc, reg, h), "");
-                // set DISTINCT for each stored key if Nt does not match last 
-                if (k != dummy) { // XXX optional
-                    do {
-                        if (k != kc->kct_scope[last_uq]) {
-                            k = kc->kct_scope[last_uq];
-                            if (IS_FIRST(k) == false &&
-                                    ALREADY_ALL_SAME_NTS(k) == false &&
-                                    IS_UQ(k) == false &&
-                                    !(IS_LAST(k) && SAME_NTS(k)) && 
-                                    IS_ALL_SAME_NTS(k)) {
-                                // nextNts all the same. Extend key from buffer
-                            }
-                        }
-                    } while (KC_ROT(kc, last_uq) != rot);
 
-                }
-            } else if (IS_UQ(k)) {
+            } else if (IS_UQ(k)) { // may be in scope, or not - then handled later.
 
-                EPQ((kct[1] & B2POS_MASK) == dbgb2pos, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
+                EPQ((kct[1] & B2POS_MASK) == dbgtsoffs, "one-uniq:[%u:%u]<%lu>", b2pos, nt, REMAIN(kct));
                 update_max_infior(kct, *k);
-            } else {
+            } else { // out of scope, not first.
                 last_uq = rot;
-                ASSERT(IS_FIRST(kct) || IS_ALL_SAME_NTS(kct) == false, return -EFAULT);
-                //EPQ0(IS_ALL_SAME_NTS(kct), "%lu ", __LINE__);
             }
             ++*kct;
         }
@@ -336,7 +327,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
     res = 0;
 err:
     if (res < -1) {
-        EPR0("[%u]\t", b2pos);
+        EPR0("[b2pos:%u, tsoffs:%lu], \t", b2pos, kct[1] & B2POS_MASK);
         print_2dna(dna, rc);
     }
     return res;

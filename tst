@@ -32,25 +32,28 @@ while true; do
 done
 [ $# -ne 1 ] && die "$USAGE\n\nneed fasta.gz"
 F="$1"
-[[ "$F" =~ \.gz$ ]] || die "$USAGE\n\nnot gzipped"
 [ -e "$F" ] || "$USAGE\n\nno such file: $F"
+
+[[ "$F" =~ \.gz$ ]] && BN="$(basename "$F" ".fa.gz")" || BN="$(basename "$F" ".fa")"
+
 
 
 BN="$(basename "$F" ".gz")"
 [ -e "${BN}.err" ] && mv "${BN}.err" "${BN}.old.err"
 
 if [ -n "$PART" ]; then
-  for f in "${BN%.fa}".{ub,uq}.gz; do
-    mv $f ${f%.gz}.old.gz 2> /dev/null;
+  for x in ub uq; do
+    mv ${F/.fa/.${x}} ${F/.fa/.${x}.old};
   done
 elif [ -n "$CLEAN" ]; then
-  for f in "${BN%.fa}".{2b,nn,bd,ub,kc,uq}.gz; do
-    mv $f ${f%.gz}.old.gz 2> /dev/null;
+  for x in 2b nn bd ub kc uq; do
+    mv ${F/.fa/.${x}} ${F/.fa/.${x}.old};
   done
   make clean || exit 1;
 fi
+
 if [ -n "$MAKE" ]; then
-  DEFINES="-DKEY_LENGTH=$MAKE" make 2>&1 | tee ${BN%.fa}.err || exit 1
+  DEFINES="-DKEY_LENGTH=$MAKE" make 2>&1 | tee ${BN}.err || exit 1
 fi
-$VALGRIND ./uqct "$F" -l $LENGTH 2>&1 | tee -a ${BN%.fa}.err || exit 1
+$VALGRIND ./uqct "$F" -l $LENGTH 2>&1 | tee -a ${BN}.err || exit 1
 

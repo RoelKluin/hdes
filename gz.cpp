@@ -24,7 +24,7 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
             fprintf(stderr, "%d\n", i);
             return c;
         }
-        EPQ(dbg > 5, "==%d bytes written", c);
+        //EPQ(dbg > 5, "==%d bytes written", c);
         l -= c, s += c;
     }
 
@@ -60,7 +60,7 @@ b2_write(const gzfh_t *fh, const char *s, uint64_t l)
             EPR("error while writing");
             return c;
         }
-        EPR("==%d bytes written", c);
+        //EPR("==%d bytes written", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
@@ -75,7 +75,7 @@ b2_read(const gzfh_t *fh, char *s, uint64_t l)
             EPR("error while reading");
             return c;
         }
-        EPR("==%d bytes read", c);
+        //EPR("==%d bytes read", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;

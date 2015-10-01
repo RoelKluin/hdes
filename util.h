@@ -19,7 +19,7 @@ static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const unsigned long dbgb2pos = ~0ul;
+static const unsigned long dbgtsoffs = 2411914;//3427726;//4453453;//880912;//~0ul;
 static int dbg = 3;
 
 #define C const
@@ -55,13 +55,13 @@ if_ever (!(cond)) { \
 
 #define _ACTION0(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg " %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
+    ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
 
 
 #define _ACTION(fun, msg, ...)\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg " at %s:%u.", ##__VA_ARGS__, __FILE__, __LINE__);\
+    ASSERT(res >= 0, goto err, msg "(%u) at %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);
 
 #define packed_struct struct __attribute__ ((__packed__))

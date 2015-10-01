@@ -4,9 +4,9 @@
 #time zgrep -E -o "^[ACTGN]{6}" /home/roel/dev/rproject/rmap/hg19.fa.gz | head -n 800000 | ./uqct
 
 
-make && zcat /home/roel/dev/git/bwa/my/bwa/test/ce_med.fq.gz | valgrind ./uqct 1>/dev/null 2> valg.err
+make && zcat /net/NGSanalysis/dvl/roel/git/bwa/my/bwa/test/ce_med.fq.gz | valgrind ./uqct 1>/dev/null 2> valg.err
 
-make && zcat /home/roel/dev/git/bwa/my/bwa/test/ce_med.fq.gz | ./uqct | less
+make && zcat /net/NGSanalysis/dvl/roel/git/bwa/my/bwa/test/ce_med.fq.gz | ./uqct | less
 
 # test that entries in fastq remain the same
 f=SRR081241_1.filt.fastq.gz
@@ -141,11 +141,21 @@ bug bij 2e N stretch: niet gestopt voor stretch
 
 ./faless hg19_GL.fa.gz --extend 10
 
-
+./tst hg19_GL.fa.gz -L 51 -m 16 -c
+./uqct fakeq/hg19_GL.1.fastq.gz hg19_GL.2b.gz -l 51 
+hg19_GL.fa.gz
+(cat hg19_GL.1.hdr.sam
+../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
+samtools view -Sub - |
+$samtools sort - 3387_1_hg38.uqct16
 
 # the real thing
 #rm hg19.{2b,nn,bd,ub,kc}.gz;
-make clean && DEFINES="-DKEY_LENGTH=16" make && ./uqct hg19.fa.gz -l 51 2>&1 | tee hg19_uqct.err
+#Wed Sep  2 14:25:32 CEST 2015
+#Wed Sep  2 16:58:22 CEST 2015
+# => 2h30
+
+make clean && DEFINES="-DKEY_LENGTH=16" make && ./uqct Homo_sapiens.GRCh37.75.dna.all.fa -l 51 2>&1 | tee hg19_uqct.err
 
 
 zcat hg19.fa.gz | sed '/^>3/Q' | gzip --fast -c > hg19_chr1_2.fa.gz
@@ -156,15 +166,14 @@ valgrind ./uqct hg19_chr1_2.fa.gz -l 51 2>&1 | tee hg19_1_2uqct.err
 rm test.x*.gz; DEFINES="-DKEY_LENGTH=11" make && ./uqct test.fa.gz -l 51 2>&1 | tee test_uqct.err
 
 mkdir fakeq
-RL="-RL 51"
-for simerr in "" "-SE true"; do
-  for ref in hg19_chr1_2.fa.gz hg19_GL.fa.gz; do
-    out="fakeq/${ref%.fa.gz}${simerr// /_}${RL// /_}"
+for ref in hg19_GL.fa.gz; do
+  for simerr in "" "-SE true"; do
+    out="fakeq/${ref%.fa.gz}${simerr// /_}"
     echo $out
-    /opt/java/jre1.8.0_60/bin/java \
--jar  /home/roel/dev/src/ArtificialFastqGenerator/ArtificialFastqGenerator.jar \
--R <(zcat ${ref}) -O $out ${RL} -RCNF 1 $simerr \
--S $(zcat ${ref} | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
+    /opt/java/jre1.8.0_45/bin/java \
+-jar  /net/NGSanalysis/dvl/roel/git/hdes/external/ArtificialFastqGenerator.jar \
+-R <(zcat hg19_GL.fa.gz) -O $out -RL 51 -RCNF 1 -SE true \
+-S $(zcat hg19_GL.fa.gz | head -n 1 | sed -r 's/^(>[^ \t]+)([ \t].*)?$/\1/') 2> /dev/null
   done
 done
 
@@ -182,25 +191,25 @@ valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_uqct.err
 ####################
 
 #with debug 7
-cd /home/roel/dev/git/hdes &&
+cd /net/NGSanalysis/dvl/roel/git/hdes &&
 make clean &&
 DEFINES="-DKEY_LENGTH=11" make &&
-cd /home/roel/dev/git/hdes/bwatest &&
+cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest &&
 valgrind ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51 2>&1 | less
 
-cd /home/roel/dev/git/hdes
+cd /net/NGSanalysis/dvl/roel/git/hdes
 make clean
 DEFINES="-DKEY_LENGTH=11" make
-cd /home/roel/dev/git/hdes/bwatest
+cd /net/NGSanalysis/dvl/roel/git/hdes/bwatest
 
-mkdir /home/roel/dev/git/hdes/bwatest; cd !$
-ln -s /home/roel/dev/git/hdes/hg19_GL.fa.gz
+mkdir /net/NGSanalysis/dvl/roel/git/hdes/bwatest; cd !$
+ln -s /net/NGSanalysis/dvl/roel/git/hdes/hg19_GL.fa.gz
 bwa=/net/NGSanalysis/apps/bwa/bwa-0.7.12/bwa
 samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
 $bwa index hg19_GL.fa.gz
 $samtools faidx hg19_GL.fa.gz
 
-(time $bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | samtools view -Sub - |
+(time $bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | $samtools view -Sub - |
 $samtools sort - hg19_GL.1.bwa) &> bwa_mem.log && 
 $samtools index hg19_GL.1.bwa.bam
 $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
@@ -209,23 +218,31 @@ alias revert="mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct
 
 ./run
 
-../tst hg19_GL.fa.gz -c -m 12 && {
-  mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam
-  (cat hg19_GL.1.hdr.sam
-../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
+#ref=hg19_GL.fa.gz
+#bn=hg19_GL
+#fastq=../fakeq/${bn}.1.fastq.gz
+ref=Homo_sapiens.GRCh38.dna.primary_assembly.fa
+bn=Homo_sapiens.GRCh38.dna.primary_assembly
+fastq=3489_6_wz762_AGTGGTCA_L003_R1_001.fastq.gz
+
+
+../tst Homo_sapiens.GRCh38.dna.primary_assembly.fa -c -m 12 && {
+  mv ${bn}.1.uqct.bam ${bn}.1.uqct_prev.bam
+  (cat ${bn}.1.hdr.sam
+../uqct ../fakeq/${bn}.1.fastq.gz ../${bn}.2b.gz -l 51) |
 samtools view -Sub - |
-$samtools sort - hg19_GL.1.uqct &&
-[ ! -f "hg19_GL.1.uqct.bam" -o $(stat -c "%s" hg19_GL.1.uqct.bam) -lt 10000 ] && {
-  mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam
+$samtools sort - ${bn}.1.uqct &&
+[ ! -f "${bn}.1.uqct.bam" -o $(stat -c "%s" ${bn}.1.uqct.bam) -lt 10000 ] && {
+  mv ${bn}.1.uqct_prev.bam ${bn}.1.uqct.bam
   echo reverted 1>&2
 } || {
-  mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
-     $samtools index hg19_GL.1.uqct.bam&
-  cmp <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) || {
-diff -u <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) | tee >(diffstat -u)| gview - &
-~/dev/git/IGV/igv.sh -b batchfile
+  mv ${bn}.1.uqct.bam.bai ${bn}.1.uqct_prev.bam.bai &&
+     $samtools index ${bn}.1.uqct.bam&
+  cmp <(samtools view ${bn}.1.uqct.bam)\
+    <(samtools view ${bn}.1.uqct_prev.bam) || {
+diff -u <(samtools view ${bn}.1.uqct.bam)\
+    <(samtools view ${bn}.1.uqct_prev.bam) | tee >(diffstat -u)| gview - &
+/home/roel/Downloads/igv/IGV_2.0.21/igv.sh -b batchfile
 }
 }
 }
@@ -244,7 +261,7 @@ diff -u <(samtools view hg19_GL.1.uqct.bam)\
     <(samtools view hg19_GL.1.uqct_prev.bam) | gview -
 
 #########################
-make clean && DEFINES="-DKEY_LENGTH=17" make
+make clean && DEFINES="-DKEY_LENGTH=16" make
 
 ln -s /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_assembly.fa
 ./uqct Homo_sapiens.GRCh38.dna.primary_assembly.fa -l 51
@@ -257,6 +274,79 @@ $samtools sort - 3387_1_hg38.uqct &&
 $samtools index 3387_1_hg38.uqct.bam
 
 $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
+
+
+ln -s /net/NGSanalysis/data/p.schouten/run414/3178_196_33-2657_CCATCCTC_L004_R1_001.fastq.gz
+
+time (samtools view -H 3178_196_33-2657_CCATCCTC_L004.bam
+time ./uqct ./Homo_sapiens.GRCh37.75.dna.all.2b 3178_196_33-2657_CCATCCTC_L004_R1_001.fastq.gz -l 51) |
+samtools view -Sub - |
+samtools sort - 3178_196_33-2657_CCATCCTC_L004-uqct &&
+samtools index 3178_196_33-2657_CCATCCTC_L004-uqct.bam
+
+ammending keycounts from file..	done
+AAAGCGGAGATTACGT|ACGTAATCTCCGCTTT
+Warning: assertion '(int)(kc->kct[k] & B2POS_MASK) >= 0' failed ndx:0x5a513dc0
+[0]:0x700a50b8bc4
+[1]:0x1007bcc8709
+pos:-1525969980 at map.cpp:163
+Warning: assertion 'res >= 0' failed mapping reads at map.cpp:339. at map.cpp:339
+an error occured:-14
+ERROR: map_fq_se() returned -14
+
+
+[samopen] SAM header is present: 25 sequences.
+[sam_read1] reference 'ID:bwa	PN:bwa	VN:0.5.9-r26-dev
+	SM:3178_196_33-2657	LB:3178_196_33-2657
+' is recognized as '*'.
+[main_samview] truncated file.
+...
+
+ammending keycounts from file..	done
+Warning: assertion 'i <= kc->ext + KEY_WIDTH' failed  at map.cpp:147
+Warning: assertion 'res >= 0' failed mapping reads at map.cpp:344. at map.cpp:344
+an error occured:-14
+ERROR: map_fq_se() returned -14
+
+
+
+#NB: werkt echt alleen met 51bp reads.
+
+samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
+ref=Homo_sapiens.GRCh38.dna.primary_assembly.fa
+bn=Homo_sapiens.GRCh38.dna.primary_assembly
+fastq=3489_6_wz762_AGTGGTCA_L003_R1_001.fastq.gz
+time (cat ../hg38_hdr.sam
+../uqct ../realfq/3387_51bp_R1_001.fastq.gz ../${bn}.2b -l 51) |
+$samtools view -Sub - |
+$samtools sort - 3387_1_hg38.uqct &&
+$samtools index 3387_1_hg38.uqct.bam
+
+...
+== Single-end alignment
+...
+All seems fine.
+...
+closing fh->fp
+[bam_sort_core] merging from 8 files...
+
+real	22m0.649s
+user	12m10.918s
+sys	5m59.108s
+
+
+
+
+
+
+#indexing hg38 took
+
+real	159m51.105s
+user	115m28.035s
+sys	21m5.217s
+
+
+time (cat ${bn}.1.hdr.sam; ../uqct ../fakeq/${bn}.1.fastq.gz ../${bn}.2b -l 51) | samtools view -Sub - | $samtools sort - ${bn}.1.uqct
 
 
 

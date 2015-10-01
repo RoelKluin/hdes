@@ -1,11 +1,11 @@
-CC=		ccache g++
-#CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+#CC=		ccache g++
+CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.016
+VERSION=	0.015
 LOBJS=
 PROG=		uqct
 INCLUDES=	

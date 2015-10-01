@@ -12,7 +12,7 @@
 #include <ctype.h> // isspace()
 #include <errno.h> // ENOMEM
 #include <string.h> // memset()
-#include "fa.h"
+#include "map.h"
 
 /**
  * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
@@ -106,11 +106,13 @@ fq_read(kct_t* kc, seqb2_t *seq)
     unsigned* bufi = (unsigned*)malloc((kc->ext + 1) * sizeof(unsigned));
     Hdr* lh = kc->h.back();
     const uint64_t end_pos = lh->s_s + lh->end_pos;
+    struct mapstat_t ms = {0};
 
     set_readfunc(fhin, &g, &gc, &ungc);
 
-    while ((c = gc(g)) != '@') /* skip to first header */
-        if (c == -1 || c == '>') goto out;
+    while ((c = gc(g)) != '@') {/* skip to first header */
+        ASSERT(c != -1 && c != '>', goto out);
+    }
     do {
         unsigned i = 0;
         _buf_grow0(seq->s, fq_ent_max); // at least enough space for one read
@@ -144,24 +146,27 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
-		    ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out);
+		    if (i > kc->ext + KEY_WIDTH) { // non of keys mappable
+			EPR("Read %s is with %u Nts longer than expected (%u) and skipped.",
+				(char*)h, i, kc->ext + KEY_WIDTH);
+			buf[0] = ~0ul; //skip entire read
+			break;
+		    }
+		    //ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out);
 		    // wx only has strand at offset KEY_WIDTH.
                     _get_ndx(ndx, wx, dna, rc);
                     uint32_t k = kc->ndxkct[ndx];
 		    // put not recognized and multimapper keys to end - unused.
-                    if (k >= kc->kct_l || !IS_UQ(kc->kct + k)) {
+                    if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
                     }
-                    ASSERT((kc->kct[k] & B2POS_MASK) < end_pos,
-                        c = -EFAULT; goto out, "0x%lx\t%d", ndx, print_ndx(ndx));
-                    ASSERT((int)(kc->kct[k] & B2POS_MASK) >= 0,
-                            c = -EFAULT; goto out, "ndx:0x%lx\n[0]:0x%lx\n[1]:0x%lx\npos:%d", ndx,
-                            kc->kct[k],
-                                kc->kct[k + 1],
-                            (int)(kc->kct[k] & B2POS_MASK) & print_ndx(ndx));
-                    ASSERT(k != -2u, c = -EFAULT; goto out)
+		    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // beyond chromosomes?
+                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
+                        bufi[i - KEY_WIDTH] = i ^ wx;
+                        continue;
+                    }
                     if (dbg > 6) {
                         uint64_t pos = kc->kct[k] & B2POS_MASK;
                         c = get_tid_and_pos(kc, &pos, i);
@@ -170,7 +175,6 @@ default:            dna = _seq_next(b, dna, rc);
                             bufi[i - KEY_WIDTH] = i ^ wx;
                             continue;
                         }
-                        ASSERT(c >= 0, goto out, "%lu", kc->kct[k] & B2POS_MASK);
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
                                 kc->kct[k] >> INFIOR_SHFT, ndx);
                         print_ndx(ndx);
@@ -187,7 +191,6 @@ default:            dna = _seq_next(b, dna, rc);
 			// test infior - in high bits.
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
-                        ASSERT(k != -2u, c = -EFAULT; goto out);
                         if (kc->kct[k] > kc->kct[t]) {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
 		            bufi[i - KEY_WIDTH] = i ^ wx;
@@ -211,13 +214,12 @@ default:            dna = _seq_next(b, dna, rc);
         while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
         unsigned seqlen = i, tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
+	if ((kc->kct[ndx] & B2POS_MASK) >= end_pos) {
+            while ((c = gc(g)) != -1 && c != '@') {}
+            continue;
+        }
 
-        ASSERT((kc->kct[ndx] & B2POS_MASK) < end_pos,
-                c = -EFAULT; goto out, "0x%lx", ndx);
-        //ASSERT((int)(kc->kct[ndx] & B2POS_MASK) >= 0,
-        //        c = -EFAULT; goto out, "0x%lx*\n0x%lx\n%d", ndx, 
-        //                    kc->kct[ndx],
-        //                    (int)(kc->kct[ndx] & B2POS_MASK));
+
 
         if (((uint32_t)ndx < kc->kct_l) && IS_UQ(kc->kct + ndx)) {
             mq = 37;
@@ -227,7 +229,6 @@ default:            dna = _seq_next(b, dna, rc);
                 continue;
             }
 	    flag = !(kc->kct[ndx] & STRAND_BIT) ^ !(bufi[0] & KEYNT_STRAND);
-            //ASSERT(flag == 0, return -EFAULT, "FIXME: ASSERTION only valid in testset");
             flag = 0x42 | (flag << 4);
 
 
@@ -236,14 +237,10 @@ default:            dna = _seq_next(b, dna, rc);
 
             EPQ(dbg >> 6, "pos:%lu", pos);
             c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
-	    if (c < 0) {	
+	    if (c < 0) {
 		while ((c = gc(g)) != '@' && c != -1) {}
 		continue;
 	    }
-            ASSERT(c >= 0, goto out, "%lu", kc->kct[ndx] & B2POS_MASK);
-            ASSERT((int)pos > 0, c = -EFAULT; goto out,
-                    "pos:%lu, kc->kct[0x%lx,+1], %lx, %lx", pos, ndx, kc->kct[ndx], kc->kct[ndx+1])
-
             const char* tid = kc->id + c;
 
             OPR0("%s\t%u\t%s\t%lu\t%u\t%uM\t%s\t%u\t%d\t",
@@ -292,6 +289,7 @@ default:            dna = _seq_next(b, dna, rc);
     } while (c >= 0);
     c = 0;
 out:
+    QARN(c < 0, "error:%d", c);
     free(buf);
     free(bufi);
     return c;
@@ -311,6 +309,7 @@ map_fq_se(struct seqb2_t* seq)
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
+    // TODO: first read in several reads to verify 
 
     _ACTION( init_fq(seq), "intializing memory")
 
