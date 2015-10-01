@@ -13,7 +13,7 @@ SUBDIRS=	.
 OBJS=		b6.o
 EXTERNAL_ZLIB=zlib-1.2.8/
 LIBS=		-L. -L./zlib-1.2.8/
-DEBUG=		-g
+DEBUG=		-g -rdynamic
 OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp indexio.cpp key_init.cpp \
 		fa.cpp fq.cpp main.cpp
@@ -34,13 +34,13 @@ $(PROG):libuqct.a $(OBJECTS)
 	$(CC) $(DEFINES) $(DEBUG) $(OBJECTS) ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 .cpp.s:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -S ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -S -o $@ $(LIBS)
 
 .cpp.o:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -o $@ $(LIBS)
 
 .cpp.i:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -E ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -E -o $@ $(LIBS)
 
 libuqct.a:$(OBJS)
 		$(AR) -csru $@ $(OBJS)

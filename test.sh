@@ -197,13 +197,17 @@ mkdir /home/roel/dev/git/hdes/bwatest; cd !$
 ln -s /home/roel/dev/git/hdes/hg19_GL.fa.gz
 bwa=/net/NGSanalysis/apps/bwa/bwa-0.7.12/bwa
 samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
-$bwa index hg19_GL.fa.gz
-$samtools faidx hg19_GL.fa.gz
+ref=hg19_GL.fa.gz
+ref=hg19_chr1_2.fa
+bwa=/home/roel/dev/git/bwa/orig/bwa/bwa
+samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
+$bwa index ${ref}
+$samtools faidx ${ref}
 
-(time $bwa mem hg19_GL.fa.gz ../fakeq/hg19_GL.1.fastq.gz | samtools view -Sub - |
-$samtools sort - hg19_GL.1.bwa) &> bwa_mem.log && 
-$samtools index hg19_GL.1.bwa.bam
-$samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
+(time $bwa mem ../${ref} ../fakeq/${ref%.fa}.1.fastq.gz | $samtools view -Sub - |
+$samtools sort - ${ref%.fa}.1.bwa) &> ${ref%.fa}_bwa_mem.log &&
+$samtools index ${ref%.fa}.1.bwa.bam
+$samtools view -H ${ref%.fa}.1.bwa.bam > ${ref%.fa}.1.hdr.sam
 
 alias revert="mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct_prev.bam.bai hg19_GL.1.uqct.bam.bai"
 

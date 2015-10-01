@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h> //strstr()
+#include <signal.h>
 #include "fa.h"
 #include "fq.h"
 
@@ -78,6 +79,7 @@ int main(int argc, char* const* argv)
 //    seq.fh[0].fp = seq.fh[2].fp = stdin; // default to stdin
     seq.fh[fhsz - 1].fp = stdout;
     seq.fh[fhsz - 1].write = &b2_write;
+    signal(SIGSEGV, handler);   // install our handler
 
 
     /* parse cmdline args */
