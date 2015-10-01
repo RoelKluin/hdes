@@ -73,7 +73,7 @@ else # compare
 diff -u <($samtools view ${BA}.bam)\
  <($samtools view ${BA}_prev.bam) |
  ./samdiff2batch.pl "${BA%.uqct}" > ${BN}.batchfile &&
-~/dev/git/IGV/igv.sh -b ${BN}.batchfile
+ $igv -b ${BN}.batchfile
 fi
 #~/dev/git/IGV/igv.sh -g ../${BN}.fa ${BA}.bam
 
