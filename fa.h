@@ -142,9 +142,9 @@
     _get_ndx(ndx, b, dna, rc);\
 })
 
-#define MARK_LAST(k)\
+#define _MARK_LAST(k)\
     if (IS_LAST(k)) {\
-        ASSERT(PENDING(k) == 0ul, goto out,"[%lu]\t%lu\t%lu", TSO_NT(k), REMAIN(k), NEXT_NT_NR(k));\
+        ASSERT(PENDING(k) == 0ul, goto err,"[%lu]\t%lu\t%lu", TSO_NT(k), REMAIN(k), NEXT_NT_NR(k));\
         if (IS_DISTINCT(k) == false)\
             k[1] |= MARKED;\
         EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs %swas distinct in last; pos reset",\

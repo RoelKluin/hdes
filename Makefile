@@ -1,5 +1,10 @@
-CC=		ccache g++
-#CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+HOST=$(shell hostname)
+#There must be a space between ifeq and (
+ifeq	($(HOST),Z)
+  CC=		ccache g++
+else
+  CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+endif
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}

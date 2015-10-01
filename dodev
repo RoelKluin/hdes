@@ -9,24 +9,27 @@ elif [ "$ref" = "hg19_chr1_2" ]; then
     KL=16
 fi
 
-cd /home/roel/dev/git/hdes/bwatest
-samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
+source environment.sh
+
+cd $hdesdir/bwatest
 
 BN="${ref}"
 BA=${BN}-SE_true-RL_${RL}.1
 
-while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa or continue?" k; do
+while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og or continue?" k; do
     if [ "$k" = "q" ]; then
         break;
     elif [ "$k" = "o" ]; then
         git gui&
-        ../dodev&
+        cd $hdesdir
+        gvim -p -geometry 212x90+0+0 -c "so $hdesdir/dodev.vim"&
+        cd $hdesdir/bwatest
     elif [ "$k" = "r" ]; then
         mv ${BA}.uqct_prev.bam ${BA}.uqct.bam
         mv ${BA}.uqct_prev.bam.bai ${BA}.uqct.bam.bai
     elif [ "$k" = "i" ]; then
         echo "loading ${ref}.batchfile" 2>&1
-        ~/dev/git/IGV/igv.sh -g ${ref}.fa -b <(head ${ref}.batchfile)&
+        $igv -g ${ref}.fa -b <(head ${ref}.batchfile)&
     elif [ "$k" = "s" ]; then
         diff -u <($samtools view ${BA}.uqct.bam)\
         <($samtools view ${BA}.uqct_prev.bam) |
@@ -36,9 +39,14 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]a
     elif [ "$k" = "v" ]; then
         ../tst ${ref}.fa.gz -c -m ${KL} -v
     elif [ "$k" = "b" ]; then
-        ./run -B -m ${KL} -L ${RL} ../${ref}.fa.gz;
+        (./run -B -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
+    elif [ "$k" = "l" ]; then
+        gview ../last.log
+    elif [ "$k" = "t" ]; then
+        touch ../fa.cpp
+        (./run -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
     else
-        ./run -m ${KL} -L ${RL} ../${ref}.fa.gz;
+        (./run -m ${KL} -L ${RL} ../${ref}.fa.gz) 2>&1 | tee ../last.log;
     fi
 done
 

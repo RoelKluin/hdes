@@ -1,10 +1,5 @@
 #!/bin/bash
-if [ "$(hostname)" = "Z" ]; then
-  samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
-  bwa=/home/roel/dev/git/bwa/orig/bwa/bwa
-else
-  samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
-fi
+source ../environment.sh
 
 die() {
   echo -e "$1"
@@ -43,7 +38,7 @@ BA=${BN}-SE_true-RL_${LENGTH}.1
 if [ -n "${USEBWA}" ]; then
   ls -lh ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz
   (time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz | $samtools view -Sub - |
-  $samtools sort - ${BA}.bwa) 2>&1 |tee ${BA}.bwa.log && 
+  $samtools sort - ${BA}.bwa) 2>&1 |tee ${BA}.bwa.log &&
   $samtools index ${BA}.bwa.bam
   $samtools view -H ${BA}.bwa.bam > ${BA}.1.hdr.sam
   exit 0;
@@ -55,7 +50,7 @@ if [ -n "$(find ../* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa
   ../tst ${BN}.fa.gz -c -m ${MAKE}
 else
   cd ..;
-  make clean 
+  make clean
   DEFINES="-DKEY_LENGTH=${MAKE}" make;
   cd -
 fi

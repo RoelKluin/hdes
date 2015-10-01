@@ -109,8 +109,9 @@ fq_read(kct_t* kc, seqb2_t *seq)
 
     set_readfunc(fhin, &g, &gc, &ungc);
 
-    while ((c = gc(g)) != '@') /* skip to first header */
-        if (c == -1 || c == '>') goto out;
+    while ((c = gc(g)) != '@') {/* skip to first header */
+        ASSERT(c != -1 && c != '>', goto out);
+    }
     do {
         unsigned i = 0;
         _buf_grow0(seq->s, fq_ent_max); // at least enough space for one read
@@ -154,8 +155,9 @@ default:            dna = _seq_next(b, dna, rc);
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
                     }
-                    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // why does this occur?
-                        EPR("0x%lx\t%d", ndx, print_ndx(ndx));
+                    if ((kc->kct[k] & B2POS_MASK) >= end_pos) {
+                        //ASSERT(0, return -EFAULT);
+                        EPR0("0x%lx\t", ndx & print_ndx(ndx));
                         buf[i - KEY_WIDTH] = ~0ul;
                         bufi[i - KEY_WIDTH] = i ^ wx;
                         continue;
@@ -296,6 +298,7 @@ default:            dna = _seq_next(b, dna, rc);
     } while (c >= 0);
     c = 0;
 out:
+    QARN(c < 0, "error:%d", c);
     free(buf);
     free(bufi);
     return c;

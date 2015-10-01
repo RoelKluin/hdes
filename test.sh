@@ -33,7 +33,8 @@ make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n10000 | valgrind -
 make clean && make && zcat SRR077487_1.filt.fastq.gz | head -n1000000 | ./uqct 2>&1 | ./fqless
 # search for CTCTGTGGTGTCTGATT
 
-samtools view HG00096.chrom11.ILLUMINA.bwa.GBR.exome.20120522.bam "11:194121-194356" | perl -e '
+source ./environment.sh
+$samtools view HG00096.chrom11.ILLUMINA.bwa.GBR.exome.20120522.bam "11:194121-194356" | perl -e '
 while (<>) {
     my @L = (split /\t/)[1,9,2,10];
     if ($L[2] & 16) {
@@ -77,7 +78,8 @@ make clean && make && ./uqct hg19.fa.gz
 #    zcat fa_parts/$chr
 #done | gzip --fast > hg19.fa.gz
 
-samtools faidx hg19.fa.gz
+source ./environment.sh
+$samtools faidx hg19.fa.gz
 cut -f 1,2 hg19.fa.gz.fai | uniq | sed 's/^/chr/' > chrom.sizes
 
 make clean && make && ./uqct hg19.fa.gz -l 51 2>&1 | tee uqct.err
@@ -182,25 +184,23 @@ valgrind ./uqct hg19_GL.fa.gz -l 51 2>&1 | tee hg19_GL_uqct.err
 ####################
 
 #with debug 7
-cd /home/roel/dev/git/hdes &&
+source ./environment.sh
+cd $hdesdir &&
 make clean &&
 DEFINES="-DKEY_LENGTH=11" make &&
-cd /home/roel/dev/git/hdes/bwatest &&
+cd $hdesdir/bwatest &&
 valgrind ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51 2>&1 | less
 
-cd /home/roel/dev/git/hdes
+cd $hdesdir
 make clean
 DEFINES="-DKEY_LENGTH=11" make
-cd /home/roel/dev/git/hdes/bwatest
+cd $hdesdir/bwatest
 
-mkdir /home/roel/dev/git/hdes/bwatest; cd !$
-ln -s /home/roel/dev/git/hdes/hg19_GL.fa.gz
-bwa=/net/NGSanalysis/apps/bwa/bwa-0.7.12/bwa
-samtools=/net/NGSanalysis/apps/samtools/samtools-0.1.19/samtools
+source ./environment.sh
+mkdir $hdesdir/bwatest; cd !$
+ln -s $hdesdir/hg19_GL.fa.gz
 ref=hg19_GL.fa.gz
 ref=hg19_chr1_2.fa
-bwa=/home/roel/dev/git/bwa/orig/bwa/bwa
-samtools=/home/roel/dev/git/samtools/lh3/samtools/samtools
 $bwa index ${ref}
 $samtools faidx ${ref}
 
@@ -217,7 +217,7 @@ alias revert="mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam && mv hg19_GL.1.uqct
   mv hg19_GL.1.uqct.bam hg19_GL.1.uqct_prev.bam
   (cat hg19_GL.1.hdr.sam
 ../uqct ../fakeq/hg19_GL.1.fastq.gz ../hg19_GL.2b.gz -l 51) |
-samtools view -Sub - |
+$samtools view -Sub - |
 $samtools sort - hg19_GL.1.uqct &&
 [ ! -f "hg19_GL.1.uqct.bam" -o $(stat -c "%s" hg19_GL.1.uqct.bam) -lt 10000 ] && {
   mv hg19_GL.1.uqct_prev.bam hg19_GL.1.uqct.bam
@@ -225,10 +225,10 @@ $samtools sort - hg19_GL.1.uqct &&
 } || {
   mv hg19_GL.1.uqct.bam.bai hg19_GL.1.uqct_prev.bam.bai &&
      $samtools index hg19_GL.1.uqct.bam&
-  cmp <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) || {
-diff -u <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) | tee >(diffstat -u)| gview - &
+  cmp <($samtools view hg19_GL.1.uqct.bam)\
+    <($samtools view hg19_GL.1.uqct_prev.bam) || {
+diff -u <($samtools view hg19_GL.1.uqct.bam)\
+    <($samtools view hg19_GL.1.uqct_prev.bam) | tee >(diffstat -u)| gview - &
 ~/dev/git/IGV/igv.sh -b batchfile
 }
 }
@@ -244,8 +244,8 @@ goto GL000202.1:14,001-15,620
 EOF
 
 
-diff -u <(samtools view hg19_GL.1.uqct.bam)\
-    <(samtools view hg19_GL.1.uqct_prev.bam) | gview -
+diff -u <($samtools view hg19_GL.1.uqct.bam)\
+    <($samtools view hg19_GL.1.uqct_prev.bam) | gview -
 
 #########################
 make clean && DEFINES="-DKEY_LENGTH=17" make
@@ -256,11 +256,27 @@ ln -s /net/NGSanalysis/ref/Homo_sapiens.GRCh38/Homo_sapiens.GRCh38.dna.primary_a
 
 (cat ../hg38_hdr.sam
 ../uqct ../realfq/3387_1_MH_K27_05_CAATGGAA_L003_R1_001.fastq.gz ../Homo_sapiens.GRCh38.dna.primary_assembly.2b.gz -l 51) |
-samtools view -Sub - |
+$samtools view -Sub - |
 $samtools sort - 3387_1_hg38.uqct &&
 $samtools index 3387_1_hg38.uqct.bam
 
 $samtools view -H hg19_GL.1.bwa.bam > hg19_GL.1.hdr.sam
 
+
+bwa:
+(time $bwa mem ../${ref} ../fakeq/${ref%.fa}.1.fastq.gz | $samtools view -Sub - |
+$samtools sort - ${ref%.fa}.1.bwa)
+real    3m37.934s
+user    3m42.647s
+sys     0m2.780s
+
+uqct:
+time ((cat ${ref%.fa}.1.hdr.sam
+../uqct ../fakeq/${ref%.fa}.1.fastq.gz ../${ref%.fa}.2b.gz -l 51) |
+$samtools view -Sub - |
+$samtools sort - ${ref%.fa}.1.uqct)
+real    1m28.099s
+user    1m7.667s
+sys     0m17.203s
 
 
