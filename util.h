@@ -6,20 +6,22 @@
  *       Revision:  none
  *       Compiler:  gcc
  *
- *         Author:  Roel KLuin, 
+ *         Author:  Roel Kluin,
  */
 
 #ifndef RK_UTIL_H
 #define RK_UTIL_H
 #include <stdint.h>
 #include <assert.h>
+#include <execinfo.h>
+#include <stdlib.h>
 #include "b6.h"
 
 static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const unsigned long dbgtsoffs = 2411914;//3427726;//4453453;//880912;//~0ul;
+static const unsigned long dbgtsoffs = ~0ul;
 static int dbg = 3;
 
 #define C const
@@ -47,6 +49,20 @@ static int dbg = 3;
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 #define QARN(d, msg, ...) EPQ(d, "Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 
+static void handler(int sig) {
+  void *array[50];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 50);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "\nError: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  fputc('\n', stderr);
+  exit(EXIT_FAILURE);
+}
+
 #define ASSERT(cond, action, ...) \
 if_ever (!(cond)) { \
     WARN("assertion '" #cond "' failed " __VA_ARGS__);\
@@ -57,6 +73,9 @@ if_ever (!(cond)) { \
     res = fun;\
     ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
+
+#define _EVAL(fun)\
+    ASSERT((res = fun) >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
 
 
 #define _ACTION(fun, msg, ...)\

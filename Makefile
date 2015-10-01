@@ -1,11 +1,16 @@
-#CC=		ccache g++
-CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+HOST=$(shell hostname)
+#There must be a space between ifeq and (
+ifeq	($(HOST),Z)
+  CC=		ccache g++
+else
+  CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+endif
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.015
+VERSION=	0.016
 LOBJS=
 PROG=		uqct
 INCLUDES=	
@@ -13,7 +18,7 @@ SUBDIRS=	.
 OBJS=		b6.o
 EXTERNAL_ZLIB=zlib-1.2.8/
 LIBS=		-L. -L./zlib-1.2.8/
-DEBUG=		-g
+DEBUG=		-g -rdynamic
 OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp map.cpp indexio.cpp key_init.cpp \
 		fa.cpp fq.cpp main.cpp
@@ -34,13 +39,13 @@ $(PROG):libuqct.a $(OBJECTS)
 	$(CC) $(DEFINES) $(DEBUG) $(OBJECTS) ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
 
 .cpp.s:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -S ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -S -o $@ $(LIBS)
 
 .cpp.o:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -o $@ $(LIBS)
 
 .cpp.i:
-	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -E ${EXTERNAL_ZLIB}libz.a -o $@ $(LIBS)
+	$(CC) $(DEFINES) $(DEBUG) $(CFLAGS) $(CXXFLAGS) $< -E -o $@ $(LIBS)
 
 libuqct.a:$(OBJS)
 		$(AR) -csru $@ $(OBJS)

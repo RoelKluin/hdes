@@ -17,7 +17,6 @@
 #include "klib/khash.h"
 #include "gz.h"
 
-#define TEST_ROT
 
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
@@ -35,6 +34,9 @@
 #define BIG_SHFT 40
 #define SMALL_SHFT 24
 
+#define PENDING(k) ((*(k) & (ONE_CT - ONE_PENDING)) >> SMALL_SHFT)
+#define ONE_PENDING (1ul << SMALL_SHFT)
+
 #define STRAND_BIT (1ul << BIG_SHFT)
 #define INDEX_MASK (STRAND_BIT - 1ul)
 
@@ -46,21 +48,38 @@
 #define MAX_INFIOR 0xFFFFFF0000000000
 
 #define ONE_CT (1ul << BIG_SHFT)
-#define B2POS_MASK (ONE_CT -1ul)
+#define B2POS_MASK 0x000000FFFFFFFFFF
 #define KCT_B2POS(k) ((k)->fst & B2POS_MASK)
 
-#define UNIQUE 0x8000000000000000
+// XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
+#define MARKED 0x8000000000000000
+#define DISTINCT 0x4000000000000000
 
-#define MAX_UQ (UNIQUE-ONE_CT)
-#define IS_UQ(k) (((k)[1] & (MAX_UQ|UNIQUE)) == UNIQUE)
+#define TSO_NT(k) ((k)[1] & B2POS_MASK)
+
+#define IS_DISTINCT(k) (((k)[1] & DISTINCT) == DISTINCT)
+#define ALL_SAME_NTS(k) (((k)[1] & MARKED) == MARKED)
+
+#define _GET_NEXT_NT(kc, p) (((kc)->ts[((p) & B2POS_MASK)>>2] >> (((p) & 3) << 1)) & 3)
+
+// N.B. one baased or zero based dependent on whther it is used before or after increment/decrement
+#define REMAIN(k) (((k)[1] >> BIG_SHFT) & 0x3FFFFF)
+
+// Note: if PENDING(k) != 0 then we may or may not want to act.
+#define IS_UQ(k) (REMAIN(k) <= PENDING(k) + 1ul)
+
+#define NEXT_NT_NR(k) ((*(k) & (ONE_PENDING - 1ul)) + PENDING(k))
+#define NT_OFFS(k) (TSO_NT(k) + NEXT_NT_NR(k))
+
+#define IS_FIRST(k) (NEXT_NT_NR(k) == 0ul)
+
+#define IS_LAST(k) (REMAIN(k) == TSO_NT(k))
 
 
-#define REMAIN(k) (((k)[1] & (UNIQUE - 1ul)) >> BIG_SHFT)
+#define SAME_OR_UQ(k) (IS_UQ(k) || ALL_SAME_NTS(k))
 
-#define IS_FIRST(k) ((*(k) & B2POS_MASK) == 0ul)
-#define IS_LAST(k) (REMAIN(k) - (*(k) & B2POS_MASK) == 0ul)
-
-#define _GET_NEXT_NT(kc, p) (((kc)->ts[(p)>>2] >> (((p)&3) << 1)) & 3)
+// TODO:
+#define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (MARKED|DISTINCT)) == MARKED)
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped
@@ -88,30 +107,42 @@
 
 #define __rdsq(direction, b, s, b2pos, dna, rc) ({\
     b = b2pos;\
-    ASSERT(b < s ## _l, return -1u, ":%u", b);\
+    ASSERT(b < s ## _l, return -EFAULT, ":%u", b);\
     b = read_b2(s, b);\
     _seq_ ## direction (b, dna, rc);\
 })
 
-// if kc->ext, rotate to zero
-#define KC_ROT(kc, x) (x &= -(++x != (kc)->ext))
-
-
-#define _get_new_kct(kc, k, pos, dna, rc, rot) ({\
+#define _get_new_kct(kc, k, dna, rc) ({\
     typeof(dna) __ndx, __t;\
     _get_ndx(__ndx, __t, dna, rc);\
     __t <<= BIG_SHFT - KEY_WIDTH; /*store orient and infior in t*/\
-    kc->kct_scope[rot] = k = kc->kct + kc->ndxkct[__ndx];\
-    EPQ((k[1] & B2POS_MASK) == dbgtsoffs, "dbgtsoffs:%lu", k[1] & B2POS_MASK);\
-    mark_kct(kc, k);\
-    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return -EFAULT);\
-    __t | (*k & INFIOR_MASK) | (pos);\
+    k = kc->kct + kc->ndxkct[__ndx];\
+    EPQ(dbgtsoffs == -2ul, "enter:[%lu]", TSO_NT(k));\
+    ASSERT(REMAIN(k) != 0, res = -EFAULT; goto err);\
+    ASSERT(IS_UQ(k) || NEXT_NT_NR(k) <= REMAIN(k), res = -EFAULT; goto err, "%lu, %lu", NEXT_NT_NR(k), REMAIN(k));\
+    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, res = -EFAULT; goto err);\
+    EPQ0(TSO_NT(k) == dbgtsoffs, ">%s%s%s%s%sREMAIN:%lu\tNEXT_NT_NR:%lu(+1)\tPENDING:%lu\t",\
+            IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "", \
+        IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",\
+        IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k), PENDING(k));\
+    print_2dna(dna, rc, TSO_NT(k) == dbgtsoffs);\
+    *k ^= (*k ^ __t) & STRAND_BIT;\
 })
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\
     dna = __rdsq(direction, b, s, b2pos, dna, rc);\
     _get_ndx(ndx, b, dna, rc);\
 })
+
+#define _MARK_LAST(k)\
+    if (IS_LAST(k)) {\
+        ASSERT(PENDING(k) == 0ul, goto err,"[%lu]\t%lu\t%lu", TSO_NT(k), REMAIN(k), NEXT_NT_NR(k));\
+        if (IS_DISTINCT(k) == false)\
+            k[1] |= MARKED;\
+        EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs %swas distinct in last; pos reset",\
+		k[1] & MARKED ? "_NOT_ (=> got MARKED) ": "");\
+        *k &= ~B2POS_MASK; /* reset position tracking */\
+    }
 
 #define _read_next_ndx(ndx, b, s, p, d, r) __rdndx(next, ndx, b, s, p, d, r)
 #define _read_prev_ndx(ndx, b, s, p, d, r) __rdndx(prev, ndx, b, s, p - KEY_WIDTH, d, r)
@@ -179,8 +210,8 @@ struct kct_t {
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
     uint64_t ts_l, s_l;
-    uint32_t id_l, bd_l, kct_l, uqct;
-    unsigned ext; // not stored
+    uint32_t id_l, bd_l, kct_l, uqct, pending;
+    unsigned ext, iter; // not stored
     uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
     uint8_t kct_m;
     std::list<Hdr*> h;
