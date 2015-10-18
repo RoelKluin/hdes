@@ -45,8 +45,8 @@ BA="${BA}.uqct"
 
 # compile
 if [ -n "$(find $hdesdir/* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
-  echo $hdesdir/tst ${F} -c -m ${MAKE}
-  $hdesdir/tst ${F} -c -m ${MAKE}
+  echo $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
+  $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
 else
   cd $hdesdir;
   make clean
@@ -60,7 +60,7 @@ if [ -f ${BA}.bam ]; then
 fi
 
 time (cat ${BN}.1.hdr.sam
-$hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l 51) |
+$hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH}) |
 $samtools view -Sub - |
 $samtools sort -m 2000000000 - ${BA}
 

@@ -121,6 +121,7 @@ int main(int argc, char* const* argv)
     seq.readlength = optvals[1];
     blocksize = optvals[2];
     seq.phred_offset = optvals[3];
+    EPR("Maxreads:%u, Readlength:%u, blocksize:%u, phred:%u, key-length:%u", seq.maxreads, seq.readlength, blocksize, seq.phred_offset, KEY_WIDTH);
 
     /* options without a flag */
     while (optind != argc) {
