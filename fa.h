@@ -261,7 +261,7 @@ int save_kc(struct gzfh_t*, kct_t*);
 int load_kc(struct gzfh_t*, kct_t*);
 int ammend_kc(struct gzfh_t*, kct_t*);
 
-int map_fq_se(struct seqb2_t*);
+int map_fq_se(struct seqb2_t*, char C*C);
 
 #endif // RK_FA_H
 

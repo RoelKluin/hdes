@@ -16,13 +16,7 @@
 #include <signal.h>
 #include "fa.h"
 #include "fq.h"
-
-#ifndef PROGRAM_NAME
-# define PROGRAM_NAME "uqct"
-#endif
-#ifndef PROGRAM_VERSION
-# define PROGRAM_VERSION "0.016"
-#endif
+#include <string.h>
 
 typedef struct option_description
 {
@@ -50,6 +44,26 @@ static struct option_description dopt[] = {
     {NULL, 0, NULL, 0, NULL}
 };
 
+static char*
+get_cmdl(int argc, char*C* argv)
+{
+    char* ret = NULL;
+    unsigned ret_l = 0;
+    size_t l;
+    for (unsigned i = 0; i != argc; ++i) {
+        if (ret) {
+            ret_l += l;
+            ret[ret_l++] = ' ';
+        }
+        l = strlen(argv[i]);
+        ret = (char*)realloc(ret, ret_l + l + 1);
+        if (ret == NULL)
+            break;
+        strcpy(ret + ret_l, argv[i]);
+    }
+    return ret;
+}
+
 static int usage()
 {
     unsigned i;
@@ -68,6 +82,7 @@ int main(int argc, char* const* argv)
 {
     struct seqb2_t seq = {0}; /* init everything to 0 or NULL */
     unsigned i = 0u, fhsz = ARRAY_SIZE(seq.fh);
+    char* cmdl = NULL;
     int c, ret = EXIT_FAILURE;
     uint32_t blocksize, optvals[16] = {
         // maxreads, readlength, blocksize, phred_offset
@@ -163,15 +178,19 @@ int main(int argc, char* const* argv)
     if (seq.fh[2].name != NULL) {
         if (seq.fh[1].name) {
             EPR("== Paired-end alignment");
-            /*if ((c = pe_fq_b2(&seq)) != 0) {
+            cmdl = get_cmdl(argc, argv);
+            if (cmdl == NULL) goto out;
+            /*if ((c = pe_fq_b2(&seq, cmdl)) != 0) {
                 EPR("ERROR: fq_b2() returned %d", c);
                 goto out;
             }
             fputc('\n', stderr);
             fq_print(&seq);*/
         } else if (seq.fh[0].name) {
+            cmdl = get_cmdl(argc, argv);
+            if (cmdl == NULL) goto out;
             EPR("== Single-end alignment");
-            if ((c = map_fq_se(&seq)) != 0) {
+            if ((c = map_fq_se(&seq, cmdl)) != 0) {
                 EPR("ERROR: map_fq_se() returned %d", c);
                 goto out;
             }
@@ -215,6 +234,7 @@ int main(int argc, char* const* argv)
 
     ret = EXIT_SUCCESS;
 out: /* cleanup */
+    free(cmdl);
     for (i=0; i != fhsz; ++i) {
         if (seq.fh[i].fp == NULL || seq.fh[i].fp == stdin || seq.fh[i].fp == stdout)
             continue;

@@ -59,8 +59,7 @@ if [ -f ${BA}.bam ]; then
   mv ${BA}.bam ${BA}_prev.bam
 fi
 
-time (cat ${BN}.1.hdr.sam
-$hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH}) |
+time $hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH} |
 $samtools view -Sub - |
 $samtools sort -m 2000000000 - ${BA}
 

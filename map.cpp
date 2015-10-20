@@ -87,6 +87,19 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
     return (*hdr)->part[0];
 }
 
+static void
+print_hdr(kct_t *C kc, char C*C commandline)
+{
+    std::list<Hdr*>::iterator h;
+    for (std::list<Hdr*>::iterator hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
+        Hdr* h = *hdr;
+        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd.back().corr);
+        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd.back().corr);
+    }
+    OPR("@PG\tID:" PROGRAM_NAME "\tPN:" PROGRAM_NAME "\tVN:" PROGRAM_VERSION "\tCL:%s",
+            commandline);
+}
+
 
 static int
 fq_read(kct_t* kc, seqb2_t *seq)
@@ -296,7 +309,7 @@ out:
 }
 
 int
-map_fq_se(struct seqb2_t* seq)
+map_fq_se(struct seqb2_t* seq, char C*C cmdl)
 {
     int res = -ENOMEM;
 
@@ -333,7 +346,9 @@ map_fq_se(struct seqb2_t* seq)
     _ACTION(reopen(fhio[0], ext[0], ext[3]), "")
     _ACTION(ammend_kc(fhio[0], &kc), "ammending keycounts from file")
     
-    // 4) open fq for reading
+    // 4) print header
+    print_hdr(&kc, cmdl);
+    // 5) open fq for reading
     _ACTION(fq_read(&kc, seq), "mapping reads")
     //...
     EPR("All seems fine.");

@@ -9,7 +9,7 @@ elif [ "$ref" = "hg19_chr1_2" ]; then
     KL=16
 elif [ "$ref" = "test" ]; then
     KL=4
-    RL=11
+    RL=12
 fi
 
 source "$(dirname -- "$(readlink -f $0)")"/environment.sh
@@ -19,7 +19,7 @@ cd $hdesdir/bwatest
 BN="${ref}"
 BA=${BN}-SE_true-RL_${RL}.1
 
-while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, g[c]ov or continue?" k; do
+while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, t[e]sts, g[c]ov or continue?" k; do
     if [ "$k" = "q" ]; then
         break;
     elif [ "$k" = "o" ]; then
@@ -45,6 +45,8 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]a
         ($hdesdir/bwatest/run -B -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     elif [ "$k" = "l" ]; then
         gview $hdesdir/last.log
+    elif [ "$k" = "e" ]; then
+        $hdesdir/runtests/runtests.sh
     elif [ "$k" = "c" ]; then
         cd $hdesdir
         make coverage
