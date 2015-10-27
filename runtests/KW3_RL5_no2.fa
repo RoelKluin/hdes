@@ -1,0 +1,4 @@
+>1   5    0  +-- single unique AAC, no boundary
+AAAAACCCCCC
+>2   5    0  +-- no unique
+ACCCCCCCCCC

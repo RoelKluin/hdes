@@ -13,8 +13,8 @@ while read BN KW RL; do
     LASTKW="$KW"
   fi
   rm $BN.{2b,nn,bd,ub,kc,uq};
-  valgrind $hdesdir/uqct ${BN}.fa -l ${RL}
-  valgrind $hdesdir/uqct ${BN}.fq ${BN}.2b -l ${RL} |
+  valgrind --leak-check=full $hdesdir/uqct ${BN}.fa -l ${RL}
+  valgrind --leak-check=full $hdesdir/uqct ${BN}.fq ${BN}.2b -l ${RL} |
   $samtools view -Sub - |
   $samtools sort -m 20000000 - ${BN} &&
   $samtools index ${BN}.bam

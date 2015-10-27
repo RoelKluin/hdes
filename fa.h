@@ -16,7 +16,7 @@
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
-
+#include "fa.h"
 
 // length of the next NTs, when in sequence format, i.e. the lower bits
 // contain a twobit rather than a index to a extended keycount (kct_ext)
@@ -66,20 +66,47 @@
 
 
 // Note: if PENDING(k) != 0 then we may or may not want to act.
-#define IS_UQ(k) (REMAIN(k) <= PENDING(k))
+#define IS_UQ(k) (REMAIN(k) == 1ul)
 
-#define NEXT_NT_NR(k) ((*(k) & (ONE_PENDING - 1ul)) + PENDING(k))
-#define NT_OFFS(k) (TSO_NT(k) + NEXT_NT_NR(k))
+// assigns on purpose.
+#define CONTINUED_UQ(k, kc) IS_UQ(k = kc->kct_scope[0])
 
-#define IS_FIRST(k) (NEXT_NT_NR(k) == 0ul)
+#define FIRST_IN_SCOPE(k) (*(k) & (ONE_PENDING - 1ul))
 
-#define IS_LAST(k) (REMAIN(k) == TSO_NT(k))
+// last in scope
+#define LAST_IN_SCOPE(k) (FIRST_IN_SCOPE(k) + PENDING(k))
+
+#define NT_OFFS(k) (TSO_NT(k) + LAST_IN_SCOPE(k))
+
+#define IS_FIRST(k) ((*(k) & (ONE_PENDING - 1ul)) == 0ul)
+
+
+#define IS_LAST(k) (REMAIN(k) == LAST_IN_SCOPE(k) && PENDING(k) == 0ul)
 
 
 #define SAME_OR_UQ(k) (IS_UQ(k) || ALL_SAME_NTS(k))
 
 // TODO:
 #define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (MARKED|DISTINCT)) == MARKED)
+
+///////////////////////
+
+#define UQ_was_1st(kc, i, p) (((*kc->bdit).e + i) == p)
+
+#define IN_SCOPE_OF_LAST_BND(kc, p) (p < (*(kc)->bdit).s + (kc)->ext)
+
+//FIXME: could pack dna in 32 bits for KEY_WIDTH 16.
+packed_struct Mantra { // not yet covered by unique keys
+    uint64_t dna; // dna after covered boundary
+#ifdef DEBUG
+    uint64_t end_dna; // dna at end of mantra (to check)
+#endif
+    uint32_t corr; // 'real' position correction
+    uint32_t s, e; // start and end of mantra, position where we jump to.
+};
+
+
+
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped
@@ -103,11 +130,11 @@
 # define _seq_prev __seq_le_n
 #endif
 
-#define read_b2(s, p) ((s[(p)>>2] >> (((p) & 3) << 1)) & 3)
+#define read_b2(s, p) (((s)[(p)>>2] >> (((p) & 3) << 1)) & 3)
 
 #define __rdsq(direction, b, s, b2pos, dna, rc) ({\
     b = b2pos;\
-    ASSERT(b < s ## _l, return -EFAULT, ":%u", b);\
+    ASSERT(b < s ## _l, return -EFAULT, ":%lu", b);\
     b = read_b2(s, b);\
     _seq_ ## direction (b, dna, rc);\
 })
@@ -119,12 +146,12 @@
     k = kc->kct + kc->ndxkct[__ndx];\
     EPQ(dbgtsoffs == -2ul, "enter:[%lu]", TSO_NT(k));\
     ASSERT(REMAIN(k) != 0, res = -EFAULT; goto err);\
-    ASSERT(IS_UQ(k) || NEXT_NT_NR(k) <= REMAIN(k), res = -EFAULT; goto err, "%lu, %lu", NEXT_NT_NR(k), REMAIN(k));\
+    ASSERT(IS_UQ(k) || LAST_IN_SCOPE(k) <= REMAIN(k), res = -EFAULT; goto err, "%lu, %lu", LAST_IN_SCOPE(k), REMAIN(k));\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, res = -EFAULT; goto err);\
     EPQ0(TSO_NT(k) == dbgtsoffs, ">%s%s%s%s%sREMAIN:%lu\tNEXT_NT_NR:%lu(+1)\tPENDING:%lu\t",\
             IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "", \
         IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",\
-        IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k), PENDING(k));\
+        IS_LAST(k) ? "LAST\t" : "",REMAIN(k), FIRST_IN_SCOPE(k), PENDING(k));\
     print_2dna(dna, rc, TSO_NT(k) == dbgtsoffs);\
     *k ^= (*k ^ __t) & STRAND_BIT;\
 })
@@ -134,13 +161,12 @@
     _get_ndx(ndx, b, dna, rc);\
 })
 
-#define _MARK_LAST(k)\
+#define MARK_LAST(k)\
     if (IS_LAST(k)) {\
-        ASSERT(PENDING(k) == 0ul, goto err,"[%lu]\t%lu\t%lu", TSO_NT(k), REMAIN(k), NEXT_NT_NR(k));\
         if (IS_DISTINCT(k) == false)\
             k[1] |= MARKED;\
-        EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs %swas distinct in last; pos reset",\
-		k[1] & MARKED ? "_NOT_ (=> got MARKED) ": "");\
+        EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs was %sdistinct in last; pos reset",\
+		k[1] & MARKED ? "_NOT_": "");\
         *k &= ~B2POS_MASK; /* reset position tracking */\
     }
 
@@ -174,16 +200,6 @@
 
 #define DEBUG 1
 
-packed_struct Bnd {
-#ifdef DEBUG
-    uint64_t at_dna; // dna before boundary (to check)
-#endif
-    uint64_t dna; // dna after boundary, where we `jump' to
-    uint32_t s;   // position at which we jump.
-    uint32_t l;   // length of jump.
-    uint32_t corr;// real position correction
-};
-
 packed_struct kct_ext {
     uint64_t m: 8;
     uint64_t l: 40;
@@ -191,18 +207,17 @@ packed_struct kct_ext {
 };
 
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
-        IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
+        IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    std::list<uint32_t> bnd; //
+    std::list<Mantra> bnd; //
     uint32_t end_pos, mapable; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 
 struct kct_t {
-    Bnd* bd;
     char* id;
     uint8_t* ts; // next nts(nn)
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
@@ -210,14 +225,15 @@ struct kct_t {
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
     uint64_t ts_l, s_l;
-    uint32_t id_l, bd_l, kct_l, uqct, pending;
+    uint32_t id_l, kct_l, uqct, pending;
     unsigned ext, iter; // not stored
-    uint8_t bd_m, id_m, s_m, ndxkct_m; // only bd_m is required, but not stored either
+    uint8_t id_m, s_m, ndxkct_m;
     uint8_t kct_m;
     std::list<Hdr*> h;
-    std::list<uint32_t>::iterator bdit;
+    std::list<Mantra>::iterator bdit;
     // could be possible to move bnd here.
 };
+
 /* == kct in key_init stage: ==
  * next_nt (sequence) is stored in first u64 and 2nd up to 6 highest bits.
  * 6 highest bits contain the count. if more then 61 Nts, all 6 highest are set,
@@ -245,7 +261,6 @@ struct kct_t {
  * [0]: pos:40, strand:1, infior:23;
  * [1] ts_offs:40, remain:24;
  */
-void show_list(kct_t*, std::list<uint32_t> &bnd);
 void free_kc(kct_t* kc);
 int fa_read(struct seqb2_t*, kct_t*);
 int fa_index(seqb2_t*);
@@ -263,6 +278,10 @@ int ammend_kc(struct gzfh_t*, kct_t*);
 
 int map_fq_se(struct seqb2_t*, char C*C);
 
+// mantra.cpp
+void show_mantras(kct_t C*C kc, Hdr *C h);
+int insert_mantra(kct_t *C kc, Hdr* h);
+void pot_mantra_end(kct_t *C kc, Hdr *C h, C uint64_t dna, C uint32_t b2pos);
 #endif // RK_FA_H
 
 

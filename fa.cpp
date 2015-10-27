@@ -21,18 +21,6 @@
 #include "fa.h"
 
 void
-show_list(kct_t* kc, std::list<uint32_t> &bnd)
-{
-    std::list<uint32_t>::iterator it = bnd.begin();
-    unsigned i = 0;
-    for (it = bnd.begin(); it != bnd.end(); ++it) {
-        Bnd* bd = &kc->bd[*it];
-        EPR0("[%u (%u)]:\t%u\t+%u\t(+%u)\t", i++, *it, bd->s, bd->l, bd->corr);
-        print_2dna(bd->at_dna, bd->dna);
-    }
-}
-
-void
 free_kc(kct_t* kc)
 {
     std::list<Hdr*>::iterator it;
@@ -41,71 +29,12 @@ free_kc(kct_t* kc)
         free(h->part);
         delete h;
     }
-    _buf_free(kc->bd);
     _buf_free(kc->id);
     _buf_free(kc->ts);
     _buf_free(kc->s);
     _buf_free(kc->kct);
     _buf_free(kc->ndxkct);
 }
-
-static inline unsigned
-pot_region_start(Bnd **C reg, C uint64_t dna, C uint32_t b2pos, C unsigned ext)
-{
-    reg[0]->s = b2pos;
-    reg[0]->at_dna = dna;
-    // A first uniq marks a potential start of a region
-    reg[0]->dna = dna;
-    reg[0]->l = 0;
-    return b2pos + ext - max(reg[1]->s + reg[1]->l + ext, b2pos - ext);
-}
-static inline void
-elongate_region(Bnd *C inter, C uint64_t dna, C uint32_t b2pos)
-{
-    inter->l = b2pos - inter->s;
-    inter->dna = dna;
-}
-static inline int
-end_region(kct_t *C kc, Bnd **C reg, Hdr* h)
-{
-    EPQ(dbg > 3 && reg[0]->l, "[%u]\t%u - %u\t", kc->bd_l, reg[0]->s, reg[0]->s + reg[0]->l);
-    h->mapable += reg[0]->l;
-    if (reg[0] != reg[1]) {
-        reg[0]->corr = reg[1]->corr;
-        _buf_grow0(kc->bd, 2ul);
-        h->bnd.insert(kc->bdit, kc->bd_l);
-        reg[1] = kc->bd + kc->bd_l++;
-        reg[2] = kc->bd + *kc->bdit;
-    }
-    reg[0] = kc->bd + kc->bd_l; // no longer last at least
-    reg[0]->l = reg[0]->s = 0;
-    return 0;
-}
-static inline int
-adjoining_boundary(kct_t *C kc, Bnd **C reg, Hdr *C h, C uint64_t dna, C uint32_t b2pos)
-{
-    reg[0]->dna = dna;
-    reg[0]->l = b2pos - reg[0]->s;
-    ASSERT(reg[0]->s + reg[0]->l == reg[2]->s, return -EFAULT);
-    if (*reg == reg[1]) {
-        EPQ(dbg > 4, "Removing boundary after loop [%u]", b2pos);
-        // TODO: return *kc->bdit to a pool of to be inserted boundaries
-        reg[1]->l += reg[2]->l;
-        reg[1]->dna = reg[2]->dna;
-        reg[1]->corr = reg[2]->corr;
-        kc->bdit = h->bnd.erase(kc->bdit);
-        reg[2] = kc->bd + *--kc->bdit;
-    } else {
-        reg[0]->corr = reg[1]->corr;
-        EPQ (dbg > 4, "Next boundary joined after loop [%u]", b2pos);
-        reg[2]->at_dna = reg[0]->at_dna;
-        reg[2]->l += reg[2]->s - reg[0]->s;
-        reg[2]->s = reg[0]->s;
-        reg[2]->corr += reg[0]->corr;
-    }
-    return 0;
-}
-
 
 static inline void
 update_max_infior(uint64_t *C kct, uint64_t infior)
@@ -117,6 +46,29 @@ update_max_infior(uint64_t *C kct, uint64_t infior)
     }
     if (infior > *kct)
         *kct ^= (*kct ^ infior) & INFIOR_MASK;
+}
+
+static inline C int
+check_key(kct_t C*C kc, C uint64_t cdna, uint64_t p)
+{
+    if (kc->s == NULL)
+        return 0;
+
+    uint64_t dna, rc, b, end = p + KEY_WIDTH;
+    dna = rc = 0ul;
+
+    for (; p != end; ++p) {
+        dna = __rdsq(next, b, kc->s, p, dna, rc);
+        EPR("%lu:%c", p, b6(b << 1));
+    }
+
+    if (dna == cdna) return 0;
+
+    WARN("nextnt jump dna didn't match b2pos dna.");
+    print_dna(cdna);
+    print_2dna(dna, rc);
+
+    return -EFAULT;
 }
 
 static inline C int
@@ -132,7 +84,6 @@ check_nt(kct_t C*C kc, C uint64_t nt, uint64_t p)
 
     WARN("nextnt didn't match twobit: sb2:%c, got %c", b6(p<<1), b6(nt<<1));
     return -EFAULT;
-
 }
 
 static inline C int
@@ -147,63 +98,67 @@ static inline int
 mark_leaving(kct_t C*C kc, uint64_t *C k)
 {
     int res = -EFAULT;
-    if (PENDING(k)) {// not excised nor already handled
-        *k -= ONE_PENDING - 1ul;
-        uint64_t t = NEXT_NT_NR(k) + TSO_NT(k); // position of nextnt, to compare with former nextnt.
+    uint64_t t, nt;
+    EPQ(TSO_NT(k) == dbgtsoffs, "<%s%s%s%s%sREMAIN:%lu(-1?)\tNEXT_NT_NR:%lu\tPENDING:%lu",
+            IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "",
+            IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",
+            IS_LAST(k) ? "LAST\t" : "",REMAIN(k), FIRST_IN_SCOPE(k), PENDING(k));
+    if (PENDING(k)) {
+        *k -= ONE_PENDING;
+        t = TSO_NT(k) + FIRST_IN_SCOPE(k); // position of nextnt, to compare with former nextnt.
         ASSERT(t < (kc->ts_l << 2), goto err);
 
-        EPQ(TSO_NT(k) == dbgtsoffs, "\t%c", b6(_GET_NEXT_NT(kc, t)<<1));
+        nt = _GET_NEXT_NT(kc, t);
+        EPQ(TSO_NT(k) == dbgtsoffs, "\t%c", b6(nt<<1));
 
         if (IS_FIRST(k)) {
-            if (IS_DISTINCT(k)) {
+            if (IS_DISTINCT(k)) { // XXX: never taken
                 EPQ(TSO_NT(k) == dbgtsoffs, " ==> distinct cleared");
                 k[1] &= ~DISTINCT; // clear from last iteration
-            } else if (kc->iter) {
+            } else if (kc->iter) { // XXX: never taken
                 //if ok, then we can remove the kct iteration post loop?
-                ASSERT(k[1] & MARKED, goto err, "MARKED not obsolete");
+//                ASSERT(k[1] & MARKED, goto err, "MARKED not obsolete"); // TODO: check after setting marked
             }
         } else {
-            ASSERT(t, goto err, "nt offset -1 (below)?");
-            if (_GET_NEXT_NT(kc, t) != _GET_NEXT_NT(kc, t - 1)) {
+            --t;
+            EPQ(TSO_NT(k) == dbgtsoffs, "%lu:%c <=> %c", t, b6(_GET_NEXT_NT(kc, t)<<1), b6(nt<<1)); 
+            ASSERT(t < (kc->ts_l << 2), goto err);
+            if (IS_DISTINCT(k) == false && nt != _GET_NEXT_NT(kc, t)) {
                 EPQ(TSO_NT(k) == dbgtsoffs, " ==> dbgtsoffs got distinct");
                 k[1] |= DISTINCT;
             }
         }
-    } else {
-        EPQ(TSO_NT(k) == dbgtsoffs, "none pending or already handled");
-        EPQ(TSO_NT(k) == dbgtsoffs, "*%s%s%s%s%sREMAIN:%lu\tNEXT_NT_NR:%lu\tPENDING:%lu\t",
-            IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "",
-            IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",
-            IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k), PENDING(k));
+        ++*k;
     }
-    _MARK_LAST(k)
+
+    MARK_LAST(k)
     res = 0;
 err:
     if (res || TSO_NT(k) == dbgtsoffs || dbgtsoffs == -2ul) {
-        EPR("<%s%s%s%sREMAIN:%lu(-1?)\tNEXT_NT_NR:%lu\tPENDING:%lu",
-                ALL_SAME_NTS(k) ? "ALL_SAME\t" : "",
+        EPQ0(res, "[%lu]\t", TSO_NT(k));
+        EPR("<%s%s%s%s%sREMAIN:%lu(-1?)\tNEXT_NT_NR:%lu\tPENDING:%lu",
+                IS_FIRST(k) ? "FIRST\t" : "", ALL_SAME_NTS(k) ? "ALL_SAME\t" : "",
                 IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",
-                IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k), PENDING(k));
-        EPQ(res, "[%lu]", TSO_NT(k));
+                IS_LAST(k) ? "LAST\t" : "",REMAIN(k), FIRST_IN_SCOPE(k), PENDING(k));
     }
     return res;
 }
-#define mark_leaving(kc, k) ({\
-    EPQ0(TSO_NT(k) == dbgtsoffs, "%s +%u mark_leaving()", __FILE__, __LINE__);\
-    mark_leaving(kc, k);\
-})
 
 static int
-mark_all(kct_t C*C kc, unsigned i, unsigned const end)
+_mark_all(kct_t C*C kc, char C* f, unsigned l, unsigned i, unsigned const end)
 {
     int res = 0;
-    while (i < end)
-        _EVAL(mark_leaving(kc, kc->kct_scope[i++]));
-err:
-    EPQ(res, "error during mark_all()");
+    while (i < end && res == 0) {
+        uint64_t* k = kc->kct_scope[i++];
+        if (TSO_NT(k) == dbgtsoffs)
+            EPR("%s +%u mark_leaving()", f, l);
+        res = mark_leaving(kc, k);
+    }
+    if (res < 0)
+        EPQ(res, "error during mark_all():%s +%u", f, l);
     return res;
 }
-
+#define mark_all(kc, i, e) _mark_all(kc, __FILE__, __LINE__, i, e)
 
 static int
 decr_excise(kct_t C*C kc, uint64_t *C k)
@@ -212,10 +167,10 @@ decr_excise(kct_t C*C kc, uint64_t *C k)
     uint8_t *q, *qe, c, t;
     int err = -EFAULT;
 
-    ASSERT(IS_UQ(k) == false, goto out);
-
-    if (ALL_SAME_NTS(k) == false) // only when previously incremented
+    if (ALL_SAME_NTS(k) == false) {// only when previously incremented
+        ASSERT(PENDING(k), return -EFAULT);
         *k -= ONE_PENDING;
+    }
 
     k[1] -= ONE_CT; // one less remains.
     if (IS_LAST(k)) {//  src of movement would be target.
@@ -227,7 +182,7 @@ decr_excise(kct_t C*C kc, uint64_t *C k)
 
     offs += nt; // remaining + ts offset => target of nt movement
 
-    nt += NEXT_NT_NR(k); // add current position => src Nt (which is moved)
+    nt += LAST_IN_SCOPE(k); // add current position => src Nt (which is moved)
 
     q = &kc->ts[nt >> 2];
     qe = &kc->ts[offs >> 2];
@@ -264,7 +219,7 @@ out:
         EPR("-%s%s%s%sREMAIN:%lu(-1?)\tNEXT_NT_NR:%lu\tPENDING:%lu",
                 ALL_SAME_NTS(k) ? "ALL_SAME\t" : "",
                 IS_DISTINCT(k) ? "DISTINCT\t" : "", IS_UQ(k) ? "UQ\t" : "",
-                IS_LAST(k) ? "LAST\t" : "",REMAIN(k), NEXT_NT_NR(k), PENDING(k));
+                IS_LAST(k) ? "LAST\t" : "",REMAIN(k), FIRST_IN_SCOPE(k), PENDING(k));
         EPQ(err, "[%lu]", TSO_NT(k));
     }
     return err;
@@ -275,17 +230,17 @@ static int
 decr_excise_all(kct_t C*C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
 {
     int res = 0;
-    uint64_t infior = max(*k, *kct);
-    unsigned i = IS_UQ(k) ? 1 : 0;
+    uint64_t infior = kct ? max(*k, *kct) : *k;
+    unsigned i = IS_UQ(k) ? 1 : 0; // XXX: never first taken.
     while (i < end) { // != test won't work for 1st if dummy.
         k = kc->kct_scope[i++];
         if (k != kct) // .. don't elevate key if it is the one that became uniq
             update_max_infior(k, infior);
-                _EVAL(decr_excise(kc, k));
-        _MARK_LAST(k)
+        _EVAL(decr_excise(kc, k));
+        MARK_LAST(k)
     }
 err:
-    EPQ(res, "before uniq %lu", TSO_NT(kct));
+    EPQ(res, "%u/%u:before uniq %lu", i, end, TSO_NT(kct));
     return res;
 }
 #define decr_excise_all(kc, k, kct, end) ({\
@@ -303,75 +258,68 @@ err:
 // reverse seq could be required for mapping - maybe 
 // N-stretches, later also skips, future: SNVs, splice sites?
 static int
-ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
+ext_uq_bnd(kct_t *C kc, Hdr *C h)
 {
 
     C char* hdr = kc->id + h->part[0];
 
-    _buf_grow0(kc->bd, 2ul);    // one extra must be available for inter.
-    Bnd *reg[3] = { kc->bd + lastx, kc->bd + lastx, kc->bd + *kc->bdit };
-
-    uint64_t p, dna = reg[1]->dna;   // first seq after skip
+    uint64_t p, dna = (*kc->bdit).dna;   // first seq after skip
     uint64_t rc = revcmp(dna);
-    uint64_t dummy[2] = {0ul, 0ul};
-    uint64_t* k, *kct = dummy;
-    unsigned i, index, ext = kc->ext - 1;
-    uint32_t b2pos = reg[1]->s + reg[1]->l;
+    uint64_t *kct = NULL, *k;
+    unsigned i, index = 0, ext = kc->ext;
+    uint32_t b2pos = (*kc->bdit).s;
+    const uint32_t b2end = (*kc->bdit).e;
     int res;
-    for (index = 0; index != ext; ++index)
-        kc->kct_scope[index] = dummy;
-    index = 0;
+    kc->kct_scope[0] = NULL;
+    // Cannot check post jump dna, it is not stored in kc->s.
+    //if (b2pos)
+    //    _EVAL(check_key(kc, dna, b2pos));
 
-    //dbg = strncmp(hdr, "GL000207.1", strlen(hdr)) ? 3 : 5;
-    EPQ0(dbg > 3, "----[\t%s%s:%u..%u(-%u)\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
-            hdr, b2pos, reg[2]->s, reg[2]->s + reg[2]->l);
+    dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
+    EPQ0(dbg > 3, "----[\t%s%s:(%u+)%u..%u\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
+            hdr, (*kc->bdit).corr, (*kc->bdit).s, (*kc->bdit).e);
     print_dna(dna, dbg > 3);
+    if (dbg > 3) show_mantras(kc, h);
 
-    while(b2pos < reg[2]->s) { // until next uniq region,  stretch or contig
-
+    while(1) { // until next uniq region, stretch or contig
+//EPR("[%u]", b2pos);
         uint64_t nt;
         p = b2pos + h->s_s;
         /* process new key */
         _get_new_kct(kc, kct, dna, rc);
-        // move in next key if last key indicates pending nextnt extension.
-        /*k = kc->kct_scope[KC_LEFT_ROT_NEXT(ext, rot)];
-        if (k != dummy && ALL_SAME_NTS(k) && IS_DISTINCT(k) == false) {
-            EPR0("[b2pos:%u, tsoffs:%lu\t%lu], \t", b2pos, k[1] & B2POS_MASK, kct[1] & B2POS_MASK);
-            print_2dna(dna, rc);
-            EPR0("X");
-            _EVAL(decr_excise(kc, kct, NULL, 0));
-            ++*k;
-            if (WAS_LAST(k)) { // all are now moved
-                EPR0("Z");
-                k[1] |= DISTINCT;
-                mark_same_kct(kc, kct);
-            }
-            EPR0("\n");
-            //KC_ROT(ext, rot); // not here.
-        } */
+        EPQ(TSO_NT(kct) == dbgtsoffs, "\t(%lu)", b2pos); // XXX
 
         if (IS_UQ(kct)) {
+//print_dna(dna, dbg > 3); // XXX XXX
 
             *kct ^= (*kct ^ (p + 1)) & B2POS_MASK;
             _EVAL(get_nextnt(kc, kct[1]));
             nt = res;
 
-            k = kc->kct_scope[0];
-            if (IS_UQ(k) == false) { // then: first uniq
-                //EPQ(TSO_NT(kct) == dbgtsoffs, "(kct == dbg: first uniq)");
+            if (kc->kct_scope[0] != NULL) {
 
-                h->mapable += pot_region_start(reg, dna, b2pos, ext);
-	        _EVAL(mark_all(kc, 0, index));
-            } else {
-                //EPQ(TSO_NT(kct) == dbgtsoffs, "(kct == dbg: 2nd or later uniq within scope)");
-                // 2nd or later uniq within scope
-                elongate_region(*reg, dna, b2pos);
-		if (k != dummy)
-        	    ++kc->uqct;
+                if (CONTINUED_UQ(k, kc) || IN_SCOPE_OF_LAST_BND(kc, b2pos)) {
 
-                // elevate all inbetween non-uniques by the max of these:
-                decr_excise_all(kc, k, kct, index);
+                    if (UQ_was_1st(kc, index, b2pos)) {
+                        h->mapable += b2pos;
+                        if ((*kc->bdit).e != b2end)
+                            h->mapable -= (*kc->bdit).e;
+//EPR("-----------------------\tINSERT\t%u", b2pos);
+                        _EVAL(insert_mantra(kc, h));
+                        ++kc->uqct; // the mantra ended and a new uniq region began
+                    }
+
+                    decr_excise_all(kc, k, kct, index);
+                    //potential mantra start
+                    (*kc->bdit).s = b2pos;
+                    (*kc->bdit).dna = dna;
+
+                } else { EPQ(dbg > 3, "first uniq");
+                    pot_mantra_end(kc, h, dna, b2pos);
+                    _EVAL(mark_all(kc, 0, index));
+                }
             }
+
 	    index = 0;
         } else {
 
@@ -383,46 +331,82 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h, C uint32_t lastx)
             } else {
                 _EVAL(get_nextnt(kc, NT_OFFS(kct)));
                 nt = res;
-                // NEXT_NT_NR must be instantly updated or next_nt won't match
+                // IN_SCOPE (Nt's) must be instantly updated or next_nt won't match
                 // twobit Nts for the same keys within scope.
                 *kct += ONE_PENDING;
             }
 
 	    if (index == ext) {
 		i = 0;
-		if (IS_UQ(kc->kct_scope[i])) {// first out of scope
-		    _EVAL(end_region(kc, reg, h));
+		if (IS_UQ(kc->kct_scope[i])) {
+//show_mantras(kc, h);
+//EPR("((*kc->bdit).e + i) == p, %u + %u == %u?", (*kc->bdit).e, index, p);
+                    if (UQ_was_1st(kc, index, b2pos)) { // XXX XXX XXX won't work
+                        pot_mantra_end(kc, h, 0, 0); // undo (postpone) mantra ending
+                    }
 		    ++i;
-		}
+                }
+
 		_EVAL(mark_all(kc, i, index));
 		index = 0;
-	    }
+            }
         }
-        _EVAL(check_nt(kc, nt, p & B2POS_MASK));
+        if (++b2pos > b2end) {
+            kc->kct_scope[index] = kct;
+            --b2pos;
+            break;
+        }
+        ASSERT(0 == check_nt(kc, nt, p & B2POS_MASK), res = -EFAULT; goto err, "%lu/%lu",
+                TSO_NT(kct), NT_OFFS(kct));
 
         ASSERT(nt != -1ul, res = -EFAULT; goto err, "ndxkct 0x%lx [%u]", *kct, b2pos);
-        ++b2pos;
+        ASSERT(index < ext, return -EFAULT);
         kc->kct_scope[index++] = kct;
+
 
         dna = _seq_next(nt, dna, rc);
     }
-    ASSERT(b2pos == reg[2]->s, res = -EFAULT; goto err, "[%u] %u", b2pos, reg[2]->s);
-    k = kc->kct_scope[0];
-    if (IS_UQ(k)) { // there was a unique in scope
-        EPQ (dbg > 4, "Post loop boundary handling [%u]", b2pos);
-        decr_excise_all(kc, k, kct, index);
-	if (k != dummy)
-            ++kc->uqct;
-        _EVAL(adjoining_boundary(kc, reg, h, dna, b2pos));
-    } else {
-	_EVAL(mark_all(kc, 0, index));
-        h->mapable -= max(reg[1]->s + reg[1]->l + ext, b2pos) - b2pos;
-    }
+    ASSERT(b2pos == b2end, show_mantras(kc, h); res = -EFAULT; goto err, "[%u] %u", b2pos, b2end);
+    EPR("[%u]",b2pos);
+    if (CONTINUED_UQ(k, kc)) {
+        EPQ (1, "Post loop adjoining boundary [%u,%u]", b2pos, h->mapable);
 
+        decr_excise_all(kc, k, NULL, index);
+        //++kc->uqct;
+        if ((*kc->bdit).e != b2end)
+            h->mapable -= (*kc->bdit).e;
+        if ((*kc->bdit).e + index >= b2pos) { EPR("the next mantra was already inserted.");
+            show_mantras(kc, h);
+            kc->bdit = h->bnd.erase(kc->bdit);
+        } else {
+            EPQ(dbg > 3, "(post_loop1)\th->mapable (%u) += %u", h->mapable, (*kc->bdit).e);
+            kc->bdit++;
+        }
+        EPQ(dbg > 3, "(post_loop2)\th->mapable (%u) += %u", h->mapable, b2pos);
+        h->mapable += b2pos;
+
+    } else if (kc->kct_scope[0] != NULL) {
+        //h->mapable -= b2pos;
+        //if (kc->bdit != h->bnd.begin())
+        //    h->mapable += (*kc->bdit).e;
+	_EVAL(mark_all(kc, 0, index));
+        EPQ(dbg > 3, "(post_loop3)\th->mapable (%u) -= %u", h->mapable, b2pos);
+        pot_mantra_end(kc, h, dna, b2pos);
+        ++kc->bdit;
+        if (kc->bdit != h->bnd.end() && (*kc->bdit).e <= b2pos) {
+            //this seems necessary in case f N-stretch at end, why?
+            kc->bdit = h->bnd.erase(kc->bdit);
+        }
+    }
+    show_mantras(kc, h);
     res = 0;
 err:
     if (res < -1 || dbgtsoffs == -2ul) {
-        EPR0("[b2pos:%u, tsoffs:%lu], \t", b2pos, kct[1] & B2POS_MASK);
+        EPR0("following is: ");
+        for(i = 0; i != KEY_WIDTH; ++i, ++p)
+             EPR0("%c", b6(((kc->s[p>>2] >> ((p&3) << 1)) & 3) << 1));
+        EPR("");
+        EPR0("[b2pos:%u, tsoffs:%lu], \t", b2pos, kct ? kct[1] & B2POS_MASK : ~0u);
         print_2dna(dna, rc);
     }
     return res;
@@ -431,26 +415,28 @@ err:
 static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
-    uint32_t lastx;
-    EPR("Processing %s", kc->id + h->part[0]);
     kc->bdit = h->bnd.begin();
-    h->mapable = 0u;
-
-    for (lastx = *kc->bdit; ++kc->bdit != h->bnd.end(); lastx = *kc->bdit) {
-        int ret = ext_uq_bnd(kc, h, lastx);
-        if (ret < 0) return ret;
+    if (kc->bdit == h->bnd.end()) {
+        EPR("Already fully mapable: %s", kc->id + h->part[0]);
+        return h->end_pos;
     }
-    h->mapable += kc->bd[lastx].l; // last mapable region
-    lastx = kc->bd[lastx].s + kc->bd[lastx].l;
+    EPR("Processing %s", kc->id + h->part[0]);
+
+    h->mapable = 0ul;
+    do {
+        int ret = ext_uq_bnd(kc, h);
+        if (ret < 0) return ret;
+    } while (kc->bdit != h->bnd.end());
 #ifdef DEBUG
     if (dbg > 4)
-        show_list(kc, h->bnd);
+        show_mantras(kc, h);
 #endif
     EPQ(dbg > 2, "%s: %u/%u => %.2f%% mapable",
-            kc->id + h->part[0], h->mapable, lastx,
-            h->end_pos ? 100.0f * h->mapable / lastx : nanf("NAN"));
+            kc->id + h->part[0], h->mapable, h->end_pos,
+            h->end_pos ? 100.0f * h->mapable / h->end_pos : nanf("NAN"));
+    ASSERT(h->mapable <= h->end_pos, show_mantras(kc, h); return -EFAULT);
 
-    return lastx;
+    return h->end_pos;
 }
 
 static int
@@ -466,15 +452,15 @@ ext_uq_iter(kct_t* kc)
         mapable += (*h)->mapable;
         totNts += ret;
     }
-    EPQ(dbg > 0, "extended %u unique ranges in iteration %u, using %u boundaries\n"
-            "\t%lu/%lu => %.2f%% mapable. (%u pending)", kc->uqct, ++kc->iter, kc->bd_l,
+    EPQ(dbg > 0, "extended %u unique ranges in iteration %u\n"
+            "\t%lu/%lu => %.2f%% mapable. (%u pending)", kc->uqct, ++kc->iter,
             mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"), kc->pending);
     //dbg = 7;
     // FIXME: reset upon last occurance for non-uniq in inner loop
     for (uint64_t *k = kc->kct; k != kc->kct + kc->kct_l; k+=2) {
         if (IS_UQ(k) == false) {// at least one left (if unique position genomic 2bit)
 #if defined(TEST_CLEARANCE)
-            ASSERT(NEXT_NT_NR(k) == 0ul, return -EFAULT, "[%lu]", TSO_NT(k));
+            ASSERT(LAST_IN_SCOPE(k) == 0ul, return -EFAULT, "[%lu]", TSO_NT(k));
             //ASSERT(IS_DISTINCT(k) == false, return -EFAULT, "[%lu]", TSO_NT(k));
 #else
             *k &= ~B2POS_MASK; // reset position tracking

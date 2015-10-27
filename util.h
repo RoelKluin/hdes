@@ -17,11 +17,15 @@
 #include <stdlib.h>
 #include "b6.h"
 
+#define DEBUG 1
+
 static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const unsigned long dbgtsoffs = ~0ul;
+static const char* dbgchr = "B";//GL000226.1";//GL000207.1T";//GL000197.1";//GL000239.1";//GL000231.1";
+static const unsigned long dbgtsoffs = 5000;//11;//212469;//2687783;//4995737;//3964212;//1835528;//3888783;//1955549;//2811688;//~0ul;
+static const uint32_t dbgpos = 0; //1099511627775; //0x2028;
 static int dbg = 3;
 
 #define C const
@@ -75,7 +79,7 @@ if_ever (!(cond)) { \
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
 
 #define _EVAL(fun)\
-    ASSERT((res = fun) >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
+    ASSERT((res = (fun)) >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
 
 
 #define _ACTION(fun, msg, ...)\
@@ -211,9 +215,9 @@ static unsigned next_pow2(unsigned x)
 }
 
 static int
-print_dna(uint64_t dna, bool dbg = true, const char sep = '\n', unsigned len = KEY_WIDTH)
+print_dna(uint64_t dna, bool d = true, const char sep = '\n', unsigned len = KEY_WIDTH)
 {
-    if (dbg) {
+    if (d) {
         for (unsigned t = len; t--; dna >>= 2)
             fputc(b6((dna & 3) << 1), stderr);
         fputc(sep, stderr);
@@ -221,9 +225,9 @@ print_dna(uint64_t dna, bool dbg = true, const char sep = '\n', unsigned len = K
     return -1;
 }
 static int
-print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true, unsigned len = KEY_WIDTH)
+print_2dna(uint64_t dna, uint64_t dna2, bool d = true, unsigned len = KEY_WIDTH)
 {
-    if (dbg) {
+    if (d) {
         print_dna(dna, true, '|', len);
         print_dna(dna2, true, '\n', len);
     }
@@ -231,9 +235,9 @@ print_2dna(uint64_t dna, uint64_t dna2, bool dbg = true, unsigned len = KEY_WIDT
 }
 
 static int
-print_ndx(uint64_t dna, bool dbg = true)
+print_ndx(uint64_t dna, bool d = true)
 {
-    if (dbg == false) return -1;
+    if (d == false) return -1;
     uint64_t rc = dna & KEYNT_TRUNC_UPPER;
     dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
     rc = revcmp(dna);

@@ -59,30 +59,32 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
 {
     // FIXME: no looping here, store ref to header in boundary?.
     std::list<Hdr*>::iterator hdr;
-    std::list<uint32_t>::iterator bd;
+    std::list<Mantra>::iterator bd;
+
     for (hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
         bd = (*hdr)->bnd.end();
         --bd;
-        ASSERT(*bd < kc->bd_l, return -EFAULT);
+
         //position beyond end of last boundary of this contig must be on a later one.
-        if (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l + bufi) < *pos)
+        if (((*hdr)->s_s + (*bd).e + bufi) < *pos)
             continue;
+
         EPQ(dbg > 16, "%s", kc->id + (*hdr)->part[0]);
-        while ((((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l + bufi) > *pos) &&
-                bd != (*hdr)->bnd.begin()) {
-            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l), *pos);
+        while ((((*hdr)->s_s + (*bd).s + bufi) > *pos) && bd != (*hdr)->bnd.begin()) {
+
+            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + (*bd).s), *pos);
             --bd;
         }
-        ASSERT (((*hdr)->s_s + kc->bd[*bd].s + kc->bd[*bd].l) <= *pos, return -EFAULT);
+        ASSERT (((*hdr)->s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
     }
     ASSERT (hdr != kc->h.end(), return -EFAULT);
-    EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, kc->bd[*bd].corr, bufi);
+    EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, (*bd).corr, bufi);
 
-    ASSERT(*pos + kc->bd[*bd].corr > (*hdr)->s_s + bufi, return -EFAULT,
-            "%s\t%lu\t%lu", kc->id + (*hdr)->part[0], *pos + kc->bd[*bd].corr, (*hdr)->s_s + bufi
-            /*, "\n%lx + %x <= %lx + %x +s", *pos, kc->bd[*bd].corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
-    *pos += kc->bd[*bd].corr - (*hdr)->s_s - bufi; // should be one-based.
+    ASSERT(*pos + (*bd).corr > (*hdr)->s_s + bufi, return -EFAULT,
+            "%s\t%lu\t%lu", kc->id + (*hdr)->part[0], *pos + (*bd).corr, (*hdr)->s_s + bufi
+            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
+    *pos += (*bd).corr - (*hdr)->s_s - bufi; // should be one-based.
 
     return (*hdr)->part[0];
 }
@@ -324,7 +326,7 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
     // TODO: first read in several reads to verify 
 
-    _ACTION( init_fq(seq), "intializing memory")
+    _ACTION(init_fq(seq), "intializing memory")
 
     for (int i=0; i != 3; ++i) {
         if (fhio[i]->name == NULL) {
@@ -354,6 +356,8 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     EPR("All seems fine.");
 err:
     EPQ(res, "an error occured:%d", res);
+    free(seq->lookup);
+    free(seq->s);
     free_kc(&kc);
     return res;
 }

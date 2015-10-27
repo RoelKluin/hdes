@@ -79,19 +79,38 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         }
         break;
     }
-    kc->bd[kc->bd_l].s = 0;
-    kc->bd[kc->bd_l].corr = KEY_WIDTH;
+    Mantra contig = {0};
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bd[kc->bd_l].corr += atoi(kc->id + h->part[START]) - 1;
+        contig.corr = KEY_WIDTH + atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
+        contig.e = h->end_pos - KEY_WIDTH;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
-        EPR("\nWARNING: non-ensembl reference.");
+        contig.corr = KEY_WIDTH;
+        contig.e = h->end_pos = ~0u;
+        EPQ(dbg > 3, "\nWARNING: non-ensembl reference.");
     }
+    h->bnd.push_back(contig);
     return h;
 }
+
+static int
+end_pos(kct_t*C kc, Hdr* h, uint32_t corr)
+{
+    EPR("processed %lu Nts for %s", kc->s_l - h->s_s + corr, kc->id + h->part[0]);
+    if (h->end_pos != ~0u) {
+        // non-fatal for Y
+        EPQ(kc->s_l + corr != h->s_s + h->end_pos, "pos != h->end_pos: %lu == %u",
+                kc->s_l - h->s_s + corr, h->end_pos);
+        ASSERT(corr != KEY_WIDTH || h->s_s + h->bnd.back().e == kc->s_l, return -EFAULT);
+    }
+    h->bnd.back().e = kc->s_l - h->s_s;
+    h->end_pos = h->bnd.back().e;
+    return 0;
+}
+
 /*
  * process fasta, store 2bit string and count occurances and locations of keys.
  * store per key the count and the last position.
@@ -104,16 +123,18 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     int (*ungc) (int, void*);
     uint64_t dna = 0, rc = 0, ndx, b = 0, t = 0ul;
     uint32_t corr = 0u;
-    int c;
+    int c, res = -EFAULT;
     Hdr* h = NULL;
     kc->s_l = 0ul;
     set_readfunc(fhin, &g, &gc, &ungc);
     while ((c = gc(g)) != '>' && c != '@' && c != -1) {} // skip to first ref ID
+    kc->iter = 0; // here no. boundaries
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while (c >= 0) {
+        ++kc->iter;
         if (c != '>') { // N-stretch
-            kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
+            h->bnd.back().s = kc->s_l - h->s_s;
             do {
                 if (c != '\n') {
                     if (c != 'N') {
@@ -126,42 +147,30 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
             } while(c != -1);
             // TODO: handle single or a few N's differently.
 
-            EPR("=>\tN-stretch at Nt %lu (%lu/%u)", kc->s_l - h->s_s + corr, t, corr);
             corr += t;
             if (c == '>' || c == -1) { // skip N's at end.
                 corr -= KEY_WIDTH;
-                kc->bd[kc->bd_l].corr = corr;
-
-                EPR("processed %lu Nts for %s", kc->s_l - h->s_s, kc->id + h->part[0]);
-                // non-fatal for Y
-                EPQ(kc->s_l - h->s_s + corr != h->end_pos,
-                        "pos + t - KEY_WIDTH != h->end_pos: %lu (+'ed:%u) == %u",
-                        kc->s_l - h->s_s, corr, h->end_pos);
-                t = 0;
+                h->bnd.back().corr = corr;
+                _EVAL(end_pos(kc, h, corr));
+                t = res;
                 continue;
             }
-            kc->bd[kc->bd_l].corr = corr;
+
+            h->bnd.back().corr = corr;
         } else {
             // Append the index of the next boundary to the last header.
             // The at_dna is of the last chromo. XXX if at_dna is removed
             // altogether we can stop at h->bnd.end() instead.
-            if (h != NULL) {
-                kc->bd[kc->bd_l].l = 0;
-                kc->bd[kc->bd_l].corr = corr;
-                kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
-                kc->bd[kc->bd_l].dna = 0ul;
-                h->bnd.push_back(kc->bd_l++);
-            }
-            kc->bd[kc->bd_l].at_dna = 0u;
 
             h = new_header(kc, g, gc);
-            corr = kc->bd[kc->bd_l].corr;
+            corr = h->bnd.back().corr;
             h->s_s = kc->s_l;
             ASSERT(h != NULL, return -EFAULT);
             EPQ(dbg > 5, "header %s", kc->id + h->part[0]);
             c = gc(g);
             if (!isb6(b6(c))) {
                 t = 0;
+                EPR("=>\tN-stretch at Nt %lu", 0);
                 continue;
             }
         }
@@ -181,20 +190,18 @@ default: // include 'N's and such to make sure the key is completed. FIXME: exte
             }
             break;
         }
-        kc->bd[kc->bd_l].l = 0;
         if_ever (t != KEY_WIDTH) { // c == -1, 'N' or '>'
             // we can get here if an N-stretch follows a new contig
             if (t != 0) {
                 // or if two N-s(tretches) lie close to one anorther
                 EPQ(dbg > 1, "Key incomplete before next boundary - merging");
             }
-            EPQ(dbg > 1, "jump at %lu", kc->s_l - h->s_s + corr);
+            EPQ(dbg > 1, "XXX jump at %lu", kc->s_l - h->s_s + corr);
             t = KEY_WIDTH; // right? [or zero]
             continue; // join regions.
         }
         // ndx (key) is 2nd cNt bit excised, rc or dna
-        kc->bd[kc->bd_l].dna = dna;
-        h->bnd.push_back(kc->bd_l++);
+        h->bnd.back().dna = dna;
 
         while (1) {
             if (isspace(c = gc(g))) continue;
@@ -214,7 +221,7 @@ default: // include 'N's and such to make sure the key is completed. FIXME: exte
                     if (t < 32ul) {
                         --ct;
                     } else if (t == 61ul) {
-                        EPQ(dbg > 7, "conversion to index:%c", c);
+                        EPQ(dbg > 7, "conversion to index");
                         t = *ct & B2SEQ_MASK;  // temp store 2bit dna
                         *ct = B2LEN_MASK | 62; // conversion: set to index, make sure B2LEN_MASK bits are set
                         b = *--ct;
@@ -225,7 +232,7 @@ default: // include 'N's and such to make sure the key is completed. FIXME: exte
                         t = 61;
                     }
                 } else {
-                    EPQ(dbg > 7, "in index format:%c", c);
+                    EPQ(dbg > 7, "in index format:");
                     t = (*ct--)++; // incr length one, move to address.
                     ct = (uint64_t *)*ct;
 
@@ -261,43 +268,36 @@ case 'T': case 't':
 case 'U': case 'u': b ^= 2;
 case 'A': case 'a':
                 // append next 2bit to last ndx. Early Nts are in low bits.
+                dna = _seq_next(b, dna, rc);
                 *ct |= b << ((t & 0x1f) << 1);
                 EPQ0(dbg > 6, "%s\t%lu\t", kc->id + h->part[0], kc->s_l - h->s_s + corr);
                 print_dna(*ct, dbg > 6, '\n', (ct >= kc->kct) && (ct < (kc->kct + kc->kct_l)) ? 29 : 32);
-                _addtoseq(kc->s, b);
-                dna = _seq_next(b, dna, rc);
+                _addtoseq(kc->s, b); // kc->s_l grows here.
                 continue;
             }
-            // happens at a boundary: no next Nts (zero inserted).
-            if ((ct >= kc->kct) && (ct < (kc->kct + kc->kct_l))) { // pointer in range - valid for non-void pointers
-                if (t < 32) ++ct;
-                *ct -= ONE_B2SEQ;
-            } else {// If not within kct range then this is an extended keycount:
-                --kc->kct[kc->ndxkct[ndx] + 1];
-            }
+            // at a boundary no next Nt is inserted, but its position is updated. it
+            // won't be moved.
+            //_addtoseq(kc->s, 0);
             break;
         }
 
-        kc->bd[kc->bd_l].at_dna = dna;
-        _buf_grow0(kc->bd, 2ul);
+        h->bnd.back().end_dna = dna;
         if (c == '>' || c == -1) {
-            EPR("processed %lu Nts for %s", kc->s_l - h->s_s + corr, kc->id + h->part[0]);
-            // non-fatal for Y
-            EPQ(kc->s_l - h->s_s + corr != h->end_pos,
-                    "pos != h->end_pos: %lu == %u",
-                    kc->s_l - h->s_s + corr, h->end_pos);
-            t = 0ul;
+            _EVAL(end_pos(kc, h, corr));
+            t = res;
         } else {
+            // each N-stretch except first adds one extra Nt, for the last key before the Ns.
+            EPR("=>\tN-stretch at Nt %lu", kc->s_l - h->s_s + corr);
             t = KEY_WIDTH;
+            h->bnd.back().e = kc->s_l - h->s_s;
+            h->bnd.push_back({0});
         }
     }
+    _addtoseq(kc->s, 0);
     ASSERT(h != NULL, return -EFAULT);
-    kc->bd[kc->bd_l].l = 0;
-    kc->bd[kc->bd_l].corr = corr;
-    kc->bd[kc->bd_l].s = kc->s_l - h->s_s;
-    kc->bd[kc->bd_l].at_dna = kc->bd[kc->bd_l].dna = 0ul;
-    h->bnd.push_back(kc->bd_l++);
-    return 0;
+    res = 0;
+err:
+    return res;
 }
 
 // concatenate 2bits, byte aligned, for each key in buffer kc->ts,
@@ -307,7 +307,10 @@ kct_convert(kct_t* kc)
 {
     kc->ts_l = kc->s_l; // about as many next NTs as Nts.
     // XXX: requirement of addition below is strangely needed +1 seems to work in most cases. +4 here just to be sure..
-    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 4;
+    // Maybe because end of contig key also needs an nextnt to keep its counts? in that case the
+    // addition should be the no. contigs + N-stretches ..?
+
+    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 1;
     uint8_t *dest = (uint8_t*)malloc(ts_end);
     ASSERT(dest != NULL, return -ENOMEM);
     kc->ts = dest;
@@ -432,7 +435,6 @@ fa_read(struct seqb2_t* seq, kct_t* kc)
     int res = -ENOMEM;
 
     kc->kct = _buf_init_err(kc->kct, 16, goto err);
-    kc->bd = _buf_init_err(kc->bd, 1, goto err);
     kc->id = _buf_init_err(kc->id, 5, goto err);
     kc->s = _buf_init_err(kc->s, 8, goto err);
 

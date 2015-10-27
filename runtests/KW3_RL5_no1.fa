@@ -1,0 +1,8 @@
+>0   5    0    5  +-- TGA, isolated uniq
+TTTTTGAAAAAA
+>1   5    0    5  +-- 1:TAC 1:CAT; -ACA
+ATATACATATA
+>2   5  +-- 2:TGT
+TTGTTG
+>3   5
+TTTTC

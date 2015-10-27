@@ -17,7 +17,7 @@
 #define __WRITE_VAL(x) \
     ASSERT(fhout->fp != NULL, return -EFAULT);\
     ASSERT(fhout->write != NULL, return -EFAULT);\
-    EPQ(dbg > 5, "writing value for " #x "");\
+    EPQ(dbg > 5, "writing value for " #x ":0x%lx", (uint64_t)(x));\
     if (fhout->write(fhout, (const char*)&(x), sizeof(x)) < 0)\
         goto err;
 #define __WRITE_PTR(x, l) \
@@ -41,17 +41,17 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
     uint32_t val, len = kc->h.size();
+    uint64_t val64;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
+
     // 1: buffer sizes
     __WRITE_VAL(len)
     __WRITE_VAL(kc->id_l)
-    __WRITE_VAL(kc->bd_l)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
-    __WRITE_PTR(kc->bd, kc->bd_l)
 
     for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
     {
@@ -60,8 +60,18 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         len = h->bnd.size();
         __WRITE_VAL(len)
         __WRITE_VAL(h->s_s)
-        for(std::list<uint32_t>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
-            val = *b; // NB: calls list's overloaded function: get stored value.
+        for(std::list<Mantra>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
+            val64 = (*b).dna;
+            __WRITE_VAL(val64)
+#ifdef DEBUG
+            val64 = (*b).end_dna;
+            __WRITE_VAL(val64)
+#endif;
+            val = (*b).corr;
+            __WRITE_VAL(val)
+            val = (*b).s;
+            __WRITE_VAL(val)
+            val = (*b).e;
             __WRITE_VAL(val)
         }
         __WRITE_VAL(h->p_l)
@@ -79,25 +89,15 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 {
     int res;
     uint32_t len, blen, val;
-    kc->bd = NULL;
     kc->id = NULL;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
     // 1: buffer sizes
     __READ_VAL(len) // header size: how many contigs (and uniq regions)
     __READ_VAL(kc->id_l)
-    __READ_VAL(kc->bd_l)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
-
-    // special: we reserve more space than stored so we can continue using it.
-    kc->bd_m = __builtin_ctz(next_pow2(kc->bd_l + 2));
-    blen = kc->bd_l * sizeof(Bnd);
-    kc->bd = (Bnd*)malloc((1 << kc->bd_m) * sizeof(Bnd));
-    ASSERT(kc->bd != NULL, return -ENOMEM);
-    if (fhin->read(fhin, (char*)kc->bd, blen) < 0)
-        return res;
 
     for (uint32_t i=0; i != len; ++i) {
         Hdr *h = new Hdr;
@@ -105,8 +105,15 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
         __READ_VAL(blen)
         __READ_VAL(h->s_s)
         for (uint32_t j=0; j != blen; ++j) {
-            __READ_VAL(val)
-            h->bnd.push_back(val);
+            Mantra contig = {0};
+            __READ_VAL(contig.dna)
+#ifdef DEBUG
+            __READ_VAL(contig.end_dna)
+#endif
+            __READ_VAL(contig.corr)
+            __READ_VAL(contig.s)
+            __READ_VAL(contig.e)
+            h->bnd.push_back(contig);
         }
         __READ_VAL(h->p_l)
         __READ_PTR(h->part, h->p_l)
