@@ -3,8 +3,18 @@ source $(dirname $0)/../environment.sh
 
 cd $hdesdir/runtests
 LASTKW=
-ls -1 *.fa | sed -n -r 's/^(KW([0-9]+)_RL([0-9]+)_no[0-9]+)\.fa$/\1 \2 \3/p' |
+FASTAS=($(ls -1 *.fa))
+for i in `seq 0 $((${#FASTAS[@]}-1))`; do
+    echo -e "$i)\t${FASTAS[${i}]}"
+done
+read -n 1 -p "select file [q]uit or run all (return)?" i
+[ "$i" = "$q" ] && exit 0;
+[[ "$i" =~ ^[0-9]$ ]] && FASTAS=("${FASTAS[${i}]}")
+echo "${FASTAS[@]}" | tr " " "\n" | sed -n -r 's/^(KW([0-9]+)_RL([0-9]+)_no[0-9]+)\.fa$/\1 \2 \3/p'
+
+echo "${FASTAS[@]}" | tr " " "\n" | sed -n -r 's/^(KW([0-9]+)_RL([0-9]+)_no[0-9]+)\.fa$/\1 \2 \3/p' |
 while read BN KW RL; do
+  echo "--------------------------[ $BN $KW $RL ]--------------------------";
   if [ "$KW" != "$LASTKW" ]; then
     cd $hdesdir;
     make clean
@@ -20,3 +30,6 @@ while read BN KW RL; do
   $samtools index ${BN}.bam
 
 done
+echo
+echo
+echo

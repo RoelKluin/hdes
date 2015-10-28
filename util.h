@@ -24,7 +24,7 @@ static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
 static const char* dbgchr = "B";//GL000226.1";//GL000207.1T";//GL000197.1";//GL000239.1";//GL000231.1";
-static const unsigned long dbgtsoffs = 5000;//11;//212469;//2687783;//4995737;//3964212;//1835528;//3888783;//1955549;//2811688;//~0ul;
+static const unsigned long dbgtsoffs = 3794074;//118806;//11;//212469;//2687783;//4995737;//3964212;//1835528;//3888783;//1955549;//2811688;//~0ul;
 static const uint32_t dbgpos = 0; //1099511627775; //0x2028;
 static int dbg = 3;
 
@@ -72,6 +72,13 @@ if_ever (!(cond)) { \
     WARN("assertion '" #cond "' failed " __VA_ARGS__);\
     action;\
 }
+
+#define IFOUT(cond, ...) \
+if (cond) { \
+    EPR(__VA_ARGS__);\
+    goto out;\
+}
+
 
 #define _ACTION0(fun, msg, ...)\
     res = fun;\

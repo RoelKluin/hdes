@@ -161,7 +161,7 @@ _mark_all(kct_t C*C kc, char C* f, unsigned l, unsigned i, unsigned const end)
 #define mark_all(kc, i, e) _mark_all(kc, __FILE__, __LINE__, i, e)
 
 static int
-decr_excise(kct_t C*C kc, uint64_t *C k)
+decr_excise(kct_t *C kc, uint64_t *C k)
 {
     uint64_t nt, offs;
     uint8_t *q, *qe, c, t;
@@ -173,6 +173,7 @@ decr_excise(kct_t C*C kc, uint64_t *C k)
     }
 
     k[1] -= ONE_CT; // one less remains.
+    ++kc->uqct;
     if (IS_LAST(k)) {//  src of movement would be target.
         err = 0;
         goto out;
@@ -227,7 +228,7 @@ out:
 }
 
 static int
-decr_excise_all(kct_t C*C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
+decr_excise_all(kct_t *C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
 {
     int res = 0;
     uint64_t infior = kct ? max(*k, *kct) : *k;
@@ -267,13 +268,11 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
     uint64_t rc = revcmp(dna);
     uint64_t *kct = NULL, *k;
     unsigned i, index = 0, ext = kc->ext;
-    uint32_t b2pos = (*kc->bdit).s;
+    uint32_t b2pos;
     const uint32_t b2end = (*kc->bdit).e;
     int res;
     kc->kct_scope[0] = NULL;
     // Cannot check post jump dna, it is not stored in kc->s.
-    //if (b2pos)
-    //    _EVAL(check_key(kc, dna, b2pos));
 
     dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
     EPQ0(dbg > 3, "----[\t%s%s:(%u+)%u..%u\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
@@ -281,8 +280,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
     print_dna(dna, dbg > 3);
     if (dbg > 3) show_mantras(kc, h);
 
-    while(1) { // until next uniq region, stretch or contig
-//EPR("[%u]", b2pos);
+    for (b2pos = (*kc->bdit).s; b2pos < b2end; ++b2pos) { // until next uniq region, stretch or contig
         uint64_t nt;
         p = b2pos + h->s_s;
         /* process new key */
@@ -290,34 +288,38 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
         EPQ(TSO_NT(kct) == dbgtsoffs, "\t(%lu)", b2pos); // XXX
 
         if (IS_UQ(kct)) {
-//print_dna(dna, dbg > 3); // XXX XXX
 
             *kct ^= (*kct ^ (p + 1)) & B2POS_MASK;
             _EVAL(get_nextnt(kc, kct[1]));
             nt = res;
 
-            if (kc->kct_scope[0] != NULL) {
-
-                if (CONTINUED_UQ(k, kc) || IN_SCOPE_OF_LAST_BND(kc, b2pos)) {
-
-                    if (UQ_was_1st(kc, index, b2pos)) {
-                        h->mapable += b2pos;
-                        if ((*kc->bdit).e != b2end)
-                            h->mapable -= (*kc->bdit).e;
-//EPR("-----------------------\tINSERT\t%u", b2pos);
-                        _EVAL(insert_mantra(kc, h));
-                        ++kc->uqct; // the mantra ended and a new uniq region began
-                    }
-
-                    decr_excise_all(kc, k, kct, index);
-                    //potential mantra start
-                    (*kc->bdit).s = b2pos;
-                    (*kc->bdit).dna = dna;
-
-                } else { EPQ(dbg > 3, "first uniq");
-                    pot_mantra_end(kc, h, dna, b2pos);
-                    _EVAL(mark_all(kc, 0, index));
+            k = kc->kct_scope[0];
+            if (k == NULL) {
+                //everything already in place
+            } else if (DOWNSTREAM_ADJOINING(index, b2pos)) {
+                decr_excise_all(kc, k, kct, index);
+                // mappable region extends beyond end of unique covered region, not before start.
+                h->mapable += b2pos + ext - (*kc->bdit).s;
+                (*kc->bdit).s = b2pos;
+                (*kc->bdit).dna = dna;
+            } else if (IS_UQ(k)) {
+                if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
+                    _EVAL(insert_mantra(kc, h));
+                    // the mantra ended and a new uniq region began
+                    h->mapable -= (*kc->bdit).e - ext;
+                } else {
+                    h->mapable -= (*kc->bdit).s + ext;
                 }
+
+                decr_excise_all(kc, k, kct, index);
+                //EPR("[%u, %u]", b2pos, index);
+                h->mapable += b2pos + ext; // mapable region starts before 1st uniq.
+                (*kc->bdit).s = b2pos;
+                (*kc->bdit).dna = dna;
+
+            } else { EPQ(dbg > 3, "first uniq");
+                pot_mantra_end(kc, h, dna, b2pos);
+                _EVAL(mark_all(kc, 0, index));
             }
 
 	    index = 0;
@@ -339,9 +341,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
 	    if (index == ext) {
 		i = 0;
 		if (IS_UQ(kc->kct_scope[i])) {
-//show_mantras(kc, h);
-//EPR("((*kc->bdit).e + i) == p, %u + %u == %u?", (*kc->bdit).e, index, p);
-                    if (UQ_was_1st(kc, index, b2pos)) { // XXX XXX XXX won't work
+                    if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) { // XXX XXX XXX won't work
                         pot_mantra_end(kc, h, 0, 0); // undo (postpone) mantra ending
                     }
 		    ++i;
@@ -350,11 +350,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
 		_EVAL(mark_all(kc, i, index));
 		index = 0;
             }
-        }
-        if (++b2pos > b2end) {
-            kc->kct_scope[index] = kct;
-            --b2pos;
-            break;
         }
         ASSERT(0 == check_nt(kc, nt, p & B2POS_MASK), res = -EFAULT; goto err, "%lu/%lu",
                 TSO_NT(kct), NT_OFFS(kct));
@@ -366,31 +361,25 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
 
         dna = _seq_next(nt, dna, rc);
     }
+    EPQ(TSO_NT(kct) == dbgtsoffs, "last key was dbgtsoffs");
     ASSERT(b2pos == b2end, show_mantras(kc, h); res = -EFAULT; goto err, "[%u] %u", b2pos, b2end);
-    EPR("[%u]",b2pos);
-    if (CONTINUED_UQ(k, kc)) {
-        EPQ (1, "Post loop adjoining boundary [%u,%u]", b2pos, h->mapable);
-
-        decr_excise_all(kc, k, NULL, index);
-        //++kc->uqct;
-        if ((*kc->bdit).e != b2end)
-            h->mapable -= (*kc->bdit).e;
-        if ((*kc->bdit).e + index >= b2pos) { EPR("the next mantra was already inserted.");
-            show_mantras(kc, h);
-            kc->bdit = h->bnd.erase(kc->bdit);
-        } else {
-            EPQ(dbg > 3, "(post_loop1)\th->mapable (%u) += %u", h->mapable, (*kc->bdit).e);
+    k = kc->kct_scope[0];
+    ASSERT(k != NULL, res = -EFAULT; goto err);
+    if (IS_UQ(k)) {
+        EPQ (dbg > 3, "Post loop adjoining boundary [%u,%u]", b2pos, h->mapable);
+        if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
+            h->mapable -= (*kc->bdit).e - ext;
             kc->bdit++;
+        } else {
+            h->mapable -= (*kc->bdit).s + ext;
+            kc->bdit = h->bnd.erase(kc->bdit);
         }
-        EPQ(dbg > 3, "(post_loop2)\th->mapable (%u) += %u", h->mapable, b2pos);
-        h->mapable += b2pos;
+        decr_excise_all(kc, k, NULL, index);
+        h->mapable += b2pos; // no extension beyond end
 
-    } else if (kc->kct_scope[0] != NULL) {
-        //h->mapable -= b2pos;
-        //if (kc->bdit != h->bnd.begin())
-        //    h->mapable += (*kc->bdit).e;
+    } else if (k != NULL) {
 	_EVAL(mark_all(kc, 0, index));
-        EPQ(dbg > 3, "(post_loop3)\th->mapable (%u) -= %u", h->mapable, b2pos);
+        EPQ(dbg > 3, "(post_loop3)");
         pot_mantra_end(kc, h, dna, b2pos);
         ++kc->bdit;
         if (kc->bdit != h->bnd.end() && (*kc->bdit).e <= b2pos) {
@@ -398,7 +387,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
             kc->bdit = h->bnd.erase(kc->bdit);
         }
     }
-    show_mantras(kc, h);
     res = 0;
 err:
     if (res < -1 || dbgtsoffs == -2ul) {
@@ -415,11 +403,10 @@ err:
 static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
+    unsigned hdr_nts = h->end_pos + h->end_corr;
     kc->bdit = h->bnd.begin();
-    if (kc->bdit == h->bnd.end()) {
-        EPR("Already fully mapable: %s", kc->id + h->part[0]);
-        return h->end_pos;
-    }
+    IFOUT(kc->bdit == h->bnd.end(), "Already fully mapable: %s", kc->id + h->part[0]);
+
     EPR("Processing %s", kc->id + h->part[0]);
 
     h->mapable = 0ul;
@@ -427,16 +414,18 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
         int ret = ext_uq_bnd(kc, h);
         if (ret < 0) return ret;
     } while (kc->bdit != h->bnd.end());
+
+    IFOUT(h->bnd.begin() == h->bnd.end(), "Became fully mapable: %s", kc->id + h->part[0]);
 #ifdef DEBUG
     if (dbg > 4)
         show_mantras(kc, h);
 #endif
     EPQ(dbg > 2, "%s: %u/%u => %.2f%% mapable",
-            kc->id + h->part[0], h->mapable, h->end_pos,
-            h->end_pos ? 100.0f * h->mapable / h->end_pos : nanf("NAN"));
-    ASSERT(h->mapable <= h->end_pos, show_mantras(kc, h); return -EFAULT);
-
-    return h->end_pos;
+            kc->id + h->part[0], h->mapable, hdr_nts,
+            h->end_pos ? 100.0f * h->mapable / hdr_nts : nanf("NAN"));
+    ASSERT(h->mapable <= hdr_nts, show_mantras(kc, h); return -EFAULT);
+out:
+    return hdr_nts;
 }
 
 static int

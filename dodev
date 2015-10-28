@@ -20,6 +20,7 @@ BN="${ref}"
 BA=${BN}-SE_true-RL_${RL}.1
 
 while read -n 1 -p "[q]uit, [o]pen, [r]evert, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, t[e]sts, g[c]ov or continue?" k; do
+    echo
     if [ "$k" = "q" ]; then
         break;
     elif [ "$k" = "o" ]; then

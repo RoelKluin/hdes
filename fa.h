@@ -90,8 +90,10 @@
 #define PENDING_SAME(k) (IS_UQ(k) == false && ((k)[1] & (MARKED|DISTINCT)) == MARKED)
 
 ///////////////////////
+//
+#define DOWNSTREAM_ADJOINING(i, p) ((i) == (p))
 
-#define UQ_was_1st(kc, i, p) (((*kc->bdit).e + i) == p)
+#define FORMER_UQ_WAS_1ST(kc, i, p) (((*kc->bdit).e + i) == p)
 
 #define IN_SCOPE_OF_LAST_BND(kc, p) (p < (*(kc)->bdit).s + (kc)->ext)
 
@@ -213,7 +215,7 @@ struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<Mantra> bnd; //
-    uint32_t end_pos, mapable; // mapable is only used in fa.cpp
+    uint32_t end_pos, end_corr, mapable; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 

@@ -108,6 +108,7 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t corr)
     }
     h->bnd.back().e = kc->s_l - h->s_s;
     h->end_pos = h->bnd.back().e;
+    h->end_corr = corr;
     return 0;
 }
 
@@ -275,9 +276,15 @@ case 'A': case 'a':
                 _addtoseq(kc->s, b); // kc->s_l grows here.
                 continue;
             }
+            /*if ((ct >= kc->kct) && (ct < (kc->kct + kc->kct_l))) { // pointer in range - valid for non-void pointers
+                if (t < 32) ++ct;
+                *ct -= ONE_B2SEQ;
+            } else {// If not within kct range then this is an extended keycount:
+                --kc->kct[kc->ndxkct[ndx] + 1];
+            }*/
             // at a boundary no next Nt is inserted, but its position is updated. it
             // won't be moved.
-            //_addtoseq(kc->s, 0);
+            _addtoseq(kc->s, 0);
             break;
         }
 
@@ -293,7 +300,7 @@ case 'A': case 'a':
             h->bnd.push_back({0});
         }
     }
-    _addtoseq(kc->s, 0);
+    //_addtoseq(kc->s, 0);
     ASSERT(h != NULL, return -EFAULT);
     res = 0;
 err:
@@ -310,7 +317,7 @@ kct_convert(kct_t* kc)
     // Maybe because end of contig key also needs an nextnt to keep its counts? in that case the
     // addition should be the no. contigs + N-stretches ..?
 
-    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + 1;
+    const uint64_t ts_end = (kc->ts_l >> 2) + !!(kc->ts_l & 3) + kc->iter;
     uint8_t *dest = (uint8_t*)malloc(ts_end);
     ASSERT(dest != NULL, return -ENOMEM);
     kc->ts = dest;
