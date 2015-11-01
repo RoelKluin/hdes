@@ -1,9 +1,9 @@
 HOST=$(shell hostname)
 #There must be a space between ifeq and (
-ifeq	($(HOST),Z)
-  CC=		ccache g++
-else
+ifeq	($(HOST),utonium)
   CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
+else
+  CC=		ccache g++
 endif
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze

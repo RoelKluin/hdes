@@ -63,10 +63,6 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         for(std::list<Mantra>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
             val64 = (*b).dna;
             __WRITE_VAL(val64)
-#ifdef DEBUG
-            val64 = (*b).end_dna;
-            __WRITE_VAL(val64)
-#endif;
             val = (*b).corr;
             __WRITE_VAL(val)
             val = (*b).s;
@@ -107,9 +103,6 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
         for (uint32_t j=0; j != blen; ++j) {
             Mantra contig = {0};
             __READ_VAL(contig.dna)
-#ifdef DEBUG
-            __READ_VAL(contig.end_dna)
-#endif
             __READ_VAL(contig.corr)
             __READ_VAL(contig.s)
             __READ_VAL(contig.e)
@@ -158,37 +151,6 @@ err:
     return res;
 }
 
-int save_nextnts(struct gzfh_t* fhout, kct_t* kc)
-{
-    int res = -EFAULT;
-    uint64_t len64;
-    ASSERT(fhout->fp == NULL, goto err);
-    _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
-    res = -EFAULT;
-
-    __WRITE_VAL(kc->ts_l)
-    len64 = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    __WRITE_PTR(kc->ts, len64)
-    res = 0;
-err:
-    rclose(fhout);
-    return res;
-}
-int load_nextnts(struct gzfh_t* fhin, kct_t* kc)
-{
-    int res = -EFAULT;
-    uint64_t len64;
-    kc->ts = NULL;
-    _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
-    __READ_VAL(kc->ts_l)
-    len64 = (kc->ts_l >> 2) + !!(kc->ts_l & 3);
-    __READ_PTR(kc->ts, len64)
-    res = 0;
-err:
-    return res;
-
-}
-
 int save_kc(struct gzfh_t* fhout, kct_t* kc)
 {
     uint32_t* buf = NULL;
@@ -220,7 +182,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->ndxkct[i] = kc->kct_l;
-    for (unsigned i=0u; i != kc->kct_l; i += 2) {
+    for (unsigned i=0u; i != kc->kct_l; ++i) {
         ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %lu > KEYNT_BUFSZ(%lu)",
                 i, kc->kct_l, kc->kct[i], KEYNT_BUFSZ);
         kc->ndxkct[kc->kct[i]] = i;

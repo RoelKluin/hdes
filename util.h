@@ -23,8 +23,8 @@ static const unsigned long dbgndx = ~0ul;// 0x1d03c;//0x1c27012;
 static unsigned dbgkct = -3u;
 static const uint32_t dbgndxkct = -3u; //1099511627775; //0x2028;
 static const char* dbgrn = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const char* dbgchr = "B";//GL000226.1";//GL000207.1T";//GL000197.1";//GL000239.1";//GL000231.1";
-static const unsigned long dbgtsoffs = 3794074;//118806;//11;//212469;//2687783;//4995737;//3964212;//1835528;//3888783;//1955549;//2811688;//~0ul;
+static const char* dbgchr = "Q";//GL000226.1";//GL000207.1T";//GL000197.1";//GL000239.1";//GL000231.1";
+static const uint32_t dbgk = ~0u;
 static const uint32_t dbgpos = 0; //1099511627775; //0x2028;
 static int dbg = 3;
 

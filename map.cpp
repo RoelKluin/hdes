@@ -115,10 +115,10 @@ fq_read(kct_t* kc, seqb2_t *seq)
     uint8_t *s = seq->s + l;
     const unsigned phred_offset = seq->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + seq->readlength + 1;
-    int c;
     uint64_t ndx, dna = 0ul, rc = 0ul, b = 0ul, wx = 0ul;
-    uint64_t* buf = (uint64_t*)malloc((kc->ext + 1) * sizeof(uint64_t));
-    unsigned* bufi = (unsigned*)malloc((kc->ext + 1) * sizeof(unsigned));
+    int c = kc->readlength - KEY_WIDTH + 1;
+    uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
+    unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
     Hdr* lh = kc->h.back();
     const uint64_t end_pos = lh->s_s + lh->end_pos;
     struct mapstat_t ms = {0};
@@ -161,13 +161,13 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
-		    if (i > kc->ext + KEY_WIDTH) { // non of keys mappable
+		    if (i > kc->readlength) { // non of keys mappable
 			EPR("Read %s is with %u Nts longer than expected (%u) and skipped.",
-				(char*)h, i, kc->ext + KEY_WIDTH);
+				(char*)h, i, kc->readlength);
 			buf[0] = ~0ul; //skip entire read
 			break;
 		    }
-		    //ASSERT(i <= kc->ext + KEY_WIDTH, c = -EFAULT; goto out);
+		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
 		    // wx only has strand at offset KEY_WIDTH.
                     _get_ndx(ndx, wx, dna, rc);
                     uint32_t k = kc->ndxkct[ndx];
@@ -320,7 +320,7 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     const char* ext[4] = {".kc",".2b",".bd",  ".uq"};
     char file[768];
     kct_t kc = {0};
-    kc.ext = seq->readlength - KEY_WIDTH;
+    kc.readlength = seq->readlength;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);

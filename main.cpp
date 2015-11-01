@@ -50,7 +50,7 @@ get_cmdl(int argc, char*C* argv)
     char* ret = NULL;
     unsigned ret_l = 0;
     size_t l;
-    for (unsigned i = 0; i != argc; ++i) {
+    for (int i = 0; i != argc; ++i) {
         if (ret) {
             ret_l += l;
             ret[ret_l++] = ' ';
@@ -201,7 +201,7 @@ int main(int argc, char* const* argv)
 //                EPR("== Readlength needed for indexing.");
 //                goto out;
 //            }
-            c = fa_index(&seq);
+            c = fa_index(seq.fh, seq.readlength);
             if (c < 0) {
                 EPR("== failed to create keyct.");
                 goto out;
