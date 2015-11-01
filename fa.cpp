@@ -236,7 +236,7 @@ EPR("p:[%u, %d]:", b2pos, b2pos + ext + KEY_WIDTH);
                 _EVAL(mark_all(kc, index, b2pos));
             }
 	    index = 0;
-	} else if (index == ext) {
+	} else if (index == ext + 1) {
 	    i = 0;
 	    if (WAS_UQ(kc->kct_scope[i])) {
                 if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) { EPQ(dbg > 3, "(postponed)");
@@ -249,7 +249,7 @@ EPR("p:[%u, %d]:", b2pos, b2pos + ext + KEY_WIDTH);
 	    _EVAL(mark_all(kc, index - i, b2pos));
 	    index = 0;
 	}
-        ASSERT(index < ext, return -EFAULT);
+        ASSERT(index <= ext, return -EFAULT);
         kc->kct_scope[index++] = kct;
     } while (b2pos < b2end);
 show_mantras(kc, h);
@@ -356,7 +356,7 @@ extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
     int res = -ENOMEM;
     kc->iter = 0;
 
-    kc->kct_scope = (uint64_t**)malloc(ext * sizeof(uint64_t*));
+    kc->kct_scope = (uint64_t**)malloc((ext+1) * sizeof(uint64_t*));
     ASSERT(kc->kct_scope != NULL, res = -EFAULT; goto err);
 
     do { // until no no more new uniques
