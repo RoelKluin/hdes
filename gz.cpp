@@ -81,17 +81,14 @@ b2_read(const gzfh_t *fh, char *s, uint64_t l)
     return ferror(fh->fp) ? -3 : 0;
 }
 
-void set_readfunc(struct gzfh_t* fhin, void** g, int (**gc)(void*),
-        int (**ungc)(int, void*))
+void set_readfunc(struct gzfh_t* fhin, void** g, int (**gc)(void*))
 {
     if (fhin->io == NULL) {
         *g = fhin->fp;
         *gc = (int (*)(void*))&fgetc;
-        *ungc = (int (*)(int, void*))&ungetc;
     } else {
         *g = fhin->io;
         *gc = (int (*)(void*))&gzgetc;
-        *ungc = (int (*)(int, void*))&gzungetc;
     }
 }
 /* from: http://www.zlib.net/manual.html at gzdopen:

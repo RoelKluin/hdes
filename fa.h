@@ -54,8 +54,7 @@
 #define NT_SHFT 38
 #define FIRST_NT(k) ((*(k) & NT_MASK) >> NT_SHFT)
 
-#define IS_UQ(k)       (KEY_COUNT(k) == 1ul)
-#define WAS_UQ(k)      (*(k) & UQ_BIT)
+#define IS_UQ(k)      (*(k) & UQ_BIT)
 #define IS_FIRST(k)    (AT_KEY(k) == 0ul)
 #define IS_LAST(k)     (AT_KEY(k) == KEY_COUNT(k))
 #define IS_DISTINCT(k) ((*(k) & DISTINCT) == DISTINCT)
@@ -80,7 +79,7 @@
   EPR("[k:%lu, %lu/%lu] %c\t%s%s%s%s%s", \
           K_OFFS(kc, k), AT_KEY(k), KEY_COUNT(k), c, IS_FIRST(k) ? "FIRST\t" : "",\
           ALL_SAME_NTS(k) ? "ALL_SAME\t" : "", IS_DISTINCT(k) ? "DISTINCT\t" : "",\
-          IS_UQ(k) || WAS_UQ(k) ? "UQ\t" : "", IS_LAST(k) ? "LAST\t" : "")
+          KEY_COUNT(k) == 1ul || IS_UQ(k) ? "UQ\t" : "", IS_LAST(k) ? "LAST\t" : "")
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 #define MARKED 0x8000000000000000
@@ -94,9 +93,8 @@
 
 //FIXME: could pack dna in 32 bits for KEY_WIDTH 16.
 packed_struct Mantra { // not yet covered by unique keys
-    uint64_t dna; // dna after covered boundary
-    uint32_t corr; // 'real' position correction
     uint32_t s, e; // start and end of mantra, position where we jump to.
+    uint32_t corr; // 'real' position correction
 };
 
 

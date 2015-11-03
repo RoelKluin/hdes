@@ -108,7 +108,6 @@ fq_read(kct_t* kc, seqb2_t *seq)
 {
     void* g;
     int (*gc) (void*);
-    int (*ungc) (int, void*);
     struct gzfh_t* fhin = seq->fh;
 //dbg = 7;
     uint64_t l = seq->s_l, m = seq->s_m;
@@ -123,7 +122,7 @@ fq_read(kct_t* kc, seqb2_t *seq)
     const uint64_t end_pos = lh->s_s + lh->end_pos;
     struct mapstat_t ms = {0};
 
-    set_readfunc(fhin, &g, &gc, &ungc);
+    set_readfunc(fhin, &g, &gc);
 
     while ((c = gc(g)) != '@') {/* skip to first header */
         ASSERT(c != -1 && c != '>', goto out);

@@ -41,7 +41,6 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
     uint32_t val, len = kc->h.size();
-    uint64_t val64;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
@@ -61,8 +60,6 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         __WRITE_VAL(len)
         __WRITE_VAL(h->s_s)
         for(std::list<Mantra>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
-            val64 = (*b).dna;
-            __WRITE_VAL(val64)
             val = (*b).corr;
             __WRITE_VAL(val)
             val = (*b).s;
@@ -84,7 +81,7 @@ int
 load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 {
     int res;
-    uint32_t len, blen, val;
+    uint32_t len, blen;
     kc->id = NULL;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
@@ -102,7 +99,6 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
         __READ_VAL(h->s_s)
         for (uint32_t j=0; j != blen; ++j) {
             Mantra contig = {0};
-            __READ_VAL(contig.dna)
             __READ_VAL(contig.corr)
             __READ_VAL(contig.s)
             __READ_VAL(contig.e)
