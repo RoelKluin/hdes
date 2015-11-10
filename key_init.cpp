@@ -120,7 +120,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     void* g;
     int (*gc) (void*);
     uint64_t dna = 0, rc = 0, ndx;
-    uint32_t corr = 0;
+    uint32_t corr = 0, *n;
     int c;
     unsigned i = ~0u; // skip until '>'
     Hdr* h = NULL;
@@ -130,44 +130,61 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     // TODO: realpos based dbsnp or known site boundary insertion.
     while ((c = gc(g)) >= 0) {
         //EPR("%c,%u",c, corr);
-        switch(c) {
-case 'U': case 'u': c ^= 0x2;
-case 'A': case 'a': c ^= 0x3;
-case 'T': case 't':
-case 'C': case 'c': c ^= 0x2;
-case 'G': case 'g': c &= 0x3;
+        switch((c | i) & ~0x20) {
+case 'U':   c ^= 0x2;
+case 'A':   c ^= 0x3;
+case 'T': 
+case 'C':   c ^= 0x2;
+case 'G':   c &= 0x3;
             dna = _seq_next(c, dna, rc);
+            //print_dna(dna);
             _addtoseq(kc->s, c); // kc->s_l grows here.
-            if (i == 0) {
-                _get_ndx(ndx, ndx, dna, rc);
-                if (kc->ndxkct[ndx] != -2u) {
-                    ++kc->kct[kc->ndxkct[ndx]];
-                } else {
-                    _buf_grow(kc->kct, 2, 0);
-                    kc->ndxkct[ndx] = kc->kct_l;
-                    kc->kct[kc->kct_l++] = 1;
-                }
+            _get_ndx(ndx, ndx, dna, rc);
+            n = kc->ndxkct + ndx;
+            if (*n == -2u) {
+                _buf_grow(kc->kct, 2, 0);
+                *n = kc->kct_l++;
+                kc->kct[*n] = UQ_BIT | (kc->s_l - h->s_s);
+            } else if (IS_UQ(kc->kct + *n)) {
+                // TODO: all same Nts.
+                kc->kct[*n] = 2; // convert to counter upon 2nd occurance
             } else {
-                if(--i == KEY_WIDTH - 2) {
-
-                    if (kc->s_l - h->s_s - 1 != 0) { // N-stretch, unless at start, needs insertion
+                ++kc->kct[*n]; // continue counting
+            }
+            break;
+case 'N':   i = (KEY_WIDTH - 1) << 8;
+case 'N' | ((KEY_WIDTH - 1) << 8):
+            ++corr;
+            break;
+default:    if (isspace(c))
+                continue;
+            switch (c & ~0x20) {
+    case 'U':   c ^= 0x2;
+    case 'A':   c ^= 0x3;
+    case 'T': 
+    case 'C':   c ^= 0x2;
+    case 'G':   c &= 0x3;
+                if (i == ((KEY_WIDTH - 1) << 8)) {
+                    if (kc->s_l - h->s_s != 0) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
                         corr += h->bnd.back().corr;
-                        h->bnd.push_back({.s = kc->s_l - h->s_s - 1, .e = 0, .corr = 0});
+                        h->bnd.push_back({.s = kc->s_l - h->s_s, .e = 0, .corr = 0});
                     }
                     h->bnd.back().corr += corr;
                     corr = 0;
                 }
+                i -= 0x100;
+                dna = _seq_next(c, dna, rc);
+                _addtoseq(kc->s, c);
+                break;
+    case 0x1e:  end_pos(kc, h);
+                h = new_header(kc, g, gc);
+                ASSERT(h != NULL, return -EFAULT);
+                h->s_s = kc->s_l;
+                i = (KEY_WIDTH - 1) << 8;
+                --corr;
+    default:    ++corr;
             }
-case ' ': case '\t': case '\n': case '\v': case '\f': case '\r':
-            break;
-case '>':   end_pos(kc, h);
-            h = new_header(kc, g, gc);
-            ASSERT(h != NULL, return -EFAULT);
-            h->s_s = kc->s_l;
-            --corr;
-default:    ++corr;
-            i = KEY_WIDTH - 1;
         }
     }
     ASSERT(h != NULL, return -EFAULT);
@@ -180,7 +197,7 @@ static void
 kct_convert(kct_t* kc)
 {
     for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx)
-        if (kc->ndxkct[ndx] >= kc->kct_l)
+        if (kc->ndxkct[ndx] > kc->kct_l)
             kc->ndxkct[ndx] = kc->kct_l;
 }
 

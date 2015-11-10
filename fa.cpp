@@ -28,7 +28,7 @@ start_dbg(kct_t *C kc, Hdr *C h, uint64_t C dna)
     // TODO: if not start of contig or just after a N-stretch, the dna key should be
     // just after an unique key. we could check this.
 
-    dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
+    dbg = 5;//strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
 
     if (dbg > 3) {
         EPR0("----[\t%s%s:(%u+)%u..%u\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
@@ -147,10 +147,12 @@ decr_excise(kct_t *C kc, uint64_t C*C kct, uint64_t C infior, unsigned C i)
     if (k != kct) // .. don't elevate key if it is the one that became uniq
         update_max_infior(k, infior);
     EPQ(IS_DBG_K(kc, k), "exiced: [%u]", K_OFFS(kc, k));
-    --*k; // decrease keycount
     ++kc->uqct;
-    if (IS_LAST(k))
+    if ((--*k & UQ_MASK) == 1ul) {
+        *k ^= UQ_BIT | 1;
+    } else if (IS_LAST(k)) {
         *k &= ~AT_MASK;
+    }
 }
 
 static void
@@ -184,41 +186,41 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
     uint64_t p, dna = 0ul, rc = 0ul;   // first seq after skip
     uint64_t *kct = NULL, *k;
     unsigned i, index = 0, ext = kc->readlength - KEY_WIDTH;
-    uint32_t b2pos = (*kc->bdit).s;
-    const uint32_t b2end = (*kc->bdit).e;
+    C uint32_t b2end = (*kc->bdit).e;
+    C uint32_t b2start = (*kc->bdit).s;
+    uint32_t b2pos = b2start;
     int res;
 
+    // build 1st key
     for (p = b2pos + h->s_s; p != b2pos + h->s_s + KEY_WIDTH; ++p) {
         _EVAL(get_nextnt(kc, p));
         dna = _seq_next(res, dna, rc);
     }
     start_dbg(kc, h, dna);
 
-    b2pos += KEY_WIDTH;
     kc->kct_scope[0] = NULL;
 
-    do { // until next uniq region, stretch or contig
+    for (b2pos += KEY_WIDTH; b2pos < b2end; ++b2pos) { // until next uniq region, stretch or contig
         uint64_t nt;
         /* process new key */
         _get_new_kct(kc, kct, dna, rc);
-EPR0("[%u%c]:\t", b2pos, KEY_COUNT(kct) == 1ul ? '*' : ' ');
+        ++h->total;
+EPR0("[%u%c]:\t", b2pos, IS_UQ(kct) ? '*' : ' ');
 print_dna(dna);
 
-        if (KEY_COUNT(kct) == 1ul) {
+        _EVAL(get_nextnt(kc, p++));
+        if (IS_UQ(kct)) {
 //print_dna(dna);
 
-            _EVAL(get_nextnt(kc, p & B2POS_MASK));
-            *kct ^= UQ_BIT ^ ((*kct ^ ++p) & B2POS_MASK);
+            if ((*kct & B2POS_MASK) == 0)
+                *kct ^= p + 1;
 
         } else if (ALL_SAME_NTS(kct)) {
             // TODO: extension..?
-            res = FIRST_NT(kct);
             EPQ(IS_DBG_K(kc, kct), "[%u] got %lu", p, nt);
-	    ++p;
 
         } else {
-            _EVAL(get_nextnt(kc, p++));
-            expect((*kct & AT_MASK) != AT_MASK) {
+            expect(CAN_ADD_ITER(kct)) {
                 *kct += AT_NEXT;
             } else {
                 *kct |= DISTINCT; // too many to verify, but safe and probably true.
@@ -230,29 +232,19 @@ print_dna(dna);
 	    k = kc->kct_scope[0];
             if (k == NULL || DOWNSTREAM_ADJOINING(index, b2pos)) {
                 decr_excise_all(kc, k, kct, index);
-                // mappable region extends beyond end of unique covered region, not before start.
+                h->mapable -= b2pos - index;
 
-                h->mapable += b2pos + kc->readlength - (*kc->bdit).s;
-                (*kc->bdit).s = b2pos;
             } else if (IS_UQ(k)) {
 
                 if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
-
-                    h->mapable -= (*kc->bdit).e - ext;
-		    h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
-                    // the mantra ended and a new uniq region began
-                } else {
-
-                    h->mapable -= (*kc->bdit).s + kc->readlength;
+                    uint32_t fst_uq_pos = b2pos - index;
+                    (*kc->bdit).e = fst_uq_pos;
+                    h->mapable -= fst_uq_pos - ext;
                 }
                 decr_excise_all(kc, k, kct, index);
 
-
-                h->mapable += b2pos + kc->readlength; // mapable region starts before 1st uniq.
-                (*kc->bdit).s = b2pos;
-
             } else { //1st uq
-		(*kc->bdit).e = b2pos;
+                (*kc->bdit).e = b2pos;
                 _EVAL(mark_all(kc, index, b2pos));
             }
 	    index = 0;
@@ -261,8 +253,14 @@ print_dna(dna);
 	    if (IS_UQ(kc->kct_scope[i])) {
                 if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) { EPQ(dbg > 3, "(postponed)");
 		    (*kc->bdit).e = 0; // undo (postpone) mantra ending
-                } else {
-                    //TODO: insert here
+                } else { // UQ region really ended.
+
+                    h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
+                    uint32_t last_uq_pos = b2pos - index;
+                    // start is earlier to enable building of the 1st key.
+                    (*kc->bdit).s = last_uq_pos - ext;
+                    h->mapable += last_uq_pos + ext + 1;
+
                     EPQ(dbg > 3, "(kept)");
                 }
 		++i;
@@ -270,34 +268,30 @@ print_dna(dna);
 	    _EVAL(mark_all(kc, index - i, b2pos));
 	    index = 0;
 	}
-        ++b2pos;
         ASSERT(index <= ext, return -EFAULT);
         kc->kct_scope[index++] = kct;
-    } while (b2pos < b2end);
-//show_mantras(kc, h);
-
-    _EVAL(mark_leaving(kc, kct, ~0ul));
+    }
     EPQ(IS_DBG_K(kc, kct), "last key was dbgtsoffs");
     ASSERT(b2pos == b2end, show_mantras(kc, h); res = -EFAULT; goto err, "[%u] %u", b2pos, b2end);
     k = kc->kct_scope[0];
     ASSERT(k != NULL, res = -EFAULT; goto err);
     if (IS_UQ(k)) {
         EPQ (dbg > 3, "Post loop adjoining boundary [%u,%u]", b2pos, h->mapable);
-        if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
+        if ((*kc->bdit).s == b2start){
+            h->mapable = b2end - b2start - KEY_WIDTH;
+EPR("X:[%u, %u]:", b2pos, h->mapable);
+            kc->bdit = h->bnd.erase(kc->bdit);
+        } else if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
 EPR("E:[%u, %d]:", b2pos, -((*kc->bdit).e - ext));
             h->mapable -= (*kc->bdit).e - ext;
+            h->mapable += b2pos + KEY_WIDTH; // no extension beyond end
             kc->bdit++;
-        } else /*if (index != 1)*/{
-EPR("S:[%u, %d]:", b2pos, -((*kc->bdit).s + kc->readlength));
-            h->mapable -= (*kc->bdit).s + kc->readlength;
-            kc->bdit = h->bnd.erase(kc->bdit);
-        } /*else {
+        }/*else {
             EPR("last was uniq");
             show_mantras(kc, h);
         }*/
         decr_excise_all(kc, k, NULL, index);
 EPR("P:[%u, %d]:", b2pos, b2pos + KEY_WIDTH);
-        h->mapable += b2pos + KEY_WIDTH; // no extension beyond end
 
     } else if (k != NULL) {
 	_EVAL(mark_all(kc, index, b2pos));
@@ -328,15 +322,13 @@ static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     //FIXME: rather than % of all display % mapable of remaining (mantras)
-    unsigned hdr_nts = 0ul;
     kc->bdit = h->bnd.begin();
     IFOUT(kc->bdit == h->bnd.end(), "Already fully mapable: %s", kc->id + h->part[0]);
 
     EPR("Processing %s", kc->id + h->part[0]);
 
-    h->mapable = 0ul;
+    h->mapable = h->total = 0ul;
     do {
-        hdr_nts += (*kc->bdit).e + KEY_WIDTH - 1 - (*kc->bdit).s;
         int ret = ext_uq_bnd(kc, h);
         if (ret < 0) return ret;
     } while (kc->bdit != h->bnd.end());
@@ -347,25 +339,25 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
         show_mantras(kc, h);
 #endif
     EPQ(dbg > 2, "%s: %u/%u => %.2f%% mapable",
-            kc->id + h->part[0], h->mapable, hdr_nts,
-            h->end_pos ? 100.0f * h->mapable / hdr_nts : nanf("NAN"));
-    ASSERT(h->mapable <= hdr_nts, show_mantras(kc, h); return -EFAULT);
+            kc->id + h->part[0], h->mapable, h->total,
+            h->end_pos ? 100.0f * h->mapable / h->total : nanf("NAN"));
+    ASSERT(h->mapable <= h->total, show_mantras(kc, h); return -EFAULT);
 out:
-    return hdr_nts;
+    return 0;
 }
 
 static int
 ext_uq_iter(kct_t* kc)
 {
     kc->uqct = kc->pending = 0u;
-    uint64_t mapable = 0ul;
-    uint64_t totNts = 0ul; // FIXME: put in kc and move to key_init
+    uint64_t mapable = 0ul, totNts = 0ul; // FIXME: put in kc and move to key_init
     for (std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
         int ret = ext_uq_hdr(kc, *h);
         if (ret < 0) return ret;
         mapable += (*h)->mapable;
-        totNts += ret;
+        EPR("mapable now:%lu", mapable);
+        totNts += (*h)->total;
     }
     EPQ(dbg > 0, "extended %u unique ranges in iteration %u\n"
             "\t%lu/%lu => %.2f%% mapable. (%u pending)", kc->uqct, ++kc->iter,

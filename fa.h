@@ -58,6 +58,8 @@
 #define IS_FIRST(k)    (AT_KEY(k) == 0ul)
 #define IS_LAST(k)     (AT_KEY(k) == KEY_COUNT(k))
 #define IS_DISTINCT(k) ((*(k) & DISTINCT) == DISTINCT)
+#define CAN_ADD_ITER(k) ((*(k) & AT_MASK) != AT_MASK)
+
 
 #define DOWNSTREAM_ADJOINING(i, p)  ((i) == (p))
 #define FORMER_UQ_WAS_1ST(kc, i, p) (((*kc->bdit).e + i) == p)
@@ -192,7 +194,7 @@ struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<Mantra> bnd; //
-    uint32_t end_pos, end_corr, mapable; // mapable is only used in fa.cpp
+    uint32_t end_pos, end_corr, mapable, total; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 
