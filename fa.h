@@ -62,7 +62,7 @@
 
 
 #define DOWNSTREAM_ADJOINING(i, p)  ((i) == (p))
-#define FORMER_UQ_WAS_1ST(kc, i, p) (((*kc->bdit).e + i) == p)
+#define FORMER_UQ_WAS_1ST(e, i, p) ((e + i) == p)
 
 
 #define INFIOR_SHFT (BIG_SHFT + 1)

@@ -232,18 +232,18 @@ print_dna(dna);
 	    k = kc->kct_scope[0];
             if (k == NULL || DOWNSTREAM_ADJOINING(index, b2pos)) {
                 decr_excise_all(kc, k, kct, index);
-                h->mapable -= b2pos - index;
+                h->mapable -= (*kc->bdit).s;
+                (*kc->bdit).s = b2pos - KEY_WIDTH + 1;
+                h->mapable += (*kc->bdit).s;
 
-            } else if (IS_UQ(k)) {
+            } else if (IS_UQ(k)) { // a 2nd+ uq
 
-                if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
-                    uint32_t fst_uq_pos = b2pos - index;
-                    (*kc->bdit).e = fst_uq_pos;
-                    h->mapable -= fst_uq_pos - ext;
-                }
+                if (FORMER_UQ_WAS_1ST((*kc->bdit).e, index, b2pos)) // a 2nd uq
+                    h->mapable -= b2pos - index - ext;
+
                 decr_excise_all(kc, k, kct, index);
 
-            } else { //1st uq
+            } else { // a 1st uq
                 (*kc->bdit).e = b2pos;
                 _EVAL(mark_all(kc, index, b2pos));
             }
@@ -251,17 +251,25 @@ print_dna(dna);
 	} else if (index == ext + 1) {
 	    i = 0;
 	    if (IS_UQ(kc->kct_scope[i])) {
-                if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) { EPQ(dbg > 3, "(postponed)");
-		    (*kc->bdit).e = 0; // undo (postpone) mantra ending
-                } else { // UQ region really ended.
+
+                uint32_t last_uq_pos = b2pos - index;
+                if (FORMER_UQ_WAS_1ST((*kc->bdit).e, index, b2pos)) {
+                    EPQ(dbg > 3, "(postponed)");
+
+		    (*kc->bdit).e = 0; // undo (postpone) mantra ending - for FORMER_UQ_WAS_1ST()
+
+                } else if ((*kc->bdit).s != last_uq_pos - KEY_WIDTH + 1) { // not dnstrm adjoining.
+
 
                     h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
-                    uint32_t last_uq_pos = b2pos - index;
                     // start is earlier to enable building of the 1st key.
-                    (*kc->bdit).s = last_uq_pos - ext;
+                    (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
                     h->mapable += last_uq_pos + ext + 1;
+                    EPQ(dbg > 3, "(kept %u)", h->mapable);
 
-                    EPQ(dbg > 3, "(kept)");
+                } else {
+                    EPQ(dbg > 3, "(dnstrm adjoining)");
+                    h->mapable -= b2pos - index - ext;
                 }
 		++i;
             }
@@ -281,23 +289,27 @@ print_dna(dna);
             h->mapable = b2end - b2start - KEY_WIDTH;
 EPR("X:[%u, %u]:", b2pos, h->mapable);
             kc->bdit = h->bnd.erase(kc->bdit);
-        } else if (FORMER_UQ_WAS_1ST(kc, index, b2pos)) {
+        } else if (FORMER_UQ_WAS_1ST((*kc->bdit).e, index, b2pos)) {
 EPR("E:[%u, %d]:", b2pos, -((*kc->bdit).e - ext));
             h->mapable -= (*kc->bdit).e - ext;
-            h->mapable += b2pos + KEY_WIDTH; // no extension beyond end
+            h->mapable += b2pos; // no extension beyond end
             kc->bdit++;
-        }/*else {
-            EPR("last was uniq");
-            show_mantras(kc, h);
-        }*/
+        } else {
+            h->mapable -= (*kc->bdit).e - ext;
+            h->mapable += b2pos; // no extension beyond end
+            kc->bdit++;
+EPR("last was uniq");
+            //show_mantras(kc, h);
+        }
         decr_excise_all(kc, k, NULL, index);
 EPR("P:[%u, %d]:", b2pos, b2pos + KEY_WIDTH);
 
-    } else if (k != NULL) {
+    } else {
 	_EVAL(mark_all(kc, index, b2pos));
         EPQ(dbg > 3, "(post_loop3)");
 //DESCRIBE_KEY(kc, k, 'k');
         (*kc->bdit).e = b2pos;
+//        h->mapable += (*kc->bdit).s; //XXX
         ++kc->bdit;
         if (kc->bdit != h->bnd.end() && (*kc->bdit).e <= b2pos) {
             //this seems necessary in case f N-stretch at end, why?
