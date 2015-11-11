@@ -241,7 +241,7 @@ print_dna(dna, dbg >5);
                 //EPQ(dbg > 3, "(2nd+ uq %u)", h->mapable);
 
                 if (((*kc->bdit).e + index) == b2pos) // a 2nd uq
-                    h->mapable -= b2pos - index - ext;
+                    h->mapable -= b2pos - index;
 
                 decr_excise_all(kc, k, kct, index);
 
@@ -259,7 +259,7 @@ print_dna(dna, dbg >5);
                 uint32_t last_uq_pos = b2pos - index;
                 if ((*kc->bdit).e == b2start) {
                     (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-                    h->mapable += (*kc->bdit).s + ext - b2start;
+                    h->mapable += (*kc->bdit).s + 1 - b2start;
                     EPQ(dbg > 3, "(dnstrm adjoining, %u)", h->mapable);
 
                 } else if (((*kc->bdit).e + index) == b2pos) {
@@ -272,7 +272,7 @@ print_dna(dna, dbg >5);
                     h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
                     // start is earlier to enable building of the 1st key.
                     (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-                    h->mapable += last_uq_pos + ext + 1;
+                    h->mapable += last_uq_pos + 1;
                     EPQ(dbg > 3, "(kept %u)", h->mapable);
 
                 }
@@ -296,12 +296,12 @@ EPQ(dbg > 3, "X:[%u, %u]:", b2pos, h->mapable);
             kc->bdit = h->bnd.erase(kc->bdit);
         } else if (((*kc->bdit).e + index) == b2pos) {
 EPQ(dbg > 3, "E:[%u, %d]:", b2pos, h->mapable);
-            h->mapable -= b2pos - index - ext;
-            h->mapable += b2pos; // no extension beyond end
+            h->mapable -= b2pos - index;
+            h->mapable += b2pos + 1; // no extension beyond end
             kc->bdit++;
         } else {
             h->mapable += b2pos;
-            //h->mapable += (*kc->bdit).e - ext; // no extension beyond end
+
             kc->bdit++;
 EPQ(dbg > 3, "last was uniq, %u", h->mapable);
             //show_mantras(kc, h);
