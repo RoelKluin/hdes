@@ -61,10 +61,6 @@
 #define CAN_ADD_ITER(k) ((*(k) & AT_MASK) != AT_MASK)
 
 
-#define DOWNSTREAM_ADJOINING(i, p)  ((i) == (p))
-#define FORMER_UQ_WAS_1ST(e, i, p) ((e + i) == p)
-
-
 #define INFIOR_SHFT (BIG_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
 #define STRAND_POS (INFERIORITY - 1ul)
