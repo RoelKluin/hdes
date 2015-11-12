@@ -14,3 +14,91 @@ sometimes setting r->infior to uniqs infior before decr_excise is beneficial, so
 beste resultaten tot nu toe als infior oploopt, maar nog niet alles opgelost
 * per iteratie
 * ook voor unieke keys
+
+
+Kort na eerste iteratie:
+
+>FIRST  REMAIN:487      NEXT_NT_NR:0(+1)        PENDING:0       CTCTTTTTGTAG|CTACAAAAAGAG
+Warning: nextnt didn't match twobit: sb2:A, got T at fa.cpp:13
+
+Maar er was geen excisie in eersten voor deze key in vorige iteratie..
+
+Hoe kan het komen dat de eerste nextnt slecht is?
+
+opties:
+
+een verkeerde key deed hier excisie of plaatste iets hier. (kan niet, wordt getest, geen assertion.)
+er was toch wel excisie. (evenzo)
+
+de verkeerde sb2 wordt gelezen (niet nextnt).
+
+reason: seems registered as excised (jumped past) but not excised.
+dbgts occurs at b2pos 203, just before first unique at b2pos 206.
+
+de eerste regio voor de boundary lijkt te ontbreken.
+
+opgelost: index 0 reserved for dummy
+
+
+-----------
+uq op laatste positie van contig?
+
+Y-issues:
+
+mapable now:1664755682
+Processing Y
+Warning: assertion 'b2pos == b2end' failed [16] 1 at fa.cpp:288
+[* 0]:  (0+)0 - 1       GGCCGGGCGCGGTGGC
+following pos 16 is: CTCACGCCTGTAATCC
+[b2pos:16, koffs:18446744073709551615],         GGCCGGGCGCGGTGGC|GCCACCGCGCCCGGCC
+[* 0]:  (0+)0 - 1       GGCCGGGCGCGGTGGC
+Warning: assertion 'res >= 0' failed extending unique boundaries(4294967282) at fa.cpp:485. at fa.cpp:485
+an error occured:-14
+== failed to create keyct.
+closing 2
+
+Maxreads:4294967295, Readlength:51, blocksize:32, phred:33, key-length:16
+== preparing to write /home/roel/dev/git/hdes/fakeq/hg19-SE_true-RL_51.1.fastq.gz...
+fastq(0):       /home/roel/dev/git/hdes/fakeq/hg19-SE_true-RL_51.1.fastq.gz
+== preparing to read /home/roel/dev/git/hdes/hg19.2b.gz...
+ref(2): /home/roel/dev/git/hdes/hg19.2b.gz
+== Single-end alignment
+intializing memory..    done
+.kc exists.
+.bd exists.
+== preparing to read /home/roel/dev/git/hdes/hg19.kc.gz...
+opening /home/roel/dev/git/hdes/hg19.kc.gz for reading..        done
+Warning: assertion 'kc->kct[i] < KEYNT_BUFSZ' failed 116/797948630: 9223372036854776280 > KEYNT_BUFSZ(2147483648) at indexio.cpp:183
+Warning: assertion 'res >= 0' failed loading keycounts file(4294967282) at map.cpp:343. at map.cpp:343
+an error occured:-14
+ERROR: map_fq_se() returned -14
+
+
+
+Contig X: 99759321/151100230 => 66.02% mapable
+b2pos != b2end: 16 != 1 (happens for Y on hg19
+[* 0]:  (0+)0 - 1       GGCCGGGCGCGGTGGC
+Warning: assertion 'k != NULL' failed  at fa.cpp:294
+following pos 16 is: CTCACGCCTGTAATCC
+[b2pos:16, koffs:18446744073709551615],         GGCCGGGCGCGGTGGC|GCCACCGCGCCCGGCC
+[* 0]:  (0+)0 - 1       GGCCGGGCGCGGTGGC
+Warning: assertion 'res >= 0' failed extending unique boundaries(4294967282) at fa.cpp:488. at fa.cpp:488
+an error occured:-14
+== failed to create keyct.
+closing 2
+
+Maxreads:4294967295, Readlength:51, blocksize:32, phred:33, key-length:16
+== preparing to read /home/roel/dev/git/hdes/fakeq/hg19-SE_true-RL_51.1.fastq.gz...
+fastq(0):       /home/roel/dev/git/hdes/fakeq/hg19-SE_true-RL_51.1.fastq.gz
+== preparing to read /home/roel/dev/git/hdes/hg19.2b.gz...
+ref(2): /home/roel/dev/git/hdes/hg19.2b.gz
+== Single-end alignment
+intializing memory..    done
+.kc exists.
+.bd exists.
+== preparing to read /home/roel/dev/git/hdes/hg19.kc.gz...
+opening /home/roel/dev/git/hdes/hg19.kc.gz for reading..        done
+Warning: assertion 'kc->kct[i] < KEYNT_BUFSZ' failed 116/797948630: 9223372036854776280 > KEYNT_BUFSZ(2147483648) at indexio.cpp:183
+Warning: assertion 'res >= 0' failed loading keycounts file(4294967282) at map.cpp:343. at map.cpp:343
+an error occured:-14
+ERROR: map_fq_se() returned -14

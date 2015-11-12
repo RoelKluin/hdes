@@ -103,13 +103,15 @@ packed_struct Mantra { // not yet covered by unique keys
 // in future iterations - the number of next-Nts per key remains constant.
 
 
-#define __seq_le_n(b, dna, rc) ({\
-    rc = ((b ^ 2) << KEYNT_TOP) | (rc >> 2);\
-    ((dna << 2) & KEYNT_MASK) | b;\
+#define __seq_le_n(c, dna, rc) ({\
+    typeof(dna) __b = c;\
+    rc = ((__b ^ 2) << KEYNT_TOP) | (rc >> 2);\
+    ((dna << 2) & KEYNT_MASK) | __b;\
 })
-#define __seq_le_p(b, dna, rc) ({\
-    rc = ((rc << 2) & KEYNT_MASK) | (b ^ 2);\
-    (b << KEYNT_TOP) | (dna >> 2);\
+#define __seq_le_p(c, dna, rc) ({\
+    typeof(dna) __b = c;\
+    rc = ((rc << 2) & KEYNT_MASK) | (__b ^ 2);\
+    (__b << KEYNT_TOP) | (dna >> 2);\
 })
 
 #ifdef B2_LITTLE_ENDIAN

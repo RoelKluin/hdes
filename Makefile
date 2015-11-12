@@ -11,7 +11,7 @@ endif
 CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.016
+VERSION=	0.017
 LOBJS=
 PROG=		uqct
 INCLUDES=	
@@ -62,7 +62,7 @@ distclean: clean
 	rm -rf $(ARCHIVE).tar.gz
 
 dist:
-	tar -czf $(ARCHIVE).tar.gz $(SOURCES) faless fqless *.cpp *.c *.h *.pl *.sh .git Makefile doc/{algo3,hdes}.odt runtests/{,pool/}*.f[qa] documentation.txt PLAN IDEE BUGS dodev
+	tar -czf $(ARCHIVE).tar.gz $(SOURCES) f[aq]less *.{c{,pp},h,pl,sh,vim} .git Makefile doc/{algo3,hdes}.odt runtests/{,pool/}*.f[qa] documentation.txt PLAN IDEE BUGS dodev runtests/*.{f[aq],vim,sh}
 
 depend:
 	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) $(DEF) -- *.cpp )

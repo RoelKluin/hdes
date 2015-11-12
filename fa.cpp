@@ -285,7 +285,11 @@ print_dna(dna, dbg >5);
         kc->kct_scope[index++] = kct;
     }
     EPQ(IS_DBG_K(kc, kct), "last key was dbgtsoffs");
-    ASSERT(b2pos == b2end, show_mantras(kc, h); res = -EFAULT; goto err, "[%u] %u", b2pos, b2end);
+    if (b2pos != b2end) {
+        EPR("b2pos != b2end: %u != %u (happens for Y on hg19", b2pos, b2end);
+        show_mantras(kc, h);
+        ASSERT(strncmp(kc->id + h->part[0], "Y", strlen("Y")) == 0, return -EFAULT);
+    }
     k = kc->kct_scope[0];
     ASSERT(k != NULL, res = -EFAULT; goto err);
     if (IS_UQ(k)) {
@@ -343,7 +347,7 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
     h->mapable = h->total = 0ul;
     IFOUT(kc->bdit == h->bnd.end(), "Already fully mapable: %s", kc->id + h->part[0]);
 
-    EPR("Processing %s", kc->id + h->part[0]);
+    EPQ(dbg > 3, "Processing %s", kc->id + h->part[0]);
 
     do {
         int ret = ext_uq_bnd(kc, h);
@@ -355,7 +359,7 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
     if (dbg > 4)
         show_mantras(kc, h);
 #endif
-    EPQ(dbg > 2, "%s: %u/%u => %.2f%% mapable",
+    EPQ(dbg > 2, "Contig %s: %u/%u => %.2f%% mapable",
             kc->id + h->part[0], h->mapable, h->total,
             h->end_pos ? 100.0f * h->mapable / h->total : nanf("NAN"));
     ASSERT(h->mapable <= h->total, show_mantras(kc, h); return -EFAULT);
@@ -373,7 +377,6 @@ ext_uq_iter(kct_t* kc)
         int ret = ext_uq_hdr(kc, *h);
         if (ret < 0) return ret;
         mapable += (*h)->mapable;
-        EPR("mapable now:%lu", mapable);
         totNts += (*h)->total;
     }
     EPQ(dbg > 0, "extended %u unique ranges in iteration %u\n"

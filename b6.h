@@ -152,7 +152,7 @@ inline unsigned get_twisted_even(uint64_t* t, uint64_t dna, uint64_t rc)
     } else {\
         ndx = get_twisted_even(&t, dna, rc);\
     }\
-    ASSERT(ndx < KEYNT_BUFSZ, return -EFAULT, "0x%lx", ndx);\
+    ASSERT(ndx < KEYNT_BUFSZ, return print_2dna(dna, rc) & -EFAULT, "0x%lx", ndx);\
     dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
     EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, (kc)->ndxkct[ndx]);\
 });

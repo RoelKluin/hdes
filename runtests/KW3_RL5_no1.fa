@@ -2,9 +2,9 @@
 TTTTTGAAAAAA
 >1   5    0    5  +-- 1:TAC 1:CAT; -ACA
 ATATACATATA
->2   5  +-- 2:GTT
+>2   5  +-- 2:TGT => fully
 TTGTTG
->3   5
+>3   5 + AAC
 AAAAC
 >4   5
 TTTTC

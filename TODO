@@ -24,6 +24,7 @@ TODO:
  - initial boundaries separately.
 - for unique enclosed unique keys, store pos instead of nextNt_index
 
+boundaties: pr pre- correction
 upon conversion: add
 
 
