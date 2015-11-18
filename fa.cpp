@@ -161,7 +161,7 @@ static void
 decr_excise_all(kct_t *C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
 {
     if (k == NULL) return;
-    uint64_t infior = (kct ? max(*k, *kct) : *k) & MAX_INFIOR;
+    uint64_t infior = (kct ? std::max(*k, *kct) : *k) & MAX_INFIOR;
     expect(infior < MAX_INFIOR) {
         infior += INFIOR;
     } else {
@@ -265,9 +265,7 @@ print_dna(dna, dbg >5);
                 } else if (((*kc->bdit).e + index) == b2pos) {
                     EPQ(dbg > 3, "(postponed %u)", h->mapable);
 
-		    (*kc->bdit).e = 0; // undo (postpone) mantra ending - XXX still needed? 
-
-                } else { // not dnstrm adjoining.
+                } else { // not downstream adjoining.
 
                     h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
                     // start is earlier to enable building of the 1st key.

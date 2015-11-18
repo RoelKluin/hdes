@@ -172,11 +172,6 @@ packed_struct Mantra { // not yet covered by unique keys
 
 #define ULL(x) ((unsigned __int128)(x))
 
-#undef max
-#define max(a,b) ((a) >= (b) ? (a) : (b))
-#undef min
-#define min(a,b) ((a) <= (b) ? (a) : (b))
-
 #define DEBUG 1
 
 packed_struct kct_ext {

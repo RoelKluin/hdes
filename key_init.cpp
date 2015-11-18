@@ -10,23 +10,42 @@
  */
 #include "fa.h"
 #include <ctype.h> // isspace()
+#include <unordered_map>
+#include <string>
+
+typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
+
+static inline void
+end_pos(kct_t*C kc, Hdr* h)
+{
+    if (h) {
+        EPR("processed %lu Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->id + h->part[0]);
+
+        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s + 1;
+        if (dbg > 3)
+            show_mantras(kc, h);
+    }
+}
 
 #define ENS_HDR_PARTCT 10
 //enum ensembl_parts {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
-new_header(kct_t* kc, void* g, int (*gc) (void*))
+new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 {
     int c;
-    Hdr* h = new Hdr;
+    uint32_t p = ID;
+
+    if (h)
+        end_pos(kc, h);
+
+    h = new Hdr;
     h->part = (uint32_t*)malloc(ENS_HDR_PARTCT * sizeof(uint32_t));
     ASSERT(h->part != NULL, return NULL);
 
-    kc->h.push_back(h);
-
-    uint32_t p = ID;
     h->part[p] = kc->id_l;
+
     while ((c = gc(g)) != -1) {
         //fputc(c, stderr);
         switch (c) {
@@ -79,35 +98,58 @@ new_header(kct_t* kc, void* g, int (*gc) (void*))
         }
         break;
     }
-    Mantra contig = {0};
+    const char* hdr = kc->id + h->part[ID];
+    Hdr_umap::const_iterator got = lookup.find(hdr);
+
+    Hdr* lh = NULL;
+    if (got != lookup.end()) {
+        EPR("contig occurred twice: %s", hdr);
+        lh = got->second;
+
+        if (p != NR && p != META) {
+            lh->p_l = UNKNOWN_HDR;
+            lh->bnd.back().e = h->end_pos = ~0u;
+            WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
+            return lh;
+        }
+
+        // To fix order reversal would need kc->s movement and adaptations including h->s_s.
+        ASSERT(h->part[START] > lh->part[END], return NULL, "Duplicate entries in reversed order");
+        ASSERT(kc->h.back() == lh, return NULL, "Duplicate entries, but not in series");
+
+        // only insert when last contig had any sequence
+        Mantra contig = {0};
+
+        // correction propagation Not thoroughly checked yet...
+        contig.corr += h->bnd.back().corr - h->bnd.back().e; // start of current is added later.
+
+        if (h->bnd.back().e == h->bnd.back().s + 1)
+            h->bnd.push_back(contig);
+
+        h = lh;
+
+    } else {
+        kc->h.push_back(h);
+        std::pair<std::string,Hdr*> hdr_entry(hdr, h);
+        lookup.insert(hdr_entry);
+        h->s_s = kc->s_l;
+        h->bnd.push_back({0});
+    }
+
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        contig.corr = atoi(kc->id + h->part[START]) - 1;
+        h->bnd.back().corr += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
-        contig.e = h->end_pos - KEY_WIDTH;
+        h->bnd.back().e = h->end_pos - KEY_WIDTH;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
-        contig.corr = 0;
-        contig.e = h->end_pos = ~0u;
+        h->bnd.back().corr = 0;
+        h->bnd.back().e = h->end_pos = ~0u;
         EPQ(dbg > 3, "\nWARNING: non-ensembl reference.");
     }
-    h->bnd.push_back(contig);
+
     return h;
-}
-
-static int
-end_pos(kct_t*C kc, Hdr* h)
-{
-    if (h) {
-        EPR("processed %lu Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->id + h->part[0]);
-
-        h->bnd.back().e = kc->s_l - h->s_s + 1;
-        h->end_pos = h->bnd.back().e;
-        if (dbg > 3)
-            show_mantras(kc, h);
-    }
-    return 0;
 }
 
 /*
@@ -125,6 +167,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     unsigned i = ~0u; // skip until '>'
     Hdr* h = NULL;
     kc->s_l = 0;
+    Hdr_umap lookup;
     set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -177,12 +220,11 @@ default:    if (isspace(c))
                 dna = _seq_next(c, dna, rc);
                 _addtoseq(kc->s, c);
                 break;
-    case 0x1e:  end_pos(kc, h);
-                h = new_header(kc, g, gc);
+    case 0x1e:  h = new_header(kc, h, g, gc, lookup);
                 ASSERT(h != NULL, return -EFAULT);
-                h->s_s = kc->s_l;
+
                 i = (KEY_WIDTH - 1) << 8;
-                --corr;
+                corr = -1u;
     default:    ++corr;
             }
         }
