@@ -161,7 +161,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
 {
     void* g;
     int (*gc) (void*);
-    uint64_t dna = 0, rc = 0, ndx;
+    uint64_t dna = 0, rc = 0, ndx, t;
     uint32_t corr = 0, *n;
     int c;
     unsigned i = ~0u; // skip until '>'
@@ -182,17 +182,18 @@ case 'G':   c &= 0x3;
             dna = _seq_next(c, dna, rc);
             //print_dna(dna);
             _addtoseq(kc->s, c); // kc->s_l grows here.
-            _get_ndx(ndx, ndx, dna, rc);
+            _get_ndx(ndx, t, dna, rc);
             n = kc->ndxkct + ndx;
-            if (*n == -2u) {
+            if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
-                kc->kct[*n] = UQ_BIT | (kc->s_l - h->s_s);
-            } else if (IS_UQ(kc->kct + *n)) {
-                // TODO: all same Nts.
-                kc->kct[*n] = 2; // convert to counter upon 2nd occurance
+                kc->kct[*n] = (t << (BIG_SHFT - KEY_WIDTH)) | (kc->s_l - h->s_s + 1);
+//EPR("%u:%lx\t%x", kc->s_l - h->s_s + 1, ndx, *n);
             } else {
-                ++kc->kct[*n]; // continue counting
+                kc->kct[*n] |= DUP_BIT;
+                // TODO: count all same Nts and store seq, pos or ref to these.
+                // strand bit (orientation first pos) is no longer functional:
+                // can indicate whether seq & len is stored, or a position
             }
             break;
 case 'N':   i = (KEY_WIDTH - 1) << 8;
@@ -253,7 +254,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->s = _buf_init_err(kc->s, 8, goto err);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-        kc->ndxkct[i] = -2u;
+        kc->ndxkct[i] = NO_KCT;
 
     /* TODO: load dbSNP and known sites, and mark them. */
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");

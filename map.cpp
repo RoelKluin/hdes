@@ -55,7 +55,7 @@ seqphred(uint8_t *s, int q)
 
 
 static int
-get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
+get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
 {
     // FIXME: no looping here, store ref to header in boundary?.
     std::list<Hdr*>::iterator hdr;
@@ -84,7 +84,7 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, unsigned bufi)
     ASSERT(*pos + (*bd).corr > (*hdr)->s_s + bufi, return -EFAULT,
             "%s\t%lu\t%lu", kc->id + (*hdr)->part[0], *pos + (*bd).corr, (*hdr)->s_s + bufi
             /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
-    *pos += (*bd).corr - (*hdr)->s_s - bufi; // should be one-based.
+    *pos += (*bd).corr - (*hdr)->s_s + KEY_WIDTH - bufi - 1;
 
     return (*hdr)->part[0];
 }
@@ -160,7 +160,7 @@ default:            dna = _seq_next(b, dna, rc);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
-		    if (i > kc->readlength) { // non of keys mappable
+		    if (i > kc->readlength) { // none of keys mappable
 			EPR("Read %s is with %u Nts longer than expected (%u) and skipped.",
 				(char*)h, i, kc->readlength);
 			buf[0] = ~0ul; //skip entire read
@@ -170,6 +170,7 @@ default:            dna = _seq_next(b, dna, rc);
 		    // wx only has strand at offset KEY_WIDTH.
                     _get_ndx(ndx, wx, dna, rc);
                     uint32_t k = kc->ndxkct[ndx];
+ EPR("%u:%lx\t%x", i, ndx, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.

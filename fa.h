@@ -26,58 +26,38 @@
 #define B2SEQ_MASK  (ONE_B2SEQ - 1ul)
 #define B2LEN_MASK  (~B2SEQ_MASK)
 
-// indicates whether (set) or not the kct contains a sequence or an index
-#define FLAG_B2CT  (1ul << 58)
-
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
-#define BIG_SHFT 40
-#define SMALL_SHFT 24
+#define BIG_SHFT 34
 
-#define UQ_BIT     0x8000000000000000 // Set if key is uniq for remaining sections (and pos stored).
-#define STRAND_BIT 0x0000010000000000 // the bit to store the original orientation of ref once uniq.
-#define MAX_INFIOR 0x7FFFFE0000000000 // inferiority per key - stays when unique
-#define B2POS_MASK 0x000000FFFFFFFFFF // position, once unique
+// TODO: do not count, rather write pos on 1st occurance (1-based), in case of multiple, set length
 
-// and what is stored in the lower bits before a key is unique..
-#define UQ_MASK    0x0000000000FFFFFF // How many occurnaces occur on the remaining genomic sections
-#define AT_MASK    0x0000001FFF000000 // at which kct occurance we are during iter (needed for LAST)
-#define DISTINCT   0x0000002000000000 // Set if Nts were distinct during iteration (TODO)
-#define NT_MASK    0x000000C000000000 // enables marking all same at LAST
+#define DUP_BIT    0x8000000000000000 // Set if key is uniq for remaining sections (and pos stored).
+#define STRAND_BIT 0x0000000400000000 // the bit to store the original orientation of ref once uniq.
+#define MAX_INFIOR 0x7FFFFFF800000000 // inferiority per key - stays when unique
+#define B2POS_MASK 0x00000003FFFFFFFF // position, once unique
 
-#define AT_NEXT     0x1000000;
-// TODO: when AT_MASK is full, do not increment, and always set DISTINCT
+// TODO: if a key is not unique, store pos or same seq and length in lower bits
+#define UQ_MASK    0x000000000000000F // How many same Nts occur
+#define SAME_SEQ   0X00000003FFFFFFF0
 
-#define KEY_COUNT(k) (*(k) & UQ_MASK)
-#define AT_KEY(k)    ((*(k) & AT_MASK) >> SMALL_SHFT)
-
-#define NT_SHFT 38
-#define FIRST_NT(k) ((*(k) & NT_MASK) >> NT_SHFT)
-
-#define IS_UQ(k)      (*(k) & UQ_BIT)
-#define IS_FIRST(k)    (AT_KEY(k) == 0ul)
-#define IS_LAST(k)     (AT_KEY(k) == KEY_COUNT(k))
-#define IS_DISTINCT(k) ((*(k) & DISTINCT) == DISTINCT)
-#define CAN_ADD_ITER(k) ((*(k) & AT_MASK) != AT_MASK)
-
+#define IS_DUP(k)      (*(k) & DUP_BIT)
+#define IS_UQ(k)       (IS_DUP(k) == 0ul)
+#define IS_FIRST(k)    ((*(k) & B2POS_MASK) == 0ul)
 
 #define INFIOR_SHFT (BIG_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
 #define STRAND_POS (INFERIORITY - 1ul)
 #define INFIOR_MASK (~STRAND_POS)
-#define INFIOR INFERIORITY //((uint64_t)(iter+1) << INFIOR_SHFT)  //INFERIORITY
+#define INFIOR INFERIORITY
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 #define IS_DBG_K(kc, k) (K_OFFS(kc, k) == dbgk)
 
-// XXX XXX not yet updated below
-
+#define NO_KCT -2u
 
 #define DESCRIBE_KEY(kc, k, c) \
-  EPR("[k:%lu, %lu/%lu] %c\t%s%s%s%s%s", \
-          K_OFFS(kc, k), AT_KEY(k), KEY_COUNT(k), c, IS_FIRST(k) ? "FIRST\t" : "",\
-          ALL_SAME_NTS(k) ? "ALL_SAME\t" : "", IS_DISTINCT(k) ? "DISTINCT\t" : "",\
-          KEY_COUNT(k) == 1ul || IS_UQ(k) ? "UQ\t" : "", IS_LAST(k) ? "LAST\t" : "")
+  EPR("[k:%lu] %c\t%s", K_OFFS(kc, k), c, IS_FIRST(k) || IS_UQ(k) ? "UQ\t" : "")
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 #define MARKED 0x8000000000000000
@@ -131,17 +111,15 @@ packed_struct Mantra { // not yet covered by unique keys
     _seq_ ## direction (b, dna, rc);\
 })
 
-#define _get_new_kct(kc, k, dna, rc) ({\
+#define _get_new_kct(kc, k, t, dna, rc) ({\
     typeof(dna) __ndx, __t;\
     _get_ndx(__ndx, __t, dna, rc);\
-    __t <<= BIG_SHFT - KEY_WIDTH; /*store orient and infior in t*/\
     ASSERT(kc->ndxkct[__ndx] < kc->kct_l, res = -EFAULT; goto err);\
     k = kc->kct + kc->ndxkct[__ndx];\
     if (IS_DBG_K(kc, k)) {\
         DESCRIBE_KEY(kc, k, '>');\
         print_2dna(dna, rc, IS_DBG_K(kc, k));\
     }\
-    *k ^= (*k ^ __t) & STRAND_BIT;\
 })
 
 #define __rdndx(direction, ndx, b, s, b2pos, dna, rc) ({\

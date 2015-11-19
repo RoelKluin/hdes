@@ -28,7 +28,7 @@ start_dbg(kct_t *C kc, Hdr *C h, uint64_t C dna)
     // TODO: if not start of contig or just after a N-stretch, the dna key should be
     // just after an unique key. we could check this.
 
-    dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
+    dbg = 6;//strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
 
     if (dbg > 3) {
         EPR0("----[\t%s%s:(%u+)%u..%u\t]----\tdna:", strlen(hdr) < 8 ? "\t": "",
@@ -73,90 +73,6 @@ get_nextnt(kct_t C*C kc, uint64_t p)
     return (kc->s[p>>2] >> ((p&3) << 1)) & 3;
 }
 
-static inline int
-mark_leaving(kct_t C*C kc, uint64_t *C k, uint64_t p)
-{
-    int res = -EFAULT;
-    uint64_t nt;
-    if (IS_DBG_K(kc, k))
-        DESCRIBE_KEY(kc, k, '<');
-    if (p == ~0ul) { //end of contig or before N-stretch or boundary: no nextNt.
-        if (IS_DISTINCT(k)) {
-            EPQ(IS_DBG_K(kc, k), " ==> distinct cleared");
-            *k &= ~(DISTINCT|NT_MASK); // clear from last iteration
-        }
-        EPQ(IS_DBG_K(kc, k), "key at end of contig, before uq-bnd or N-stretch always marked as distinct");
-        *k |= DISTINCT;
-    } else if (ALL_SAME_NTS(k) == false) { // formerly PENDING(k), this should be ok?
-
-        nt = (kc->s[p>>2] >> ((p&3) << 1)) & 3;
-
-        EPQ(IS_DBG_K(kc, k), "\t%c", b6(nt<<1));
-
-        if (IS_FIRST(k)) {
-            if (IS_DISTINCT(k)) {
-                EPQ(IS_DBG_K(kc, k), " ==> distinct cleared");
-                *k &= ~(DISTINCT|NT_MASK); // clear from last iteration
-            } else if (kc->iter) {
-                //if ok, then we can remove the kct iteration post loop?
-//                ASSERT(*k & MARKED, goto err, "MARKED not obsolete"); // TODO: check after setting marked
-            }
-            *k |= nt << NT_SHFT;
-        } else {
-            uint64_t first_nt = FIRST_NT(k);
-            EPQ(IS_DBG_K(kc, k), "%lu:%c <=> %c", K_OFFS(kc, k), b6(first_nt<<1), b6(nt<<1)); 
-            if (IS_DISTINCT(k) == false && nt != first_nt) {
-                EPQ(IS_DBG_K(kc, k), " ==> dbgtsoffs got distinct");
-                *k |= DISTINCT;
-            }
-        }
-    }
-
-    if (IS_LAST(k)) {
-	*k &= ~AT_MASK; /* reset position for next iterationtracking */
-        *k ^= DISTINCT;
-    }
-    res = 0;
-err:
-    if (res || IS_DBG_K(kc, k))
-	DESCRIBE_KEY(kc, k, '?');
-
-    return res;
-}
-
-static int
-_mark_all(kct_t C*C kc, char C*C f, unsigned C l, unsigned C len, unsigned C end)
-{
-    unsigned p = end - len, i = 0;
-    int res = 0;
-    while (p < end && res == 0) {
-        uint64_t* k = kc->kct_scope[i++];
-        EPQ(IS_DBG_K(kc, k), "%s +%u mark_leaving()", f, l);
-        res = mark_leaving(kc, k, p++);
-    }
-    if (res < 0)
-        EPQ(res, "error during mark_all():%s +%u", f, l);
-    return res;
-}
-#define mark_all(kc, i, e) _mark_all(kc, __FILE__, __LINE__, i, e)
-
-static inline void
-decr_excise(kct_t *C kc, uint64_t C*C kct, uint64_t C infior, unsigned C i)
-{
-    uint64_t *C k = kc->kct_scope[i];
-    if (k != kct) // .. don't elevate key if it is the one that became uniq
-        update_max_infior(k, infior);
-    EPQ(IS_DBG_K(kc, k), "exiced: [%u]", K_OFFS(kc, k));
-    ++kc->uqct;
-    if ((--*k & UQ_MASK) == 1ul) {
-
-        *k ^= UQ_BIT | 1;
- 
-    } else if (IS_LAST(k)) {
-        *k &= ~AT_MASK;
-    }
-}
-
 static void
 decr_excise_all(kct_t *C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
 {
@@ -168,8 +84,13 @@ decr_excise_all(kct_t *C kc, uint64_t * k, uint64_t C*C kct, unsigned const end)
         WARN("MAX_INFIOR reached");
     }
     unsigned i = IS_UQ(k) ? 1 : 0;
-    while (i < end)
-        decr_excise(kc, kct, infior, i++);
+    while (i < end) {
+        uint64_t *C k = kc->kct_scope[i++];
+        if (k != kct) // .. don't elevate key if it is the one that became uniq
+            update_max_infior(k, infior);
+        EPQ(IS_DBG_K(kc, k), "exiced: [%u]", K_OFFS(kc, k));
+        ++kc->uqct;
+    }
 }
 
 /*
@@ -185,7 +106,7 @@ static int
 ext_uq_bnd(kct_t *C kc, Hdr *C h)
 {
 
-    uint64_t p, dna = 0ul, rc = 0ul;   // first seq after skip
+    uint64_t p, dna = 0ul, rc = 0ul, t;   // first seq after skip
     uint64_t *kct = NULL, *k;
     unsigned i, index = 0, ext = kc->readlength - KEY_WIDTH;
     C uint32_t b2end = (*kc->bdit).e;
@@ -205,31 +126,16 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
     for (b2pos += KEY_WIDTH; b2pos < b2end; ++b2pos) { // until next uniq region, stretch or contig
         uint64_t nt;
         /* process new key */
-        _get_new_kct(kc, kct, dna, rc);
+        _get_new_kct(kc, kct, t, dna, rc);
         ++h->total;
 EPQ0(dbg >5, "[%u%c]:\t", b2pos, IS_UQ(kct) ? '*' : ' ');
 print_dna(dna, dbg >5);
 
         _EVAL(get_nextnt(kc, p++));
-        if (IS_UQ(kct)) {
-//print_dna(dna);
-
-            if ((*kct & B2POS_MASK) == 0)
-                *kct ^= p + 1;
-
-        } else if (ALL_SAME_NTS(kct)) {
-            // TODO: extension..?
-            EPQ(IS_DBG_K(kc, kct), "[%u] got %lu", p, nt);
-
-        } else {
-            expect(CAN_ADD_ITER(kct)) {
-                *kct += AT_NEXT;
-            } else {
-                *kct |= DISTINCT; // too many to verify, but safe and probably true.
-            }
-        }
         dna = _seq_next(res, dna, rc);
-	if (IS_UQ(kct)) {
+        if (IS_FIRST(kct)) {
+
+            *kct ^= (t << (BIG_SHFT - KEY_WIDTH)) | (p + 1);
 
 	    k = kc->kct_scope[0];
             if (k == NULL || (b2start + index + KEY_WIDTH - 1) == b2pos) {
@@ -249,36 +155,43 @@ print_dna(dna, dbg >5);
                 EPQ(dbg > 3, "(1st uq %u)", h->mapable);
 
                 (*kc->bdit).e = b2pos;
-                _EVAL(mark_all(kc, index, b2pos));
             }
 	    index = 0;
-	} else if (index == ext + 1) {
-	    i = 0;
-	    if (IS_UQ(kc->kct_scope[i])) {
 
-                uint32_t last_uq_pos = b2pos - index;
-                if ((*kc->bdit).e == b2start) {
-                    (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-                    h->mapable += (*kc->bdit).s + 1 - b2start;
-                    EPQ(dbg > 3, "(dnstrm adjoining, %u)", h->mapable);
+        } else {
 
-                } else if (((*kc->bdit).e + index) == b2pos) {
-                    EPQ(dbg > 3, "(postponed %u)", h->mapable);
+            *kct |= DUP_BIT;
+            // TODO: count all same Nts and store seq, pos or ref to these.
+            // strand bit (orientation first pos) is no longer functional:
+            // can indicate whether seq & len is stored, or a position
+            EPQ(IS_DBG_K(kc, kct), "[%u] got %lu", p, nt);
+            if (index == ext + 1) {
+                i = 0;
+                if (IS_UQ(kc->kct_scope[i])) {
 
-                } else { // not downstream adjoining.
+                    uint32_t last_uq_pos = b2pos - index;
+                    if ((*kc->bdit).e == b2start) {
+                        (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
+                        h->mapable += (*kc->bdit).s + 1 - b2start;
+                        EPQ(dbg > 3, "(dnstrm adjoining, %u)", h->mapable);
 
-                    h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
-                    // start is earlier to enable building of the 1st key.
-                    (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-                    h->mapable += last_uq_pos + 1;
-                    EPQ(dbg > 3, "(kept %u)", h->mapable);
+                    } else if (((*kc->bdit).e + index) == b2pos) {
+                        EPQ(dbg > 3, "(postponed %u)", h->mapable);
 
+                    } else { // not downstream adjoining.
+
+                        h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
+                        // start is earlier to enable building of the 1st key.
+                        (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
+                        h->mapable += last_uq_pos + 1;
+                        EPQ(dbg > 3, "(kept %u)", h->mapable);
+
+                    }
+                    ++i;
                 }
-		++i;
+                index = 0;
             }
-	    _EVAL(mark_all(kc, index - i, b2pos));
-	    index = 0;
-	}
+        }
         ASSERT(index <= ext, return -EFAULT);
         kc->kct_scope[index++] = kct;
     }
@@ -292,7 +205,7 @@ print_dna(dna, dbg >5);
     ASSERT(k != NULL, res = -EFAULT; goto err);
     if (IS_UQ(k)) {
         EPQ (dbg > 3, "Post loop adjoining boundary [%u, %u]", b2pos, h->mapable);
-        if ((*kc->bdit).s == b2start){
+        if ((*kc->bdit).s == b2start) {
             h->mapable = b2end - b2start - KEY_WIDTH;
 EPQ(dbg > 3, "X:[%u, %u]:", b2pos, h->mapable);
             kc->bdit = h->bnd.erase(kc->bdit);
@@ -311,17 +224,10 @@ EPQ(dbg > 3, "last was uniq, %u", h->mapable);
         decr_excise_all(kc, k, NULL, index);
 
     } else {
-	_EVAL(mark_all(kc, index, b2pos));
         EPQ(dbg > 3, "(post_loop non-uq)");
 //DESCRIBE_KEY(kc, k, 'k');
         (*kc->bdit).e = b2pos;
-//        h->mapable += (*kc->bdit).s; //XXX
         ++kc->bdit;
-        if (kc->bdit != h->bnd.end() && (*kc->bdit).e <= b2pos) {
-            EPQ(dbg > 3, "FIXME: still needed?");
-            //this seems necessary in case f N-stretch at end, why?
-            //kc->bdit = h->bnd.erase(kc->bdit);
-        }
     }
 //show_mantras(kc, h);
     res = 0;
@@ -370,6 +276,12 @@ ext_uq_iter(kct_t* kc)
 {
     kc->uqct = kc->pending = 0u;
     uint64_t mapable = 0ul, totNts = 0ul; // FIXME: put in kc and move to key_init
+
+    EPQ(dbg > 5, "Clearing dup bits for next iteration");
+    for (uint64_t* k = kc->kct; k != kc->kct + kc->kct_l; ++k)
+        if (IS_DUP(k))
+            *k &= ~(DUP_BIT|STRAND_BIT|B2POS_MASK);
+
     for (std::list<Hdr*>::iterator h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
         int ret = ext_uq_hdr(kc, *h);
