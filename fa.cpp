@@ -111,6 +111,7 @@ static inline void start_region(kct_t* kc, Hdr *C h, C uint32_t b2start, C uint3
 
     }
 }
+
 /*
  * A first uniq marks a potential start of a region, a 2nd or later uniq, within
  * scope - keylength minus keywidth distance - triggers a region insertion or
@@ -429,7 +430,7 @@ ext_uq_iter(kct_t* kc)
 
     // keys are kept sorted, first on uniqueness, then on position.
 
-    // XXX: uniq regions? downstream/upstream adjoining? 
+
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
     while (sk - kc->kct != kc->kct_l) {
         ASSERT(uk - kc->kct < kc->kct_l, return -EFAULT, "uk");
@@ -437,24 +438,49 @@ ext_uq_iter(kct_t* kc)
         if (IS_UQ(sk)) {
             pos_t p = B2POS_OF(*sk);
             //EPQ(dbg > 4, "%lu => uq", p); //
-            if (p > (b2end + (*h)->s_s)) {
-                // XXX: post loop things here!
+            if (p >= (b2end + (*h)->s_s)) {
+
+                // handle last boundary
+                pos_t pend = b2end + (*h)->s_s - 1;
+                if (lastp + KC_EXT(kc) >= pend && pend > lastp) {
+                    if ((*kc->bdit).s == b2start) {
+                        (*h)->mapable = b2end - b2start - KEY_WIDTH;
+                        kc->bdit = (*h)->bnd.erase(kc->bdit);
+                    } else if ((*kc->bdit).e + KC_EXT(kc) > pend) {
+                        (*h)->mapable -= pend + (*kc->bdit).e - 1;
+                        kc->bdit++;
+                    } else {
+                        (*h)->mapable += pend;
+                        kc->bdit++;
+                    }
+                    _EVAL(extd_uq_by_k(kc, lastp, pend));
+
+                } else {
+                    (*kc->bdit).e = pend;
+                    ++kc->bdit;
+                }
                 do {
                     if (++kc->bdit == (*h)->bnd.end()) {
-                        show_mantras(kc, *h);
+                        EPQ(dbg > 2, "Contig %s: mapable: %u", kc->id + (*h)->part[0], (*h)->mapable);
+                        if (dbg > 3)
+                            show_mantras(kc, *h);
                         kc->bdit = (*++h)->bnd.begin();
                         start_dbg(kc, *h, 0ul);
                     }
-                } while (p > (b2end + (*h)->s_s));
+                } while (p >= (b2end + (*h)->s_s));
                 lastp = b2start = (*kc->bdit).s + KEY_WIDTH;
                 b2end = (*kc->bdit).e;
                 EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
             }
-            /* FIXME: */
+
             if (lastp + KC_EXT(kc) > p) { // a 2nd uq
+                if (lastp == b2start)
+                    (*kc->bdit).e = b2start;
+                else
+                    (*h)->mapable -= p - lastp;
+
                 if (lastp < p)
                     _EVAL(extd_uq_by_k(kc, lastp, p));
-                (*h)->mapable -= p - lastp;
             } else{ // first occurance. need to close previous, if set.
                 if ((*kc->bdit).e < b2end)
                     start_region(kc, *h, b2start, lastp);
@@ -464,30 +490,6 @@ ext_uq_iter(kct_t* kc)
             _EVAL(swap_kct(kc, uk++, sk));
         }
         ++sk;
-       
-
-
-        /*pos_t p = B2POS_OF(*sk);
-        //TODO: could possibly do more: we are basicly reiterating here.
-        if (IS_DUP(sk)) {
-            // For dups, the b2pos was the last occurance in the last sequence iteration so the
-            // location may not be correct (although seq is guaranteed indentical up to KEY_WIDTH).
-            // *sk ^= DUP_BIT ^ p;
-
-            keyseq_t seq = {0};
-            seq.p = p + KEY_WIDTH;
-            _build_key(kc, seq, p, seq.p, seq.t);
-            uint32_t *ndxkct = _get_kct(kc, seq, seq.t);
-            seq.p = 0;
-            k = kc->kct + *ndxkct;
-            // what next?
-        } else {
-            // is pk->empty() == false branch, hierboven, ipv dit?
-            //_EVAL(reorder_keys(kc, puk, uk, sk)); 
-        }
-        if (++sk != kc->kct + kc->kct_l)
-            break;
-        */
     }
 
     kc->last_uqct = kc->uqct;
