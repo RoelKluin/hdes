@@ -154,19 +154,21 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
 /*
  * process fasta, store 2bit string and count occurances and locations of keys.
- * store per key the count and the last position.
+ * store per key whether it occurred multiple times the last position.
  */
 static int
 fa_kc(kct_t* kc, struct gzfh_t* fhin)
 {
     void* g;
     int (*gc) (void*);
-    uint64_t dna = 0, rc = 0, ndx, t;
-    uint32_t corr = 0, *n;
+    uint32_t corr = 0;
     int c;
     unsigned i = ~0u; // skip until '>'
+    seq_t ndx;
     Hdr* h = NULL;
+    keyseq_t seq = {0};
     kc->s_l = 0;
+    kc->uqct = 0;
     Hdr_umap lookup;
     set_readfunc(fhin, &g, &gc);
 
@@ -179,24 +181,32 @@ case 'A':   c ^= 0x3;
 case 'T': 
 case 'C':   c ^= 0x2;
 case 'G':   c &= 0x3;
-            dna = _seq_next(c, dna, rc);
-            //print_dna(dna);
+        {
+            seq.dna = _seq_next(c, seq);
+            //print_dna(seq.dna);
             _addtoseq(kc->s, c); // kc->s_l grows here.
-            _get_ndx(ndx, t, dna, rc);
-            n = kc->ndxkct + ndx;
+            uint32_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
-                kc->kct[*n] = (t << (BIG_SHFT - KEY_WIDTH)) | (kc->s_l - h->s_s + 1);
-//EPR("%u:%lx\t%x", kc->s_l - h->s_s + 1, ndx, *n);
+                kc->kct[*n] = 0ul;
+                ++kc->uqct;
             } else {
-                kc->kct[*n] |= DUP_BIT;
-                // TODO: count all same Nts and store seq, pos or ref to these.
-                // strand bit (orientation first pos) is no longer functional:
-                // can indicate whether seq & len is stored, or a position
+                C uint64_t m = 1ul << ORIENT_SHFT;
+                kc->kct[*n] &= m ^ -m; // clear position and orientation
+                if (!(kc->kct[*n] & DUP_BIT)) {
+                    kc->kct[*n] |= DUP_BIT;                    // mark it's a dup
+                    --kc->uqct;
+                }
             }
+            /*ASSERT((kc->kct[*n] & ((seq.t != 0) << ORIENT_SHFT)) == 0 &&
+                    (kc->kct[*n] & (kc->s_l + 1)) == 0 &&
+                    (((seq.t != 0) << ORIENT_SHFT) & (kc->s_l + 1)) == 0, return -EFAULT);*/
+            kc->kct[*n] ^= ((seq.t != 0) << ORIENT_SHFT) | (kc->s_l + 1); // set latest pos + orient
             break;
+        }
 case 'N':   i = (KEY_WIDTH - 1) << 8;
+            //EPR("%c",c);
 case 'N' | ((KEY_WIDTH - 1) << 8):
             ++corr;
             break;
@@ -218,8 +228,9 @@ default:    if (isspace(c))
                     corr = 0;
                 }
                 i -= 0x100;
-                dna = _seq_next(c, dna, rc);
+                seq.dna = _seq_next(c, seq);
                 _addtoseq(kc->s, c);
+                //print_dna(seq.dna);
                 break;
     case 0x1e:  h = new_header(kc, h, g, gc, lookup);
                 ASSERT(h != NULL, return -EFAULT);
@@ -232,16 +243,8 @@ default:    if (isspace(c))
     }
     ASSERT(h != NULL, return -EFAULT);
     end_pos(kc, h);
-
+    fprintf(stderr, "Initially uniqe keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;
-}
-
-static void
-kct_convert(kct_t* kc)
-{
-    for (uint64_t ndx = 0ul; ndx != KEYNT_BUFSZ; ++ndx)
-        if (kc->ndxkct[ndx] > kc->kct_l)
-            kc->ndxkct[ndx] = kc->kct_l;
 }
 
 int
@@ -258,7 +261,6 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
 
     /* TODO: load dbSNP and known sites, and mark them. */
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");
-    kct_convert(kc);
     _ACTION(save_seqb2(fh, kc), "writing seqb2: %s", fh[0].name);
     _ACTION(save_kc(fh + 3, kc), "writing keycounts file: %s", fh[3].name);
     _ACTION(reopen(fh + 1, ".nn", ".bd"), "")

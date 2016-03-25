@@ -46,8 +46,9 @@ static int dbg = 3;
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
-#define if_ever(err)    if (unlikely(err))
-#define expect(T)       if (likely(T))
+#define if_ever(x)    if (unlikely(x))
+#define expect(x)       if (likely(x))
+#define while_ever(x)    while (unlikely(x))
 
 // the comma before the ## is deleted in absense of an argument
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
@@ -222,7 +223,7 @@ static unsigned next_pow2(unsigned x)
 }
 
 static int
-print_dna(uint64_t dna, bool d = true, const char sep = '\n', unsigned len = KEY_WIDTH)
+print_dna(seq_t dna, bool d = true, const char sep = '\n', unsigned len = KEY_WIDTH)
 {
     if (d) {
         for (unsigned t = len; t--; dna >>= 2)
@@ -232,7 +233,7 @@ print_dna(uint64_t dna, bool d = true, const char sep = '\n', unsigned len = KEY
     return -1;
 }
 static int
-print_2dna(uint64_t dna, uint64_t dna2, bool d = true, unsigned len = KEY_WIDTH)
+print_2dna(seq_t dna, seq_t dna2, bool d = true, unsigned len = KEY_WIDTH)
 {
     if (d) {
         print_dna(dna, true, '|', len);
@@ -240,12 +241,21 @@ print_2dna(uint64_t dna, uint64_t dna2, bool d = true, unsigned len = KEY_WIDTH)
     }
     return -1;
 }
+static int
+print_seq(keyseq_t* seq, bool d = true, unsigned len = KEY_WIDTH)
+{
+    if (d) {
+        print_dna(seq->dna, true, '|', len);
+        print_dna(seq->rc, true, '\n', len);
+    }
+    return -1;
+}
 
 static int
-print_ndx(uint64_t dna, bool d = true)
+print_ndx(seq_t dna, bool d = true)
 {
     if (d == false) return -1;
-    uint64_t rc = dna & KEYNT_TRUNC_UPPER;
+    seq_t rc = dna & KEYNT_TRUNC_UPPER;
     dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
     rc = revcmp(dna);
     for (unsigned t = KEY_WIDTH; t--; dna >>= 2)

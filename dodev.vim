@@ -6,6 +6,8 @@ tabnew fa.cpp
 vs fa.h
 winc r
 44sp fa.cpp
+tabnew fa.cpp
+vs key_init.cpp
 tabnew fq.cpp
 vs fq.h
 winc r

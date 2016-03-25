@@ -75,10 +75,10 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
             EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + (*bd).s), *pos);
             --bd;
         }
-        ASSERT (((*hdr)->s_s + (*bd).s) <= *pos, return -EFAULT);
+        ASSERT (((*hdr)->s_s + (*bd).s) <= *pos, return -EFAULT)
         break;
     }
-    ASSERT (hdr != kc->h.end(), return -EFAULT);
+    ASSERT (hdr != kc->h.end(), return -EFAULT)
     EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, (*bd).corr, bufi);
 
     ASSERT(*pos + (*bd).corr > (*hdr)->s_s + bufi, return -EFAULT,
@@ -110,17 +110,18 @@ fq_read(kct_t* kc, seqb2_t *seq)
     int (*gc) (void*);
     struct gzfh_t* fhin = seq->fh;
 //dbg = 7;
-    uint64_t l = seq->s_l, m = seq->s_m;
+    uint64_t l = seq->s_l;//, m = seq->s_m;
     uint8_t *s = seq->s + l;
-    const unsigned phred_offset = seq->phred_offset;
+    //const unsigned phred_offset = seq->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + seq->readlength + 1;
-    uint64_t ndx, dna = 0ul, rc = 0ul, b = 0ul, wx = 0ul;
+    seq_t ndx, b = 0ul;
     int c = kc->readlength - KEY_WIDTH + 1;
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
+    keyseq_t ks = {0};
     Hdr* lh = kc->h.back();
     const uint64_t end_pos = lh->s_s + lh->end_pos;
-    struct mapstat_t ms = {0};
+    //struct mapstat_t ms = {0};
 
     set_readfunc(fhin, &g, &gc);
 
@@ -145,7 +146,7 @@ fq_read(kct_t* kc, seqb2_t *seq)
         }
         EPQ(dbg > 6, "%s", (char*)h);
 
-        char* seqstart = (char*)s;
+        //char* seqstart = (char*)s;
         i = 0;
         while ((c = gc(g)) != '\n') {
             ASSERT(c != -1, c = -EFAULT; goto out);
@@ -156,7 +157,7 @@ case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
 case 'A': case 'a': *s = 0x3e;
-default:            dna = _seq_next(b, dna, rc);
+default:            ks.dna = _seq_next(b, ks);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
@@ -167,19 +168,19 @@ default:            dna = _seq_next(b, dna, rc);
 			break;
 		    }
 		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
-		    // wx only has strand at offset KEY_WIDTH.
-                    _get_ndx(ndx, wx, dna, rc);
+		    // ks.t only has strand at offset KEY_WIDTH.
+                    ndx = _get_ndx(ks.t, ks.dna, ks.rc);
                     uint32_t k = kc->ndxkct[ndx];
- EPR("%u:%lx\t%x", i, ndx, k);
+ EPR("%u:%lx\t%x", i, (uint64_t)ndx, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
-                        bufi[i - KEY_WIDTH] = i ^ wx;
+                        bufi[i - KEY_WIDTH] = i ^ ks.t;
                         continue;
                     }
 		    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // beyond chromosomes?
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
-                        bufi[i - KEY_WIDTH] = i ^ wx;
+                        bufi[i - KEY_WIDTH] = i ^ ks.t;
                         continue;
                     }
                     if (dbg > 6) {
@@ -187,34 +188,34 @@ default:            dna = _seq_next(b, dna, rc);
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) {
                             buf[i - KEY_WIDTH] = ~0ul;
-                            bufi[i - KEY_WIDTH] = i ^ wx;
+                            bufi[i - KEY_WIDTH] = i ^ ks.t;
                             continue;
                         }
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
-                                kc->kct[k] >> INFIOR_SHFT, ndx);
+                                kc->kct[k] >> INFIOR_SHFT, (uint64_t)ndx);
                         print_ndx(ndx);
                     }
 		    if (i == KEY_WIDTH) {
 	                    buf[0] = k;
-			    bufi[0] = i ^ wx;
+			    bufi[0] = i ^ ks.t;
 		    } else if (buf[0] == ~0ul){
 			buf[i - KEY_WIDTH] = buf[0];
 			bufi[i - KEY_WIDTH] = bufi[0];
 			buf[0] = k;
-			bufi[0] = i ^ wx;
+			bufi[0] = i ^ ks.t;
 		    } else {
 			// test infior - in high bits.
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         if (kc->kct[k] > kc->kct[t]) {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
-		            bufi[i - KEY_WIDTH] = i ^ wx;
+		            bufi[i - KEY_WIDTH] = i ^ ks.t;
 			} else {
 			    // lowest inferiority
                             buf[i - KEY_WIDTH] = buf[0];
                             bufi[i - KEY_WIDTH] = bufi[0];
                             buf[0] = k;
-                            bufi[0] = i ^ wx;
+                            bufi[0] = i ^ ks.t;
                         }
                     }
             }
@@ -238,13 +239,13 @@ default:            dna = _seq_next(b, dna, rc);
 
         if (((uint32_t)ndx < kc->kct_l) && IS_UQ(kc->kct + ndx)) {
             mq = 37;
-            flag = (wx ^ 1) & 1;
-            if ((wx & 1)) { //XXX
+            flag = (ks.t ^ 1) & 1;
+            if ((ks.t & 1)) { //XXX
                 while ((c = gc(g)) != -1 && c != '@') {}
                 continue;
             }
 	    flag = !(kc->kct[ndx] & STRAND_BIT) ^ !(bufi[0] & KEYNT_STRAND);
-            flag = 0x42 | (flag << 4);
+            flag = (flag << 4) | 0x42;
 
 
 

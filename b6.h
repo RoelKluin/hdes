@@ -34,6 +34,30 @@
 #ifndef KEY_LENGTH
 # define KEY_LENGTH 15                      // <= this many Nts are used as key
 #endif
+
+#ifndef GENOME_BITS
+# define GENOME_BITS 16
+#endif
+#if GENOME_BITS <= 16
+typedef uint32_t pos_t;
+#else
+typedef uint64_t pos_t;
+#endif
+
+#if KEY_LENGTH <= 16
+typedef uint32_t seq_t;
+#define DEVIANT_BIT_MASK 0xaaaaaaaaU
+#define ODD_BYTE_MASK 0x00ff00ffU
+#define ODD_NIBBLE_MASK 0x0f0f0f0fU
+#define ODD_TWOBIT_MASK 0x33333333U
+#else
+typedef uint64_t seq_t;
+#define DEVIANT_BIT_MASK 0xaaaaaaaaaaaaaaaaUL
+#define ODD_BYTE_MASK 0x00ff00ff00ff00ffUL
+#define ODD_NIBBLE_MASK 0x0f0f0f0f0f0f0f0fUL
+#define ODD_TWOBIT_MASK 0x3333333333333333UL
+#endif
+
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
@@ -86,12 +110,12 @@
         t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
         t = -((t | B6_MASK) == B6_MASK) & (t >> 1);\
         dna = (dna << 2) | t;\
-        rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
+        rev = ((seq_t)t << KEYNT_TOP) | (rev >> 2);\
 })
 
 #define add_b(t, dna, rev) ({\
         dna = (dna << 2) | t;\
-        rev = ((uint64_t)t << KEYNT_TOP) | (rev >> 2);\
+        rev = ((seq_t)t << KEYNT_TOP) | (rev >> 2);\
 })
 
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
@@ -99,63 +123,35 @@
 unsigned b6(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 #define REVSEQ(dna, m) ({\
-    m = 0x3333333333333333;\
+    m = ODD_TWOBIT_MASK;\
     dna = ((dna & m) << 2) | ((dna & ~m) >> 2);\
-    m = 0x0f0f0f0f0f0f0f0f;\
+    m = ODD_NIBBLE_MASK;\
     dna = ((dna & m) << 4) | ((dna & ~m) >> 4);\
-    m = 0x00ff00ff00ff00ff;\
+    m = ODD_BYTE_MASK;\
     asm ("bswap %0" : "=r" (dna) : "0" (dna));\
-    dna >> (64 - (KEY_WIDTH << 1));\
+    dna >> ((sizeof(dna) << 3) - (KEY_WIDTH << 1));\
 })
 
-inline uint64_t revcmp(uint64_t dna) /* Reverse Complement, is ok. */
+inline seq_t revcmp(seq_t dna) /* Reverse Complement, is ok. */
 {
-    uint64_t m;
-    dna ^= 0xaaaaaaaaaaaaaaaaUL;
+    seq_t m;
+    dna ^= DEVIANT_BIT_MASK;
     return REVSEQ(dna, m);
 }
 
-/*
- * This is to get a twisted halfdev for even number of Nts. for odd counts
- * the conversion is much more straightforward - 2nd bit of central Nt decides.
- */
-inline unsigned get_twisted_even(uint64_t* t, uint64_t dna, uint64_t rc)
-{
-    // first get deviant: all bits that differ between complements.
-    // Left and right tails of deviant are mirrored per twobit.
-    uint64_t dev = dna ^ rc;
+struct __attribute__ ((__packed__)) keyseq_t {
+    seq_t dna, rc, t, p;
+};
 
-    dna &= HALF_KEYNT_MASK;
-
-    uint64_t p = dev & -dev; // devbit position
-
-    *t = -!(rc & p); // set all bits if devbit is set
-
-    // if set, flip all, otherwise only top half.
-    // result is deviant in high bits, dna / rc in low.
-    dna ^= dev & (~HALF_KEYNT_MASK | *t);
-
-    *t &= KEYNT_STRAND; // for backwards compatability.
-
-    // mask bits above devbit, to excise out devbit
-    p ^= -p;
-    dna ^= (dna & p) ^ ((dna & p) >> 1);
-
-    return dna & KEYNT_MASK;
-}
-
-#define _get_ndx(ndx, t, dna, rc) ({\
-    if (KEY_WIDTH & 1) {\
-        t = dna & KEYNT_STRAND;/* Store strand orientation. Central bit determines*/\
-        ndx = t ? dna : rc;    /* strand. Excise it out since its always the same */\
-        ndx = ((ndx >> 1) & KEYNT_TRUNC_UPPER) | (ndx & HALF_KEYNT_MASK);\
-    } else {\
-        ndx = get_twisted_even(&t, dna, rc);\
-    }\
-    ASSERT(ndx < KEYNT_BUFSZ, return print_2dna(dna, rc) & -EFAULT, "0x%lx", ndx);\
-    dbg = ((ndx == dbgndx) || (kc)->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, (kc)->ndxkct[ndx]);\
-});
+#define _get_ndx(t, dna, rc) ({\
+    t = dna ^ rc;\
+    t &= -t;/* isolate deviant bit */\
+    t |= !t;/* for palindromes: have to set one */\
+    seq_t __m = t - 1;\
+    t &= dna;/* was devbit set? */\
+    seq_t __x = t ? dna : rc;\
+    (__m & __x) | ((~__m & __x) >> 1);\
+})
 
 /* With the b6 conversion, only the specified characters are converted to
  * 2bits, left shifted by one, with all other bits zeroed. With the function
