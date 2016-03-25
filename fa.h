@@ -44,7 +44,7 @@
 #endif
 
 // stored position is one-based to ensure a bit is set
-#define B2POS_OF(k) (((k) & B2POS_MASK) - 1)
+#define B2POS_OF(k) ((k) & B2POS_MASK)
 #define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
 
 // TODO: if a key is not unique, store pos or same seq and length in lower bits

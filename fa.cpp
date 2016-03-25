@@ -297,7 +297,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
     keyseq_t seq = {0};
 
     // of uniques the position is correct.
-//    EPR("%lu..%lu exised", p, pend);//
+    EPQ(dbg > 4, "%lu..%lu exised", p, pend);
 
     ASSERT(pend < (kc->s_l << 2), return -EINVAL, "%lu/%lu?", pend, kc->s_l);
     ASSERT(p < pend, return print_seq_from_pos(kc, pend), "%lu >= %lu?", p, pend);
@@ -325,7 +325,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
         }
 
 //        print_seq(&seq);
-//        fprintf(stderr, "DECR, %lu\t%lu\n", p, pend);
+//        EPR("DECR, %lu\t%lu", p, pend);
         do {
             _EVAL(get_nextnt(kc, p));
             seq.dna = _seq_next(res, seq);
@@ -414,10 +414,10 @@ ext_uq_iter(kct_t* kc)
     std::queue<uint64_t> pk;     // storage for unique/non-unique keys
     kc->bdit = (*h)->bnd.begin();
     EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
-    pos_t lastp = 0;
-    uint32_t b2start = (*kc->bdit).s;
+    uint32_t b2start = (*kc->bdit).s + KEY_WIDTH;
     uint32_t b2end = (*kc->bdit).e;
-
+    pos_t lastp = b2start;
+    start_dbg(kc, *h, 0ul);
     // iterate over keys
     // 1) reset and remove non-uniqs, move uqs to start of array
     // 2) determine, extend unique regions and decr_excise *only new* ones
@@ -436,30 +436,28 @@ ext_uq_iter(kct_t* kc)
 
         if (IS_UQ(sk)) {
             pos_t p = B2POS_OF(*sk);
-//            EPR("%lu => uq", p); //
+            //EPQ(dbg > 4, "%lu => uq", p); //
             if (p > (b2end + (*h)->s_s)) {
                 // XXX: post loop things here!
-                lastp = 0;
                 do {
                     if (++kc->bdit == (*h)->bnd.end()) {
+                        show_mantras(kc, *h);
                         kc->bdit = (*++h)->bnd.begin();
+                        start_dbg(kc, *h, 0ul);
                     }
                 } while (p > (b2end + (*h)->s_s));
-                b2start = (*kc->bdit).s;
+                lastp = b2start = (*kc->bdit).s + KEY_WIDTH;
                 b2end = (*kc->bdit).e;
                 EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
             }
-            if (b2start + KEY_WIDTH - 1 > p) {
-                // downstream adjoining
-                _EVAL(extd_uq_by_k(kc, b2start, p));
-                (*kc->bdit).e = b2start;
-            } else if (lastp && lastp + KC_EXT(kc) > p) { // a 2nd uq
-                if (lastp + 1 != p)
+            /* FIXME: */
+            if (lastp + KC_EXT(kc) > p) { // a 2nd uq
+                if (lastp < p)
                     _EVAL(extd_uq_by_k(kc, lastp, p));
                 (*h)->mapable -= p - lastp;
             } else{ // first occurance. need to close previous, if set.
                 if ((*kc->bdit).e < b2end)
-                    start_region(kc, *h, b2start, p - KC_EXT(kc) + 1);
+                    start_region(kc, *h, b2start, lastp);
                 (*kc->bdit).e = p;
             }
             lastp = p;

@@ -202,7 +202,7 @@ case 'G':   c &= 0x3;
             /*ASSERT((kc->kct[*n] & ((seq.t != 0) << ORIENT_SHFT)) == 0 &&
                     (kc->kct[*n] & (kc->s_l + 1)) == 0 &&
                     (((seq.t != 0) << ORIENT_SHFT) & (kc->s_l + 1)) == 0, return -EFAULT);*/
-            kc->kct[*n] ^= ((seq.t != 0) << ORIENT_SHFT) | (kc->s_l + 1); // set latest pos + orient
+            kc->kct[*n] ^= ((seq.t != 0) << ORIENT_SHFT) | kc->s_l; // set latest pos + orient
             break;
         }
 case 'N':   i = (KEY_WIDTH - 1) << 8;
