@@ -290,51 +290,59 @@ static inline int print_seq_from_pos(kct_t* kc, uint64_t p)
 // reset and remove non-uniqs, move uqs to start of kc->kct array
 // FIXME: mantras?
 static inline int
-extd_uq_by_k(kct_t* kc, pos_t pend)
+extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
 {
+    uint64_t *k, infior, t;
     uint32_t *ndxkct;
     int res;
     keyseq_t seq = {0};
 
     // of uniques the position is correct.
-    pos_t p = B2POS_OF(*kc->kct_scope[0]);
-    EPR("%lu..%lu exised", p, pend);//
+//    EPR("%lu..%lu exised", p, pend);//
 
     ASSERT(pend < (kc->s_l << 2), return -EINVAL, "%lu/%lu?", pend, kc->s_l);
     ASSERT(p < pend, return print_seq_from_pos(kc, pend), "%lu >= %lu?", p, pend);
 
-    if (p + KC_EXT(kc) > pend && ++p != pend) { // within scope and keys to re-evaluate
+    if (p + KC_EXT(kc) > pend && p + 1 != pend) { // within scope and keys to re-evaluate
+
+        seq.p = pend;
+        pend -= KEY_WIDTH;
+        _build_key(kc, seq, pend, seq.p, seq.t);
+        ndxkct = _get_kct(kc, seq, seq.t);
+        infior = kc->kct[*ndxkct] & MAX_INFIOR;
+
         seq.p = p;
         p -= KEY_WIDTH;
-        uint64_t *k;
         _build_key(kc, seq, p, seq.p, seq.t);
+        ndxkct = _get_kct(kc, seq, seq.t);
+        t = kc->kct[*ndxkct] & MAX_INFIOR;
+        if (t > infior)
+            infior = t;
+
 //        print_seq(&seq);
 //        fprintf(stderr, "DECR, %lu\t%lu\n", p, pend);
         do {
-
             _EVAL(get_nextnt(kc, p));
             seq.dna = _seq_next(res, seq);
+
             ndxkct = _get_kct(kc, seq, seq.t);
             k = kc->kct + *ndxkct;
-            EPR("..%lu..", B2POS_OF(*k));
+//            EPR("..%lu..", B2POS_OF(*k));
 //            print_seq(&seq);
-            uint64_t infior = *k & MAX_INFIOR;
             update_max_infior(k, infior);
 
             // in next iteration: reeval whether this is still a dup.
-            ASSERT(k > kc->kct_scope[0], return print_seq(&seq),
-                    "DUPBIT unset before kct occurance?");
-             *k &= ~DUP_BIT;
-            // XXX: cannot unset yet. why? each key should already be evaluated.
+            //ASSERT(k > kc->kct_scope[0], return print_seq(&seq),
+            //        "DUPBIT unset before kct occurance?");
+            *k &= ~DUP_BIT;
 
             // position needs to be reevaluated as well (this one -the last- was removed)
-      //      if (B2POS_OF(*k) == p) // XXX any use for this, or is it renewed anyway?
-      //          *k ^= p;
+     //       if (B2POS_OF(*k) == p) // XXX any use for this, or is it renewed anyway?
+     //           *k ^= p;
 
             EPQ(IS_DBG_K(kc, k), "exiced: [%u]", K_OFFS(kc, k));
             ++kc->uqct;
-
-        } while (++p != pend);
+        } while (++p == pend);
 
         ASSERT(IS_UQ(k), return -EFAULT, "%lu, %lu", p, B2POS_OF(*k));
         // need to determine kcts for inbetween. Same can occur twice, use end instead.
@@ -360,6 +368,37 @@ track_mantra(kct_t* kc, std::list<Hdr*>::iterator *h, C pos_t p)
     }
 }
 
+static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
+{
+    if (sk == uk)
+        return 0;
+//    EPR("swap %lu <-> %lu => uq", B2POS_OF(*uk), B2POS_OF(*sk));
+    // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
+
+    // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
+    keyseq_t seq = {0};
+    seq.p = B2POS_OF(*uk);
+    pos_t p = seq.p - KEY_WIDTH;
+    _build_key(kc, seq, p, seq.p, seq.t);
+    uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t);
+
+    seq.p = B2POS_OF(*sk);
+    p = seq.p - KEY_WIDTH;
+    _build_key(kc, seq, p, seq.p, seq.t);
+    uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t);
+
+    // ndxkct points to reordered kcts
+    uint64_t t = *ndxkct1;
+    *ndxkct1 = *ndxkct2;
+    *ndxkct2 = t;
+    
+    // also swap info at kcts
+    t = *uk;
+    *uk = *sk;
+    *sk = t;
+    return 0;
+}
+
 static int
 ext_uq_iter(kct_t* kc)
 {
@@ -374,8 +413,7 @@ ext_uq_iter(kct_t* kc)
     std::queue<uint64_t> pk;     // storage for unique/non-unique keys
     kc->bdit = (*h)->bnd.begin();
     EPR("%s", kc->id + (*h)->part[0]);
-    *kc->kct_scope = NULL;
-    if (uk == sk) ++sk;
+    pos_t lastp = 0;
 
     // iterate over keys
     // 1) reset and remove non-uniqs, move uqs to start of array
@@ -390,50 +428,27 @@ ext_uq_iter(kct_t* kc)
 
     // XXX XXX: also need to update ndxkct.
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    while (uk != kc->kct + kc->uqct) {
-        ASSERT(sk - kc->kct < kc->kct_l, return print_seq_from_pos(kc, **kc->kct_scope), "sk");
+    while (sk - kc->kct != kc->kct_l) {
         ASSERT(uk - kc->kct < kc->kct_l, return -EFAULT, "uk");
 
-        if (IS_UQ(sk) && (B2POS_lt(*sk, *uk) || IS_DUP(uk))) {
-
-            ASSERT(IS_DUP(uk), return -EFAULT, "dup uk?");
-            EPR("swap %lu <-> %lu => uq", B2POS_OF(*uk), B2POS_OF(*sk));
-            // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
-
-            // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
-            keyseq_t seq = {0};
-            seq.p = B2POS_OF(*uk);
-            pos_t p = seq.p - KEY_WIDTH;
-            _build_key(kc, seq, p, seq.p, seq.t);
-            uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t);
-
-            seq.p = B2POS_OF(*sk);
-            p = seq.p - KEY_WIDTH;
-            _build_key(kc, seq, p, seq.p, seq.t);
-            uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t);
-
-            uint64_t t = *ndxkct1;
-            *ndxkct1 = *ndxkct2;
-            *ndxkct2 = t;
-            
-            // swap kcts
-            t = *uk;
-            *uk = *sk;
-            *sk = t;
-        }        
-        if (IS_UQ(uk)) {
-            EPR("%lu => uq", B2POS_OF(*uk));
-            track_mantra(kc, &h, B2POS_OF(*uk));
-            //ASSERT(B2POS_lt(*uk, *sk), res = -EFAULT; goto err, "%lu\t%lu", B2POS_OF(*uk), B2POS_OF(*sk));
-            if (*kc->kct_scope)
-                _EVAL(extd_uq_by_k(kc, B2POS_OF(*uk)));
-            *kc->kct_scope = uk;
-            //EPR("uk storage: %lu", B2POS_OF(*uk));
-            if (++uk == sk)
-                ++sk;
-        } else {
-            ++sk;
+        if (IS_UQ(sk)) {
+            pos_t p = B2POS_OF(*sk);
+//            EPR("%lu => uq", p); //
+            while (p > ((*kc->bdit).e + (*h)->s_s)) {
+                lastp = 0;
+                EPR("bnd %lu", p);
+                if (++kc->bdit == (*h)->bnd.end()) {
+                    kc->bdit = (*++h)->bnd.begin();
+                    EPR("%s", kc->id + (*h)->part[0]);
+                }
+            }
+            if (lastp && lastp + KC_EXT(kc) > p && lastp + 1 != p)
+                _EVAL(extd_uq_by_k(kc, lastp, p));
+            lastp = p;
+            _EVAL(swap_kct(kc, uk++, sk));
         }
+        ++sk;
+       
 
 
         /*pos_t p = B2POS_OF(*sk);
