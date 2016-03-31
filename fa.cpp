@@ -142,7 +142,6 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
             print_seq(&seq, IS_DBG_K(kc, kct));
         }
 
-        ++h->total;
 EPQ0(dbg >5, "[%u%c]:\t", b2pos, IS_UQ(kct) ? '*' : ' ');
 print_dna(seq.dna, dbg >5);
 
@@ -283,6 +282,8 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k)
         _build_key(kc, seq, p, seq.p, seq.t);
         ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
 
+        // TODO: extension - KEY_WIDT as high bits of inferiority.
+        // low inferiority bits zero if uniques were of previous extensions
         infior = kc->kct[*ndxkct] & MAX_INFIOR;
         if (k && (*k & MAX_INFIOR) > infior)
             infior = *k & MAX_INFIOR;
@@ -410,7 +411,6 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *nuk, uint32_t *ndxkct2)
 static int
 ext_uq_iter(kct_t* kc)
 {
-    uint64_t totNts = 0ul; // FIXME: put in kc and move to key_init
     int res;
     EPQ(dbg > 5, "Clearing dups for next iteration");
 
@@ -508,14 +508,13 @@ ext_uq_iter(kct_t* kc)
         }
         ++nuk;
     }
-
+    // TODO: sort uniques.
     kc->last_uqct = kc->uqct;
 
     /*for (h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
         int ret = ext_uq_hdr(kc, *h);
         if (ret < 0) return ret;
-        totNts += (*h)->total;
     }*/
 
     EPQ(dbg > 0, "extended %u unique ranges in iteration %u, extension %u, %u to be reevaluated\n",

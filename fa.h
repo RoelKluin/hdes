@@ -157,7 +157,7 @@ struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
     std::list<Mantra> bnd; //
-    uint32_t end_pos, end_corr, mapable, total; // mapable is only used in fa.cpp
+    uint32_t end_pos, end_corr, mapable; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 
