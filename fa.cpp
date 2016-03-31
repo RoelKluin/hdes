@@ -412,8 +412,8 @@ ext_uq_iter(kct_t* kc)
     int res;
     EPQ(dbg > 5, "Clearing dups for next iteration");
 
-    uint64_t *uk = kc->kct;            // location for unique keys
-    uint64_t *sk = uk + kc->last_uqct; // location after uniques, from last time
+    uint64_t *sk = kc->kct;            // location for unique keys
+    uint64_t *uk = sk + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
     std::list<Hdr*>::iterator h = kc->h.begin();
     ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
     std::queue<uint64_t> pk;     // storage for unique/non-unique keys
@@ -436,8 +436,8 @@ ext_uq_iter(kct_t* kc)
 
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    while (sk - kc->kct != kc->kct_l) {
-        ASSERT(uk - kc->kct < kc->kct_l, return -EFAULT, "uk");
+    while (sk != uk) {
+        ASSERT(uk - kc->kct < kc->kct_l && uk > 0, return -EFAULT, "uk");
 
         if (IS_UQ(sk)) {
             ++kc->uqct;
@@ -500,7 +500,7 @@ ext_uq_iter(kct_t* kc)
                     *k |= (!!seq.t << ORIENT_SHFT) | p; // set new pos and strand
                 } while (++p != lastp);
             }
-            _EVAL(swap_kct(kc, uk++, sk));
+            _EVAL(swap_kct(kc, uk--, sk));
         }
         ++sk;
     }
