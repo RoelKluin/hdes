@@ -21,7 +21,7 @@ end_pos(kct_t*C kc, Hdr* h)
     if (h) {
         EPR("processed %lu Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->id + h->part[0]);
 
-        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s + 1;
+        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
         if (dbg > 3)
             show_mantras(kc, h);
     }
@@ -123,7 +123,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         // correction propagation Not thoroughly checked yet...
         contig.corr += h->bnd.back().corr - h->bnd.back().e; // start of current is added later.
 
-        if (h->bnd.back().e == h->bnd.back().s + 1)
+        if (h->bnd.back().e == h->bnd.back().s)
             h->bnd.push_back(contig);
 
         h = lh;

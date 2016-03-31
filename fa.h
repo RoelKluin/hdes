@@ -44,8 +44,16 @@
 #endif
 
 // stored position is one-based to ensure a bit is set
-#define B2POS_OF(k) ((k) & B2POS_MASK)
-#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
+#define NO_KCT -2u
+
+// XXX ugly since assumes kc defined and return with value, but for debugging..
+#define B2POS_OF(k) ({\
+        ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
+        ASSERT(k - kc->kct >= 0, return -EFAULT);\
+        ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
+        (*k) & B2POS_MASK;\
+})
+//#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
 
 // TODO: if a key is not unique, store pos or same seq and length in lower bits
 //#define UQ_MASK    0x000000000000000F // How many same Nts occur
@@ -64,12 +72,8 @@
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 #define IS_DBG_K(kc, k) (K_OFFS(kc, k) == dbgk)
 
-#define NO_KCT -2u
-
 #define DESCRIBE_KEY(kc, k, c) \
   EPR("[k:%lu] %c\t%s", K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
-
-#define KC_EXT(kc) (kc->readlength - KEY_WIDTH)
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 //#define MARKED 0x8000000000000000
@@ -114,12 +118,15 @@ packed_struct Mantra { // not yet covered by unique keys
 #define ASSERT_SCOPE_RNG(kc, p, pend, _act)\
     do {\
         ASSERT(pend < (kc->s_l << 2), _act, "%lu/%lu?", pend, kc->s_l);\
-        ASSERT(p < pend, _act, "%lu >= %lu?", p, pend);\
+        ASSERT(p < pend, _act, "%u >= %u?", p, pend);\
         ASSERT(p + kc->readlength - KEY_WIDTH >= pend, _act,\
-                "%lu + %lu < %lu?", p, kc->readlength - KEY_WIDTH, pend);\
+                "%u + %lu < %u?", p, kc->readlength - KEY_WIDTH, pend);\
     } while(0)
 
 #define _build_key(kc, seq, p, pend, t)\
+    ASSERT(p < pend, return -EFAULT, "%u >= %u?", p, pend);\
+    ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%u/%lu?", pend, kc->s_l);\
+    ASSERT(p >= 0, return -EFAULT, "%u < 0 (%u)?", p, pend);\
     do {\
         t = (kc->s[p>>2] >> ((p&3) << 1)) & 3;\
         seq.dna = _seq_next(t, seq);\
@@ -161,7 +168,7 @@ struct kct_t {
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
     uint64_t s_l;
-    uint32_t id_l, kct_l, uqct, pending, last_uqct;
+    uint32_t id_l, kct_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
     uint8_t id_m, s_m, ndxkct_m;
     uint8_t kct_m;
@@ -211,7 +218,7 @@ int ammend_kc(struct gzfh_t*, kct_t*);
 int map_fq_se(struct seqb2_t*, char C*C);
 
 // mantra.cpp
-void show_mantras(kct_t C*C kc, Hdr *C h);
+int show_mantras(kct_t C*C kc, Hdr *C h);
 int insert_mantra(kct_t *C kc, Hdr* h);
 void pot_mantra_end(kct_t *C kc, Hdr *C h, C seq_t dna, C uint32_t b2pos);
 #endif // RK_FA_H

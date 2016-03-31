@@ -97,18 +97,12 @@ decr_excise_all(kct_t *C kc, uint64_t* k, uint64_t C*C kct, unsigned const end)
 static inline void start_region(kct_t* kc, Hdr *C h, C uint32_t b2start, C uint32_t last_uq_pos)
 {
     if ((*kc->bdit).e == b2start) {
-        (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-        h->mapable += (*kc->bdit).s + 1 - b2start;
-    }  else if ((*kc->bdit).e == last_uq_pos) {
-        EPQ(dbg > 3, "(postponed %u)", h->mapable);
-    } else { // not downstream adjoining.
+        (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
+    }  else if ((*kc->bdit).e != last_uq_pos) { // not downstream adjoining.
 
         h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
         // start is earlier to enable building of the 1st key.
-        (*kc->bdit).s = last_uq_pos - KEY_WIDTH + 1;
-        h->mapable += last_uq_pos + 1;
-        EPQ(dbg > 3, "(kept %u)", h->mapable);
-
+        (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
     }
 }
 
@@ -125,7 +119,7 @@ static int
 ext_uq_bnd(kct_t *C kc, Hdr *C h)
 {
     uint64_t *kct = NULL, *k;
-    unsigned i, index = 0, ext = KC_EXT(kc);
+    unsigned i, index = 0, ext = kc->ext;
     C uint32_t b2end = (*kc->bdit).e;
     C uint32_t b2start = (*kc->bdit).s;
     keyseq_t seq = {0};
@@ -141,7 +135,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
 
     kc->kct_scope[0] = NULL;
 
-    for (b2pos += KEY_WIDTH; b2pos < b2end; ++b2pos) { // until next uniq region, stretch or contig
+    for (b2pos += KEY_WIDTH; b2pos <= b2end; ++b2pos) { // until next uniq region, stretch or contig
         /* process new key */
         kct = kc->kct + *(_get_kct(kc, seq, seq.t));
         if (IS_DBG_K(kc, kct)) {
@@ -155,28 +149,21 @@ print_dna(seq.dna, dbg >5);
 
         _EVAL(get_nextnt(kc, p));
         seq.dna = _seq_next(res, seq);
-        seq.p = B2POS_OF(*kct);
+        seq.p = B2POS_OF(kct);
         if (seq.p >= p++) { // first occurance (pos not yet reset)
 
-            *kct ^= (seq.t << (ORIENT_SHFT - KEY_WIDTH)) ^ seq.p ^ (p + 1);
+            *kct ^= (!!seq.t << ORIENT_SHFT) ^ seq.p ^ p;
 
 	    k = kc->kct_scope[0];
             if (k == NULL || (b2start + index + KEY_WIDTH - 1) == b2pos) {
-                EPQ(dbg > 3, "(dnstrm adjoining uq %u)", h->mapable);
                 decr_excise_all(kc, k, kct, index);
                 (*kc->bdit).e = b2start;
 
             } else if (IS_UQ(k)) {
-                //EPQ(dbg > 3, "(2nd+ uq %u)", h->mapable);
-
-                if (((*kc->bdit).e + index) == b2pos) // a 2nd uq
-                    h->mapable -= b2pos - index;
 
                 decr_excise_all(kc, k, kct, index);
 
             } else {
-                EPQ(dbg > 3, "(1st uq %u)", h->mapable);
-
                 (*kc->bdit).e = b2pos;
             }
 	    index = 0;
@@ -201,29 +188,20 @@ print_dna(seq.dna, dbg >5);
         kc->kct_scope[index++] = kct;
     }
     EPQ(IS_DBG_K(kc, kct), "last key was dbgtsoffs");
-    if (b2pos != b2end) {
-        EPR("b2pos != b2end: %u != %u (happens for Y on hg19", b2pos, b2end);
+    if (b2pos != b2end + 1) {
+        EPR("b2pos != b2end: %u != %u (happens for Y on hg19", b2pos, b2end + 1);
         show_mantras(kc, h);
         ASSERT(strncmp(kc->id + h->part[0], "Y", strlen("Y")) == 0, return -EFAULT);
     }
     k = kc->kct_scope[0];
     ASSERT(k != NULL, res = -EFAULT; goto err);
     if (IS_UQ(k)) {
-        EPQ (dbg > 3, "Post loop adjoining boundary [%u, %u]", b2pos, h->mapable);
         if ((*kc->bdit).s == b2start) {
-            h->mapable = b2end - b2start - KEY_WIDTH;
-EPQ(dbg > 3, "X:[%u, %u]:", b2pos, h->mapable);
             kc->bdit = h->bnd.erase(kc->bdit);
         } else if (((*kc->bdit).e + index) == b2pos) {
-EPQ(dbg > 3, "E:[%u, %d]:", b2pos, h->mapable);
-            h->mapable -= b2pos - index;
-            h->mapable += b2pos + 1; // no extension beyond end
             kc->bdit++;
         } else {
-            h->mapable += b2pos;
-
             kc->bdit++;
-EPQ(dbg > 3, "last was uniq, %u", h->mapable);
             //show_mantras(kc, h);
         }
         decr_excise_all(kc, k, NULL, index);
@@ -253,7 +231,6 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     //FIXME: rather than % of all display % mapable of remaining (mantras)
     kc->bdit = h->bnd.begin();
-    h->mapable = h->total = 0ul;
     IFOUT(kc->bdit == h->bnd.end(), "Already fully mapable: %s", kc->id + h->part[0]);
 
     EPQ(dbg > 3, "Processing %s", kc->id + h->part[0]);
@@ -268,18 +245,14 @@ ext_uq_hdr(kct_t* kc, Hdr* h)
     if (dbg > 4)
         show_mantras(kc, h);
 #endif
-    EPQ(dbg > 2, "Contig %s: %u/%u => %.2f%% mapable",
-            kc->id + h->part[0], h->mapable, h->total,
-            h->end_pos ? 100.0f * h->mapable / h->total : nanf("NAN"));
-    ASSERT(h->mapable <= h->total, show_mantras(kc, h); return -EFAULT);
+    EPQ(dbg > 2, "Contig %s", kc->id + h->part[0]);
 out:
     return 0;
 }
 
-static inline int print_seq_from_pos(kct_t* kc, uint64_t p)
+static inline int print_seq_from_pos(kct_t* kc, pos_t p)
 {
     keyseq_t seq = {0};
-    p = B2POS_OF(p);
     EPR0("%lu\t", p);
     seq.p = p;
     p -= KEY_WIDTH;
@@ -290,9 +263,9 @@ static inline int print_seq_from_pos(kct_t* kc, uint64_t p)
 // reset and remove non-uniqs, move uqs to start of kc->kct array
 // FIXME: mantras?
 static inline int
-extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
+extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k)
 {
-    uint64_t *k, infior, t;
+    uint64_t infior, t;
     uint32_t *ndxkct;
     int res;
     keyseq_t seq = {0};
@@ -303,22 +276,18 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
     ASSERT(pend < (kc->s_l << 2), return -EINVAL, "%lu/%lu?", pend, kc->s_l);
     ASSERT(p < pend, return print_seq_from_pos(kc, pend), "%lu >= %lu?", p, pend);
 
-    if (p + KC_EXT(kc) > pend && p + 1 != pend) { // within scope and keys to re-evaluate
-
-        seq.p = pend;
-        pend -= KEY_WIDTH;
-        _build_key(kc, seq, pend, seq.p, seq.t);
-        ndxkct = _get_kct(kc, seq, seq.t);
-        infior = kc->kct[*ndxkct] & MAX_INFIOR;
+    if (p + kc->ext + 1 >= pend && p + 1 != pend) { // within scope and keys to re-evaluate
 
         // could continue with key if adjacent
         seq.p = p;
         p -= KEY_WIDTH;
         _build_key(kc, seq, p, seq.p, seq.t);
         ndxkct = _get_kct(kc, seq, seq.t);
-        t = kc->kct[*ndxkct] & MAX_INFIOR;
-        if (t > infior)
-            infior = t;
+
+        infior = kc->kct[*ndxkct] & MAX_INFIOR;
+        if (k && (*k & MAX_INFIOR) > infior)
+            infior = *k & MAX_INFIOR;
+
         expect(infior < MAX_INFIOR) {
             infior += INFIOR;
         } else {
@@ -333,20 +302,22 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend)
 
             ndxkct = _get_kct(kc, seq, seq.t);
             k = kc->kct + *ndxkct;
-//            EPR("..%lu..", B2POS_OF(*k));
+//            EPR("..%lu..", B2POS_OF(k));
 //            print_seq(&seq);
             update_max_infior(k, infior);
 
             // in next iteration: reeval whether this is still a dup.
             //ASSERT(k > kc->kct_scope[0], return print_seq(&seq),
             //        "DUPBIT unset before kct occurance?");
-            *k &= ~DUP_BIT;
+            if ((*k & DUP_BIT) && B2POS_OF(k) >= p) {
+                *k &= ~DUP_BIT;
+                ++kc->reeval;
+            }
 
             EPQ(IS_DBG_K(kc, k), "exiced: [%u]", K_OFFS(kc, k));
-            ++kc->uqct;
-        } while (++p == pend);
+        } while (++p != pend);
 
-        ASSERT(IS_UQ(k), return -EFAULT, "%lu, %lu", p, B2POS_OF(*k));
+        ASSERT(IS_UQ(k), return -EFAULT, "%lu, %lu", p, B2POS_OF(k));
         // need to determine kcts for inbetween. Same can occur twice, use end instead.
     }
     res = 0;
@@ -354,7 +325,35 @@ err:
     return res;
 }
 
+static int
+reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t lastp, C pos_t p)
+{
+    int res = 0;
+    C pos_t pend = (*kc->bdit).e + (*h)->s_s;
+    C pos_t b2start = (*kc->bdit).s + (*h)->s_s + KEY_WIDTH;
+    if ((lastp + kc->ext > pend) && (pend > lastp)) {
+        if ((*kc->bdit).s == b2start) {
+            kc->bdit = (*h)->bnd.erase(kc->bdit);
+        } else {
+            ++kc->bdit;
+        }
+        _EVAL(extd_uq_by_k(kc, lastp, pend, NULL));
 
+    } else {
+        (*kc->bdit).e = pend;
+        ++kc->bdit;
+    }
+    do {
+        if (++kc->bdit == (*h)->bnd.end()) {
+            if (dbg > 3)
+                show_mantras(kc, *h);
+            kc->bdit = (*++h)->bnd.begin();
+            start_dbg(kc, *h, 0ul);
+        }
+    } while (p > (*kc->bdit).e + (*h)->s_s);
+err:
+    return res;    
+}
 // keep track of the mantra we're updating currently. With this, every processed key should
 // lie between (*kc->bdit).s and (*kc->bdit).e. Enables extending the unique regions (and
 // decreasing or even removing mantras accordingly).
@@ -362,7 +361,7 @@ static inline void
 track_mantra(kct_t* kc, std::list<Hdr*>::iterator *h, C pos_t p)
 {
     while (p > ((*kc->bdit).e + (**h)->s_s)) {
-        EPR("bnd %lu", p);
+        EPR("bnd %u", p);
         if (++kc->bdit == (**h)->bnd.end()) {
             kc->bdit = (*++*h)->bnd.begin();
             EPR("%s", kc->id + (**h)->part[0]);
@@ -374,19 +373,19 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
 {
     if (sk == uk)
         return 0;
-//    EPR("swap %lu <-> %lu => uq", B2POS_OF(*uk), B2POS_OF(*sk));
+//    EPR("swap %lu <-> %lu => uq", B2POS_OF(uk), B2POS_OF(sk));
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
     keyseq_t seq = {0};
-    seq.p = B2POS_OF(*uk);
+    seq.p = B2POS_OF(uk);
     pos_t p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t);
     uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t);
 
-    seq.p = B2POS_OF(*sk);
+    seq.p = B2POS_OF(sk);
     p = seq.p - KEY_WIDTH;
-    _build_key(kc, seq, p, seq.p, seq.t);
+    _build_key(kc, seq, p, seq.p, seq.t); // XXX Invalid read of size 1
     uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t);
 
     // ndxkct points to reordered kcts
@@ -401,10 +400,13 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
     return 0;
 }
 
+// FIXME/TODO/XXX: loop kc->ext from 1 to readlength
+// order of kcts is important, possibly also for not yet uniq, maintain?
+
 static int
 ext_uq_iter(kct_t* kc)
 {
-    uint64_t mapable = 0ul, totNts = 0ul; // FIXME: put in kc and move to key_init
+    uint64_t totNts = 0ul; // FIXME: put in kc and move to key_init
     int res;
     EPQ(dbg > 5, "Clearing dups for next iteration");
 
@@ -415,8 +417,8 @@ ext_uq_iter(kct_t* kc)
     std::queue<uint64_t> pk;     // storage for unique/non-unique keys
     kc->bdit = (*h)->bnd.begin();
     EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
-    uint32_t b2start = (*kc->bdit).s + KEY_WIDTH;
-    uint32_t b2end = (*kc->bdit).e;
+    pos_t b2start = (*kc->bdit).s + KEY_WIDTH;
+    pos_t b2end = (*kc->bdit).e;
     pos_t lastp = b2start;
     start_dbg(kc, *h, 0ul);
     // iterate over keys
@@ -428,7 +430,7 @@ ext_uq_iter(kct_t* kc)
     // Only keys on mantra are processed (prev. processed lie before start sk pointer).
     //
 
-    // keys are kept sorted, first on uniqueness, then on position.
+    // keys are kept sorted, first on uniqueness, then on position [TODO for non-uniques].
 
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
@@ -436,57 +438,65 @@ ext_uq_iter(kct_t* kc)
         ASSERT(uk - kc->kct < kc->kct_l, return -EFAULT, "uk");
 
         if (IS_UQ(sk)) {
-            pos_t p = B2POS_OF(*sk);
+            ++kc->uqct;
+            pos_t p = B2POS_OF(sk);
             //EPQ(dbg > 4, "%lu => uq", p); //
-            if (p >= (b2end + (*h)->s_s)) {
+            if (p > b2end + (*h)->s_s) {
 
                 // handle last boundary
-                pos_t pend = b2end + (*h)->s_s - 1;
-                if (lastp + KC_EXT(kc) >= pend && pend > lastp) {
-                    if ((*kc->bdit).s == b2start) {
-                        (*h)->mapable = b2end - b2start - KEY_WIDTH;
-                        kc->bdit = (*h)->bnd.erase(kc->bdit);
-                    } else if ((*kc->bdit).e + KC_EXT(kc) > pend) {
-                        (*h)->mapable -= pend + (*kc->bdit).e - 1;
-                        kc->bdit++;
-                    } else {
-                        (*h)->mapable += pend;
-                        kc->bdit++;
-                    }
-                    _EVAL(extd_uq_by_k(kc, lastp, pend));
-
-                } else {
-                    (*kc->bdit).e = pend;
-                    ++kc->bdit;
-                }
-                do {
-                    if (++kc->bdit == (*h)->bnd.end()) {
-                        EPQ(dbg > 2, "Contig %s: mapable: %u", kc->id + (*h)->part[0], (*h)->mapable);
-                        if (dbg > 3)
-                            show_mantras(kc, *h);
-                        kc->bdit = (*++h)->bnd.begin();
-                        start_dbg(kc, *h, 0ul);
-                    }
-                } while (p >= (b2end + (*h)->s_s));
-                lastp = b2start = (*kc->bdit).s + KEY_WIDTH;
+                _EVAL(reached_boundary(kc, h, lastp, p));
+                //ASSERT(p >= (*kc->bdit).s + (*h)->s_s + KEY_WIDTH, return -EFAULT,
+                //    "%lu, %lu", p, (*kc->bdit).s + (*h)->s_s + KEY_WIDTH);
                 b2end = (*kc->bdit).e;
-                EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
+                lastp = b2start = (*kc->bdit).s + (*h)->s_s + KEY_WIDTH;
+                EPR("(%lu uq)", kc->uqct);
+                EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0],
+                        b2start, b2end + (*h)->s_s);
             }
 
-            if (lastp + KC_EXT(kc) > p) { // a 2nd uq
-                if (lastp == b2start)
+            if (lastp + kc->ext + 1 >= p) { // a 2nd uq
+                if (lastp == b2start) // adjoining boundary
                     (*kc->bdit).e = b2start;
-                else
-                    (*h)->mapable -= p - lastp;
 
                 if (lastp < p)
-                    _EVAL(extd_uq_by_k(kc, lastp, p));
-            } else{ // first occurance. need to close previous, if set.
-                if ((*kc->bdit).e < b2end)
+                    _EVAL(extd_uq_by_k(kc, lastp, p, sk));
+                lastp = p;
+            } else { // first occurance. need to close previous, if set.
+                // 1: mark start of a new region
+                if ((*kc->bdit).e <= b2end)
                     start_region(kc, *h, b2start, lastp);
                 (*kc->bdit).e = p;
+
+                // 2: from lastp till now, add position and dup reevaluation
+                keyseq_t seq = {0};
+                seq.p = lastp;
+                lastp = p;
+                p = seq.p - KEY_WIDTH;
+                ASSERT(p < lastp, return -EFAULT);
+                _build_key(kc, seq, p, seq.p, seq.t);
+                //EPR("update: %lu .. %lu", p, lastp);
+
+                do {
+                    _EVAL(get_nextnt(kc, p));
+                    seq.dna = _seq_next(res, seq);
+
+                    uint32_t *ndxkct = _get_kct(kc, seq, seq.t);
+                    uint64_t *k = kc->kct + *ndxkct;
+                    // XXX: for this to work also non-uniq kcts should be sorted on pos?
+                    if (B2POS_OF(k) >= p) {
+                        // .. so we need to insert these kcts
+                        if (*k & DUP_BIT) {
+                            *k &= ~DUP_BIT; // don't set it yet at 1st occurance
+                            ++kc->reeval;
+                        }
+                    } else if (!(*k & DUP_BIT)){
+                        *k |= DUP_BIT;
+                        --kc->reeval; // no dup after all
+                    }
+                    *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
+                    *k |= (!!seq.t << ORIENT_SHFT) | p; // set new pos and strand
+                } while (++p != lastp);
             }
-            lastp = p;
             _EVAL(swap_kct(kc, uk++, sk));
         }
         ++sk;
@@ -494,41 +504,36 @@ ext_uq_iter(kct_t* kc)
 
     kc->last_uqct = kc->uqct;
 
-    for (h = kc->h.begin(); h != kc->h.end(); ++h) {
+    /*for (h = kc->h.begin(); h != kc->h.end(); ++h) {
         // over ref headers
         int ret = ext_uq_hdr(kc, *h);
         if (ret < 0) return ret;
-        mapable += (*h)->mapable;
         totNts += (*h)->total;
-    }
+    }*/
 
-    EPQ(dbg > 0, "extended %u unique ranges in iteration %u\n"
-            "\t%lu/%lu => %.2f%% mapable. (%u pending)", kc->uqct, ++kc->iter,
-            mapable, totNts, totNts ? 100.0f * mapable / totNts : nanf("NAN"), kc->pending);
+    EPQ(dbg > 0, "extended %u unique ranges in iteration %u, extension %u, %u to be reevaluated\n",
+            kc->uqct, ++kc->iter, kc->ext, kc->reeval);
 
-    // It can occur that mapable != 0 while uqct == 0. This occurs when only adjoining uniques
-    // are added in the iteration, but none are excised. In that case we can stop looping
-    // nonetheless because there cannot be any added new uniques in the subsequent iteration.
-    res = kc->uqct | kc->pending;
+    res = kc->reeval;
 err:
-    if (res < -1) {
-    }
     return res;
 }
 
 static int
 extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
 {
-    size_t ext = KC_EXT(kc);
     int res = -ENOMEM;
-    kc->iter = 0;
+    kc->uqct = kc->reeval = 0;
 
-    kc->kct_scope = (uint64_t**)malloc((ext+1) * sizeof(uint64_t*));
+    kc->kct_scope = (uint64_t**)malloc((kc->readlength - KEY_WIDTH+1) * sizeof(uint64_t*));
     ASSERT(kc->kct_scope != NULL, res = -EFAULT; goto err);
-
-    do { // until no no more new uniques
-        res = ext_uq_iter(kc);
-    } while (res > 0);
+    
+    for (kc->ext = 1; kc->ext != kc->readlength - KEY_WIDTH + 1;++kc->ext) {
+        kc->iter = 0;
+        do { // until no no more new uniques
+            res = ext_uq_iter(kc);
+        } while (res > 0);
+    }
     _buf_free(kc->kct_scope);
     if (res == 0) {
         _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
