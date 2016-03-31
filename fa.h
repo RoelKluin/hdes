@@ -100,18 +100,18 @@ packed_struct Mantra { // not yet covered by unique keys
     (__b << KEYNT_TOP) | (seq.dna >> 2);\
 })
 
-#define _get_kct0(kc, seq, t, ndx) ({\
+#define _get_kct0(kc, seq, t, ndx, _act) ({\
     ndx = _get_ndx(t, seq.dna, seq.rc);\
-    ASSERT(ndx < KEYNT_BUFSZ, return print_seq(&seq), "0x%lx, 0x%lx", ndx, KEYNT_BUFSZ);\
+    ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, "0x%lx, 0x%lx", ndx, KEYNT_BUFSZ);\
     dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
     EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, kc->ndxkct[ndx]);\
     ndx;\
 })
 
-#define _get_kct(kc, seq, t) ({\
+#define _get_kct(kc, seq, t, _act) ({\
     seq_t __ndx;\
-    __ndx = _get_kct0(kc, seq, t, __ndx);\
-    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, return print_seq(&seq), "0x%x\t0x%x", __ndx, kc->ndxkct[__ndx]);\
+    __ndx = _get_kct0(kc, seq, t, __ndx, _act);\
+    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, print_seq(&seq); _act, "0x%x\t0x%x", __ndx, kc->ndxkct[__ndx]);\
     kc->ndxkct + __ndx;\
 })
 

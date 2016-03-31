@@ -185,7 +185,7 @@ case 'G':   c &= 0x3;
             seq.dna = _seq_next(c, seq);
             //print_dna(seq.dna);
             _addtoseq(kc->s, c); // kc->s_l grows here.
-            uint32_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx);
+            uint32_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;

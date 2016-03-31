@@ -94,12 +94,11 @@ decr_excise_all(kct_t *C kc, uint64_t* k, uint64_t C*C kct, unsigned const end)
     }
 }
 
-static inline void start_region(kct_t* kc, Hdr *C h, C uint32_t b2start, C uint32_t last_uq_pos)
+static inline void start_region(kct_t* kc, Hdr *C h, C pos_t b2start, C pos_t last_uq_pos)
 {
     if ((*kc->bdit).e == b2start) {
         (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
     }  else if ((*kc->bdit).e != last_uq_pos) { // not downstream adjoining.
-
         h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
         // start is earlier to enable building of the 1st key.
         (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
@@ -137,7 +136,7 @@ ext_uq_bnd(kct_t *C kc, Hdr *C h)
 
     for (b2pos += KEY_WIDTH; b2pos <= b2end; ++b2pos) { // until next uniq region, stretch or contig
         /* process new key */
-        kct = kc->kct + *(_get_kct(kc, seq, seq.t));
+        kct = kc->kct + *(_get_kct(kc, seq, seq.t, res = -EFAULT; goto err));
         if (IS_DBG_K(kc, kct)) {
             DESCRIBE_KEY(kc, kct, '>');
             print_seq(&seq, IS_DBG_K(kc, kct));
@@ -282,7 +281,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k)
         seq.p = p;
         p -= KEY_WIDTH;
         _build_key(kc, seq, p, seq.p, seq.t);
-        ndxkct = _get_kct(kc, seq, seq.t);
+        ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
 
         infior = kc->kct[*ndxkct] & MAX_INFIOR;
         if (k && (*k & MAX_INFIOR) > infior)
@@ -300,7 +299,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k)
             _EVAL(get_nextnt(kc, p));
             seq.dna = _seq_next(res, seq);
 
-            ndxkct = _get_kct(kc, seq, seq.t);
+            ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
             k = kc->kct + *ndxkct;
 //            EPR("..%lu..", B2POS_OF(k));
 //            print_seq(&seq);
@@ -333,24 +332,27 @@ reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t lastp, C pos_t
     C pos_t b2start = (*kc->bdit).s + (*h)->s_s + KEY_WIDTH;
     if ((lastp + kc->ext > pend) && (pend > lastp)) {
         if ((*kc->bdit).s == b2start) {
-            kc->bdit = (*h)->bnd.erase(kc->bdit);
+            kc->bdit = (*h)->bnd.erase(kc->bdit); EPQ(dbg > 4, "(*h)->bnd.erase(kc->bdit)");
         } else {
-            ++kc->bdit;
+            ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(1)");
         }
         _EVAL(extd_uq_by_k(kc, lastp, pend, NULL));
 
     } else {
         (*kc->bdit).e = pend;
-        ++kc->bdit;
+        ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(2)");
     }
-    do {
-        if (++kc->bdit == (*h)->bnd.end()) {
+    for (;;) {
+        if (kc->bdit == (*h)->bnd.end()) {
             if (dbg > 3)
                 show_mantras(kc, *h);
-            kc->bdit = (*++h)->bnd.begin();
+            kc->bdit = (*++h)->bnd.begin(); EPQ(dbg > 4, "kc->bdit = (*++h)->bnd.begin()");
             start_dbg(kc, *h, 0ul);
         }
-    } while (p > (*kc->bdit).e + (*h)->s_s);
+        if (p <= (*kc->bdit).e + (*h)->s_s)
+            break;
+        ++kc->bdit;  EPQ(dbg > 4, "++kc->bdit(3)");
+    }
 err:
     return res;    
 }
@@ -381,12 +383,12 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
     seq.p = B2POS_OF(uk);
     pos_t p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t);
-    uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t);
+    uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t, return -EFAULT);
 
     seq.p = B2POS_OF(sk);
     p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t); // XXX Invalid read of size 1
-    uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t);
+    uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t, return -EFAULT);
 
     // ndxkct points to reordered kcts
     uint64_t t = *ndxkct1;
@@ -419,7 +421,7 @@ ext_uq_iter(kct_t* kc)
     EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
     pos_t b2start = (*kc->bdit).s + KEY_WIDTH;
     pos_t b2end = (*kc->bdit).e;
-    pos_t lastp = b2start;
+    pos_t p, lastp = b2start;
     start_dbg(kc, *h, 0ul);
     // iterate over keys
     // 1) reset and remove non-uniqs, move uqs to start of array
@@ -439,8 +441,8 @@ ext_uq_iter(kct_t* kc)
 
         if (IS_UQ(sk)) {
             ++kc->uqct;
-            pos_t p = B2POS_OF(sk);
-            //EPQ(dbg > 4, "%lu => uq", p); //
+            p = B2POS_OF(sk);
+            EPQ(dbg > 4, "%lu => uq", p); //
             if (p > b2end + (*h)->s_s) {
 
                 // handle last boundary
@@ -448,10 +450,11 @@ ext_uq_iter(kct_t* kc)
                 //ASSERT(p >= (*kc->bdit).s + (*h)->s_s + KEY_WIDTH, return -EFAULT,
                 //    "%lu, %lu", p, (*kc->bdit).s + (*h)->s_s + KEY_WIDTH);
                 b2end = (*kc->bdit).e;
-                lastp = b2start = (*kc->bdit).s + (*h)->s_s + KEY_WIDTH;
+                b2start = (*kc->bdit).s + (*h)->s_s;
                 EPR("(%lu uq)", kc->uqct);
                 EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0],
                         b2start, b2end + (*h)->s_s);
+                lastp = b2start += KEY_WIDTH;
             }
 
             if (lastp + kc->ext + 1 >= p) { // a 2nd uq
@@ -480,7 +483,7 @@ ext_uq_iter(kct_t* kc)
                     _EVAL(get_nextnt(kc, p));
                     seq.dna = _seq_next(res, seq);
 
-                    uint32_t *ndxkct = _get_kct(kc, seq, seq.t);
+                    uint32_t *ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
                     uint64_t *k = kc->kct + *ndxkct;
                     // XXX: for this to work also non-uniq kcts should be sorted on pos?
                     if (B2POS_OF(k) >= p) {
@@ -488,10 +491,10 @@ ext_uq_iter(kct_t* kc)
                         if (*k & DUP_BIT) {
                             *k &= ~DUP_BIT; // don't set it yet at 1st occurance
                             ++kc->reeval;
+                        } else {
+                            *k |= DUP_BIT;
+                            --kc->reeval; // no dup after all
                         }
-                    } else if (!(*k & DUP_BIT)){
-                        *k |= DUP_BIT;
-                        --kc->reeval; // no dup after all
                     }
                     *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
                     *k |= (!!seq.t << ORIENT_SHFT) | p; // set new pos and strand
@@ -516,19 +519,22 @@ ext_uq_iter(kct_t* kc)
 
     res = kc->reeval;
 err:
+    if (res < -1) {
+        EPR("lastp:%lu, p:%lu, b2end:%lu", lastp, p, b2end);
+    }
     return res;
 }
 
 static int
 extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
 {
-    int res = -ENOMEM;
+    int res;
     kc->uqct = kc->reeval = 0;
 
     kc->kct_scope = (uint64_t**)malloc((kc->readlength - KEY_WIDTH+1) * sizeof(uint64_t*));
     ASSERT(kc->kct_scope != NULL, res = -EFAULT; goto err);
     
-    for (kc->ext = 1; kc->ext != kc->readlength - KEY_WIDTH + 1;++kc->ext) {
+    for (kc->ext = res = 1; res > 0 && kc->ext != kc->readlength - KEY_WIDTH + 1;++kc->ext) {
         kc->iter = 0;
         do { // until no no more new uniques
             res = ext_uq_iter(kc);
