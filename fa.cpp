@@ -371,11 +371,11 @@ track_mantra(kct_t* kc, std::list<Hdr*>::iterator *h, C pos_t p)
     }
 }
 
-static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
+static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *nuk)
 {
-    if (sk == uk)
+    if (nuk == uk)
         return 0;
-//    EPR("swap %lu <-> %lu => uq", B2POS_OF(uk), B2POS_OF(sk));
+//    EPR("swap %lu <-> %lu => uq", B2POS_OF(uk), B2POS_OF(nuk));
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
@@ -385,7 +385,7 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
     _build_key(kc, seq, p, seq.p, seq.t);
     uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t, return -EFAULT);
 
-    seq.p = B2POS_OF(sk);
+    seq.p = B2POS_OF(nuk);
     p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t); // XXX Invalid read of size 1
     uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t, return -EFAULT);
@@ -397,8 +397,8 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *sk)
     
     // also swap info at kcts
     t = *uk;
-    *uk = *sk;
-    *sk = t;
+    *uk = *nuk;
+    *nuk = t;
     return 0;
 }
 
@@ -412,8 +412,8 @@ ext_uq_iter(kct_t* kc)
     int res;
     EPQ(dbg > 5, "Clearing dups for next iteration");
 
-    uint64_t *sk = kc->kct;            // location for unique keys
-    uint64_t *uk = sk + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
+    uint64_t *nuk = kc->kct;            // location for unique keys
+    uint64_t *uk = nuk + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
     std::list<Hdr*>::iterator h = kc->h.begin();
     ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
     std::queue<uint64_t> pk;     // storage for unique/non-unique keys
@@ -429,19 +429,19 @@ ext_uq_iter(kct_t* kc)
     //    new uqs lie within mantras
     // 3) shrink mantras accordingly.
     //
-    // Only keys on mantra are processed (prev. processed lie before start sk pointer).
+    // Only keys on mantra are processed (prev. processed lie before start nuk pointer).
     //
 
     // keys are kept sorted, first on uniqueness, then on position [TODO for non-uniques].
 
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    while (sk != uk) {
+    while (nuk != uk) {
         ASSERT(uk - kc->kct < kc->kct_l && uk > 0, return -EFAULT, "uk");
 
-        if (IS_UQ(sk)) {
+        if (IS_UQ(nuk)) {
             ++kc->uqct;
-            p = B2POS_OF(sk);
+            p = B2POS_OF(nuk);
             EPQ(dbg > 4, "%lu => uq", p); //
             if (p > b2end + (*h)->s_s) {
 
@@ -462,7 +462,7 @@ ext_uq_iter(kct_t* kc)
                     (*kc->bdit).e = b2start;
 
                 if (lastp < p)
-                    _EVAL(extd_uq_by_k(kc, lastp, p, sk));
+                    _EVAL(extd_uq_by_k(kc, lastp, p, nuk));
                 lastp = p;
             } else { // first occurance. need to close previous, if set.
                 // 1: mark start of a new region
@@ -500,9 +500,9 @@ ext_uq_iter(kct_t* kc)
                     *k |= (!!seq.t << ORIENT_SHFT) | p; // set new pos and strand
                 } while (++p != lastp);
             }
-            _EVAL(swap_kct(kc, uk--, sk));
+            _EVAL(swap_kct(kc, uk--, nuk));
         }
-        ++sk;
+        ++nuk;
     }
 
     kc->last_uqct = kc->uqct;
