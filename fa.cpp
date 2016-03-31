@@ -151,7 +151,7 @@ print_dna(seq.dna, dbg >5);
         seq.p = B2POS_OF(kct);
         if (seq.p >= p++) { // first occurance (pos not yet reset)
 
-            *kct ^= (!!seq.t << ORIENT_SHFT) ^ seq.p ^ p;
+            *kct ^= (!seq.t << ORIENT_SHFT) ^ seq.p ^ p;
 
 	    k = kc->kct_scope[0];
             if (k == NULL || (b2start + index + KEY_WIDTH - 1) == b2pos) {
@@ -371,7 +371,7 @@ track_mantra(kct_t* kc, std::list<Hdr*>::iterator *h, C pos_t p)
     }
 }
 
-static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *nuk)
+static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *nuk, uint32_t *ndxkct2)
 {
     if (nuk == uk)
         return 0;
@@ -385,10 +385,12 @@ static int swap_kct(kct_t* kc,  uint64_t *uk,  uint64_t *nuk)
     _build_key(kc, seq, p, seq.p, seq.t);
     uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t, return -EFAULT);
 
-    seq.p = B2POS_OF(nuk);
-    p = seq.p - KEY_WIDTH;
-    _build_key(kc, seq, p, seq.p, seq.t); // XXX Invalid read of size 1
-    uint32_t *ndxkct2 = _get_kct(kc, seq, seq.t, return -EFAULT);
+    if (ndxkct2 == NULL) {
+        seq.p = B2POS_OF(nuk);
+        p = seq.p - KEY_WIDTH;
+        _build_key(kc, seq, p, seq.p, seq.t);
+        ndxkct2 = _get_kct(kc, seq, seq.t, return -EFAULT);
+    }
 
     // ndxkct points to reordered kcts
     uint64_t t = *ndxkct1;
@@ -413,6 +415,7 @@ ext_uq_iter(kct_t* kc)
     EPQ(dbg > 5, "Clearing dups for next iteration");
 
     uint64_t *nuk = kc->kct;            // location for unique keys
+    uint64_t *sk = nuk;
     uint64_t *uk = nuk + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
     std::list<Hdr*>::iterator h = kc->h.begin();
     ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
@@ -438,7 +441,7 @@ ext_uq_iter(kct_t* kc)
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
     while (nuk != uk) {
         ASSERT(uk - kc->kct < kc->kct_l && uk > 0, return -EFAULT, "uk");
-
+        uint32_t *ndxkct = NULL;
         if (IS_UQ(nuk)) {
             ++kc->uqct;
             p = B2POS_OF(nuk);
@@ -470,26 +473,23 @@ ext_uq_iter(kct_t* kc)
                     start_region(kc, *h, b2start, lastp);
                 (*kc->bdit).e = p;
 
+                //EPR("update: %lu .. %lu", lastp, p);
                 // 2: from lastp till now, add position and dup reevaluation
                 keyseq_t seq = {0};
-                seq.p = lastp;
+                seq.p = lastp + 1;
                 lastp = p;
                 p = seq.p - KEY_WIDTH;
                 ASSERT(p < lastp, return -EFAULT);
                 _build_key(kc, seq, p, seq.p, seq.t);
-                //EPR("update: %lu .. %lu", p, lastp);
+                ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
 
                 do {
-                    _EVAL(get_nextnt(kc, p));
-                    seq.dna = _seq_next(res, seq);
-
-                    uint32_t *ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
                     uint64_t *k = kc->kct + *ndxkct;
                     // XXX: for this to work also non-uniq kcts should be sorted on pos?
                     if (B2POS_OF(k) >= p) {
-                        // .. so we need to insert these kcts
-                        if (*k & DUP_BIT) {
+                        if (*k & DUP_BIT) { // first occurance, move key to start
                             *k &= ~DUP_BIT; // don't set it yet at 1st occurance
+                            _EVAL(swap_kct(kc, sk++, k, ndxkct));
                             ++kc->reeval;
                         } else {
                             *k |= DUP_BIT;
@@ -497,10 +497,14 @@ ext_uq_iter(kct_t* kc)
                         }
                     }
                     *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
-                    *k |= (!!seq.t << ORIENT_SHFT) | p; // set new pos and strand
+                    *k |= (!seq.t << ORIENT_SHFT) | p; // set new pos and strand
+                    _EVAL(get_nextnt(kc, p));
+                    seq.dna = _seq_next(res, seq);
+                    ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
                 } while (++p != lastp);
+
             }
-            _EVAL(swap_kct(kc, uk--, nuk));
+            _EVAL(swap_kct(kc, uk--, nuk, ndxkct));
         }
         ++nuk;
     }
