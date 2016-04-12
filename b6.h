@@ -147,10 +147,13 @@ struct __attribute__ ((__packed__)) keyseq_t {
     t = dna ^ rc;\
     t &= -t;/* isolate deviant bit */\
     t |= !t;/* for palindromes: have to set one */\
-    seq_t __m = t - 1;\
     t &= dna;/* was devbit set? */\
-    seq_t __x = t ? dna : rc;\
-    (__m & __x) | ((~__m & __x) >> 1);\
+    seq_t __x = t ? rc : dna;\
+    seq_t __m = __x & ((seq_t)1 << KEYNT_BUFSZ_SHFT);\
+    __x ^= -!!__m & (__m ^ (__m - 1));\
+    EPQ(__x == dbgndx,\
+            "dna\t%lx\nrc\t%lx\ndev\t%lx\nt\t%lx\nm\t%lx\nx\t%lx", dna, rc, dna ^ rc, t, __m, __x);\
+    __x;\
 })
 
 /* With the b6 conversion, only the specified characters are converted to
