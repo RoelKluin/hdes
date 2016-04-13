@@ -19,7 +19,9 @@ static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
     if (h) {
-        EPR("processed %lu Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->id + h->part[0]);
+        kc->totNts += kc->s_l - h->s_s + h->bnd.back().corr;
+        EPR("processed %lu(%lu) Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->totNts,
+                kc->id + h->part[0]);
 
         h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
         if (dbg > 3)
@@ -169,6 +171,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     keyseq_t seq = {0};
     kc->s_l = 0;
     kc->uqct = 0;
+    kc->totNts = 0;
     Hdr_umap lookup;
     set_readfunc(fhin, &g, &gc);
 
@@ -199,6 +202,7 @@ case 'G':   c &= 0x3;
                     --kc->uqct;
                 }
             }
+            EPQ(dbg >4, "[%lu, 0x%lx, 0x%lx, 0x%lx]:debug %u", kc->s_l, seq.dna, n - kc->ndxkct, *n, print_dna(seq.dna));
             /*ASSERT((kc->kct[*n] & ((seq.t != 0) << ORIENT_SHFT)) == 0 &&
                     (kc->kct[*n] & (kc->s_l + 1)) == 0 &&
                     (((seq.t != 0) << ORIENT_SHFT) & (kc->s_l + 1)) == 0, return -EFAULT);*/

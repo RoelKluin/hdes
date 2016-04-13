@@ -46,12 +46,14 @@
 // stored position is one-based to ensure a bit is set
 #define NO_KCT -2u
 
+#define _B2POS_OF(k) ((*k) & B2POS_MASK)
 // XXX ugly since assumes kc defined and return with value, but for debugging..
 #define B2POS_OF(k) ({\
         ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
         ASSERT(k - kc->kct >= 0, return -EFAULT);\
         ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
-        (*k) & B2POS_MASK;\
+        EPQ(((*k) & B2POS_MASK) == dbgpos, "observed dbggpos at %lu", k - kc->kct);\
+        _B2POS_OF(k);\
 })
 //#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
 
@@ -104,7 +106,7 @@ packed_struct Mantra { // not yet covered by unique keys
     ndx = _get_ndx(t, seq.dna, seq.rc);\
     ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, "0x%lx, 0x%lx", ndx, KEYNT_BUFSZ);\
     dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x", ndx, kc->ndxkct[ndx]);\
+    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x, line: %u", ndx, kc->ndxkct[ndx], __LINE__);\
     ndx;\
 })
 
@@ -167,7 +169,7 @@ struct kct_t {
     uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
-    uint64_t s_l;
+    uint64_t s_l, totNts;
     uint32_t id_l, kct_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
     uint8_t id_m, s_m, ndxkct_m;
