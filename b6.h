@@ -150,7 +150,7 @@ struct __attribute__ ((__packed__)) keyseq_t {
     t &= dna;/* was devbit set? */\
     seq_t __x = t ? rc : dna;\
     seq_t __m = __x & ((seq_t)1 << KEYNT_BUFSZ_SHFT);\
-    __x ^= -!!__m & (__m ^ (__m - 1));\
+    __x ^= __m ^ (__m - !!__m);\
     EPQ(__x == dbgndx,\
             "dna\t%lx\nrc\t%lx\ndev\t%lx\nt\t%lx\nm\t%lx\nx\t%lx", dna, rc, dna ^ rc, t, __m, __x);\
     __x;\
