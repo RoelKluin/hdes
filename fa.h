@@ -52,7 +52,8 @@
         ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
         ASSERT(k - kc->kct >= 0, return -EFAULT);\
         ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
-        EPQ(((*k) & B2POS_MASK) == dbgpos, "observed dbggpos at %lu", k - kc->kct);\
+        EPQ(((*k) & B2POS_MASK) == dbgpos, "observed dbggpos at %lu (%s:%u)", k - kc->kct,\
+                __FILE__, __LINE__);\
         _B2POS_OF(k);\
 })
 //#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
@@ -72,10 +73,10 @@
 #define INFIOR INFERIORITY
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
-#define IS_DBG_K(kc, k) (K_OFFS(kc, k) == dbgk)
+#define IS_DBG_K(kc, k) (*k == dbgk || K_OFFS(kc, k) == dbgndxkct)
 
 #define DESCRIBE_KEY(kc, k, c) \
-  EPR("[k:%lu] %c\t%s", K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
+  EPR("[k:%lx, ndxkct: %lx] %c\t%s", *k, K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 //#define MARKED 0x8000000000000000
@@ -105,8 +106,10 @@ packed_struct Mantra { // not yet covered by unique keys
 #define _get_kct0(kc, seq, t, ndx, _act) ({\
     ndx = _get_ndx(t, seq.dna, seq.rc);\
     ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, "0x%lx, 0x%lx", ndx, KEYNT_BUFSZ);\
-    dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbgndx 0x%lx / dbgndxkct 0x%x, line: %u", ndx, kc->ndxkct[ndx], __LINE__);\
+    dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct ||\
+            (kc->ndxkct[ndx] != NO_KCT && kc->kct[kc->ndxkct[ndx]] == dbgk)) ? dbg | 8 : dbg & ~8;\
+    EPQ(dbg & 8, "observed dbg ndx 0x%lx / ndxkct 0x%x / k 0x%x: %s +%u",\
+            ndx, kc->ndxkct[ndx], kc->kct[kc->ndxkct[ndx]], __FILE__, __LINE__);\
     ndx;\
 })
 

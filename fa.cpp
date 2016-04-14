@@ -269,7 +269,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k)
     keyseq_t seq = {0};
 
     // of uniques the position is correct.
-    EPQ(dbg > 4, "%lu..%lu exised", p, pend);
+    EPQ(dbg > 4, "%lu..%lu excised", p, pend);
 
     ASSERT(pend < (kc->s_l << 2), return -EINVAL, "%lu/%lu?", pend, kc->s_l);
     ASSERT(p < pend, return print_seq_from_pos(kc, pend), "%lu >= %lu?", p, pend);
@@ -327,22 +327,32 @@ err:
 }
 
 static int
-reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t lastp, C pos_t p)
+reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t prev, C pos_t p)
 {
     int res = 0;
     C pos_t pend = (*kc->bdit).e + (*h)->s_s;
     C pos_t b2start = (*kc->bdit).s + (*h)->s_s + KEY_WIDTH;
-    if ((lastp + kc->ext > pend) && (pend > lastp)) {
+    if ((prev + kc->ext > pend) && (pend > prev)) {
         if ((*kc->bdit).s == b2start) {
             kc->bdit = (*h)->bnd.erase(kc->bdit); EPQ(dbg > 4, "(*h)->bnd.erase(kc->bdit)");
         } else {
             ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(1)");
         }
-        _EVAL(extd_uq_by_k(kc, lastp, pend, NULL));
+        _EVAL(extd_uq_by_k(kc, prev, pend, NULL));
 
     } else {
         (*kc->bdit).e = pend - KEY_WIDTH;
         ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(2)");
+        if ((dbg > 1) && ((p - prev) > 1000000)) {
+            keyseq_t seq = {0};
+            seq.p = p - KEY_WIDTH;
+            _build_key(kc, seq, seq.p, p, seq.t);
+            seq_t ndx;
+            ndx = _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
+            EPR("1M+ diatance between uniques 0x%lx", ndx);
+            print_seq_from_pos(kc, prev);
+            print_seq_from_pos(kc, p);
+        }
     }
     for (;;) {
         if (kc->bdit == (*h)->bnd.end()) {
@@ -375,10 +385,11 @@ static int emplace_kct(kct_t* kc,  uint64_t *sk,  uint64_t *k, uint32_t *ndxkct2
     return 0;
 }
 
-static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, uint32_t *ndxkct2)
+static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, uint32_t *ndxkct2,
+        std::stack<uint32_t> *pk, uint32_t line)
 {
-    if (k1 == k2)
-        return 0;
+    EPQ(k1 == k2, "k1 == k2");
+
 //    EPR("swap %lu <-> %lu => uq", B2POS_OF(k1), B2POS_OF(k2));
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
@@ -388,28 +399,24 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, uint32_t *ndxkct2)
     pos_t p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t);
     uint32_t *ndxkct1 = _get_kct(kc, seq, seq.t, return -EFAULT);
+    if (pk)
+        pk->push(ndxkct1 - kc->ndxkct);
     if (dbg > 4) {
+        EPR("swap_kct() called on %s:%u", __FILE__, line);
         EPR("swap%u in %u .. %u:", ndxkct2 == NULL, _B2POS_OF(k1), _B2POS_OF(k2));
-        print_seq_from_pos(kc, p);
+        if (ndxkct1 - kc->ndxkct == dbgndx) {
+            dbgndx = ndxkct2 - kc->ndxkct;
+        } else {
+            print_seq_from_pos(kc, p);
+        }
     }
 
-    if (ndxkct2 == NULL) {
-        seq.p = B2POS_OF(k2);
-        p = seq.p - KEY_WIDTH;
-        _build_key(kc, seq, p, seq.p, seq.t);
-        ndxkct2 = _get_kct(kc, seq, seq.t, return -EFAULT);
-    } else { /* debug */
-        seq.p = B2POS_OF(k2);
-        p = seq.p - KEY_WIDTH;
-        _build_key(kc, seq, p, seq.p, seq.t);
-        ASSERT(_get_kct(kc, seq, seq.t, return -EFAULT) == ndxkct2, return -EFAULT);
-    }
     if (dbg > 4 || dbgndxkct == *ndxkct1 || dbgndxkct == *ndxkct2) {
         EPR("--");
-        dbgndxkct = *ndxkct1;
-        dbgkct = *k1;
+        dbgndx = ndxkct2 - kc->ndxkct;
+        dbgk = *k2;
         print_seq_from_pos(kc, seq.p);
-        print_seq_from_pos(kc, B2POS_OF(k1));
+        print_seq_from_pos(kc, B2POS_OF(k2));
     }
 
     // ndxkct points to reordered kcts
@@ -432,17 +439,17 @@ ext_uq_iter(kct_t* kc)
 {
     int res;
 
-    uint64_t *nuk = kc->kct;            // location for unique keys
+    uint64_t *nuk = kc->kct;
     uint64_t *sk = nuk;
     uint64_t *uk = nuk + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
     std::list<Hdr*>::iterator h = kc->h.begin();
     ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
-    //std::stack<uint64_t> pk;     // storage for unique/non-unique keys
+    std::stack<uint32_t> pk;     // storage for unique key offsetss
     kc->bdit = (*h)->bnd.begin();
     EPR("[%s] %lu .. %lu", kc->id + (*h)->part[0], (*kc->bdit).s + (*h)->s_s, (*kc->bdit).e + (*h)->s_s);
     pos_t b2start = (*kc->bdit).s + KEY_WIDTH;
     pos_t b2end = (*kc->bdit).e;
-    pos_t p, lastp = b2start;
+    pos_t p, prev = b2start;
     start_dbg(kc, *h, 0ul);
     // iterate over keys
     // 1) reset and remove non-uniqs, move uqs to start of array
@@ -465,41 +472,44 @@ ext_uq_iter(kct_t* kc)
         EPQ(IS_DBG_K(kc, k), "debug k: [%u, %u]", K_OFFS(kc, k), _B2POS_OF(k)); // 1
         if (IS_UQ(k)) {
             kc->uqct++;
+            keyseq_t seq = {0};
             p = B2POS_OF(k);
             if (p == dbgpos) {
-                print_seq_from_pos(kc, lastp);
+                print_seq_from_pos(kc, prev);
                 print_seq_from_pos(kc, p);
             }
+            ASSERT(p != prev || prev == b2start, return -EFAULT, "%u", pk.size());
             if (p > b2end + (*h)->s_s) {
 
                 // handle last boundary
-                _EVAL(reached_boundary(kc, h, lastp, p));
+                _EVAL(reached_boundary(kc, h, prev, p));
                 //ASSERT(p >= (*kc->bdit).s + (*h)->s_s + KEY_WIDTH, return -EFAULT,
                 //    "%lu, %lu", p, (*kc->bdit).s + (*h)->s_s + KEY_WIDTH);
                 b2end = (*kc->bdit).e;
                 b2start = (*kc->bdit).s + (*h)->s_s;
                 EPQ(kc->iter == 0 || dbg > 5, "[%s] %lu .. %lu",
                         kc->id + (*h)->part[0], b2start, b2end + (*h)->s_s);
-                lastp = b2start += KEY_WIDTH;
+                prev = b2start += KEY_WIDTH;
             }
 
-            if (lastp + kc->ext + 1 >= p) { // a 2nd uq
-                if (lastp == b2start) // adjoining boundary
+            if (p - prev < kc->ext + 1) { // a 2nd uq
+                if (prev == b2start) // adjoining boundary
                     (*kc->bdit).e = b2start;
+                else
+                    ASSERT (prev < p, return -EFAULT);
 
                 // what if all remaining occurances happen between two boundaries?
-                if (lastp < p)
-                    _EVAL(extd_uq_by_k(kc, lastp, p, k));
-                lastp = p;
+                if (prev != p)
+                    _EVAL(extd_uq_by_k(kc, prev, p, k));
+                prev = p;
             } else { // first occurance. need to close previous, if set.
                 // 1: mark start of a new region
                 if ((*kc->bdit).e <= b2end)
-                    start_region(kc, *h, b2start, lastp);
+                    start_region(kc, *h, b2start, prev);
                 (*kc->bdit).e = p - KEY_WIDTH;
 
                 //EPR("update: %lu .. %lu", lastp, p);
                 // 2: from lastp till now, add position and dup reevaluation
-                keyseq_t seq = {0};
                 seq.p = lastp + 1;
                 lastp = p;
                 p = seq.p - KEY_WIDTH;
@@ -517,13 +527,6 @@ ext_uq_iter(kct_t* kc)
                         _EVAL(swap_kct(kc, sk, k, ndxkct));
                         ++kc->reeval;
                         k = sk++;
-                    } else if (B2POS_OF(k) == p){
-                        ASSERT(B2POS_OF(k) == p, return print_seq(&seq), "%lu\t%lu\t(%lu)",
-                                B2POS_OF(k), p, k - kc->kct);
-                        // We have a new uniq. postponed to next iter for now (could FIXME)
-                        // reeval was already incremented for it in extd_uq_by_k()
-                        _EVAL(swap_kct(kc, sk, k, ndxkct));
-                        k = sk++;
                     } else {
                         ASSERT(k < nuk, return -EFAULT, );
                         *k |= DUP_BIT; // set new pos and strand
@@ -538,9 +541,11 @@ ext_uq_iter(kct_t* kc)
                 } while (p != lastp);
                 k = kc->kct + *ndxkct;
             }
-            _EVAL(swap_kct(kc, uk--, k, ndxkct));
+            _EVAL(swap_kct(kc, uk--, k, ndxkct, &pk, __LINE__));
         }
     }
+    // FIXME: iteration over swapped instead of uniques
+    //
     //uk - kc->kct == nuk - kc->kct ==  kc->kct_l - 1
 
     // TODO: some uniques no longer occur: all are excised.
@@ -558,7 +563,7 @@ ext_uq_iter(kct_t* kc)
     res = kc->reeval;
 err:
     if (res < -1) {
-        EPR("lastp:%u, p:%u, b2end:%u", lastp, p, b2end);
+        EPR("prev:%u, p:%u, b2end:%u", prev, p, b2end);
     }
     return res;
 }
