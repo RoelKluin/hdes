@@ -57,6 +57,11 @@
     -1;\
 })
 
+#define _PRNT_SEQ_BY_K(kc, k) ({\
+    EPR0("koffs:%lu\t",  K_OFFS(kc, k));\
+    _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k));\
+})
+
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 
 // XXX ugly since returns with value, but for debugging..

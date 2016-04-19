@@ -420,7 +420,7 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
             dbgk = *k2;
         }
         _PRNT_SEQ_BY_POS(kc, seq.p);
-        _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k2));
+        _PRNT_SEQ_BY_K(kc, k2);
     }
 
     // ndxkct points to reordered kcts
@@ -501,7 +501,7 @@ ext_uq_iter(kct_t* kc)
     for (uint64_t *k = kc->kct; k < kend; ++k) {
         seq_t *ndxkct = NULL;
 
-        if (dbg > 5)  _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k));
+        if (dbg > 5)  _PRNT_SEQ_BY_K(kc, k);
         EPQ(IS_DBG_K(kc, k), "debug k: [%lx, %lu]", K_OFFS(kc, k), B2POS_OF(*k)); // 1
         if (IS_UQ(k)) {
             p = _B2POS_OF(kc, k);
@@ -560,7 +560,7 @@ ext_uq_iter(kct_t* kc)
                     if (*k & DUP_BIT) {
                         if (_B2POS_OF(kc, k) > seq.p) { // first occurance of pot.multiple mv to start.
                             *k &= ~DUP_BIT; // unset for 1st occurance
-                            ASSERT(sk <= k, return -EFAULT);
+                            ASSERT(sk <= k, return _PRNT_SEQ_BY_K(kc, sk) & _PRNT_SEQ_BY_K(kc, k));
                             _EVAL(swap_kct(kc, sk, k, ndxkct, __LINE__));
                             ++kc->reeval;
                             k = sk++;
