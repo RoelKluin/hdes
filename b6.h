@@ -40,18 +40,22 @@
 #endif
 #if GENOME_BITS <= 16
 typedef uint32_t pos_t;
+#define Pfmt "%u"
 #else
 typedef uint64_t pos_t;
+#define Pfmt "%lu"
 #endif
 
 #if KEY_LENGTH <= 16
 typedef uint32_t seq_t;
+#define Sfmt "0x%x"
 #define DEVIANT_BIT_MASK 0xaaaaaaaaU
 #define ODD_BYTE_MASK 0x00ff00ffU
 #define ODD_NIBBLE_MASK 0x0f0f0f0fU
 #define ODD_TWOBIT_MASK 0x33333333U
 #else
 typedef uint64_t seq_t;
+#define Sfmt "0x%lx"
 #define DEVIANT_BIT_MASK 0xaaaaaaaaaaaaaaaaUL
 #define ODD_BYTE_MASK 0x00ff00ff00ff00ffUL
 #define ODD_NIBBLE_MASK 0x0f0f0f0f0f0f0f0fUL
@@ -148,11 +152,11 @@ struct __attribute__ ((__packed__)) keyseq_t {
     t &= -t;/* isolate deviant bit */\
     t |= !t;/* for palindromes: have to set one */\
     t &= dna;/* was devbit set? */\
-    seq_t __x = t ? rc : dna;\
+    seq_t __x = t ? dna : rc;\
     seq_t __m = __x & ((seq_t)1 << KEYNT_BUFSZ_SHFT);\
     __x ^= __m ^ (__m - !!__m);\
-    EPQ(__x == dbgndx, "dna\t%lx\nrc\t%lx\ndev\t%lx\nt\t%lx\nm\t%lx\nx\t%lx",\
-            dna, rc, dna ^ rc, t, __m, __x);\
+    EPQ(__x == dbgndx, "dna\t" Sfmt "\nrc\t" Sfmt "\ndev\t" Sfmt "\nt\t" Sfmt\
+            "\nm\t" Sfmt "\nx\t" Sfmt, dna, rc, dna ^ rc, t, __m, __x);\
     __x;\
 })
 

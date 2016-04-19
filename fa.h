@@ -46,7 +46,7 @@
 // stored position is one-based to ensure a bit is set
 #define NO_KCT -2u
 
-#define _B2POS_OF(k) ((*k) & B2POS_MASK)
+#define _B2POS_OF(k) ((k) & B2POS_MASK)
 // XXX ugly since assumes kc defined and return with value, but for debugging..
 #define B2POS_OF(k) ({\
         ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
@@ -54,7 +54,7 @@
         ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
         EPQ(((*k) & B2POS_MASK) == dbgpos, "observed dbggpos at %lu (%s:%u)", k - kc->kct,\
                 __FILE__, __LINE__);\
-        _B2POS_OF(k);\
+        _B2POS_OF(*k);\
 })
 //#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
 
@@ -76,7 +76,7 @@
 #define IS_DBG_K(kc, k) (*k == dbgk || K_OFFS(kc, k) == dbgndxkct)
 
 #define DESCRIBE_KEY(kc, k, c) \
-  EPR("[k:%lx, ndxkct: %lx] %c\t%s", *k, K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
+  EPR("[k:%lx, dbgk: %lx] %c\t%s", *k, K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
 
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 //#define MARKED 0x8000000000000000
@@ -89,8 +89,8 @@
 
 
 packed_struct Mantra { // not yet covered by unique keys
-    uint32_t s, e; // start and end of mantra, position where we jump to.
-    uint32_t corr; // 'real' position correction
+    pos_t s, e; // start and end of mantra, position where we jump to.
+    pos_t corr; // 'real' position correction
 };
 
 // While some movement of next-NTs per key takes place - upwards movement
@@ -105,10 +105,10 @@ packed_struct Mantra { // not yet covered by unique keys
 
 #define _get_kct0(kc, seq, t, ndx, _act) ({\
     ndx = _get_ndx(t, seq.dna, seq.rc);\
-    ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, "0x%lx, 0x%lx", ndx, KEYNT_BUFSZ);\
+    ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, Sfmt ", 0x%lx", ndx, KEYNT_BUFSZ);\
     dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct ||\
             (kc->ndxkct[ndx] != NO_KCT && kc->kct[kc->ndxkct[ndx]] == dbgk)) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbg ndx 0x%lx / ndxkct 0x%x / k 0x%x: %s +%u",\
+    EPQ(dbg & 8, "observed dbg ndx " Sfmt " / ndxkct " Sfmt " / k 0x%lx: %s +%u",\
             ndx, kc->ndxkct[ndx], kc->kct[kc->ndxkct[ndx]], __FILE__, __LINE__);\
     ndx;\
 })
@@ -116,22 +116,22 @@ packed_struct Mantra { // not yet covered by unique keys
 #define _get_kct(kc, seq, t, _act) ({\
     seq_t __ndx;\
     __ndx = _get_kct0(kc, seq, t, __ndx, _act);\
-    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, print_seq(&seq); _act, "0x%x\t0x%x", __ndx, kc->ndxkct[__ndx]);\
+    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, print_seq(&seq); _act, Sfmt "\t" Sfmt, __ndx, kc->ndxkct[__ndx]);\
     kc->ndxkct + __ndx;\
 })
 
 #define ASSERT_SCOPE_RNG(kc, p, pend, _act)\
     do {\
-        ASSERT(pend < (kc->s_l << 2), _act, "%lu/%lu?", pend, kc->s_l);\
-        ASSERT(p < pend, _act, "%u >= %u?", p, pend);\
+        ASSERT(pend < (kc->s_l << 2), _act, Pfmt "/%lu?", pend, kc->s_l);\
+        ASSERT(p < pend, _act, Pfmt " >= " Pfmt "?", p, pend);\
         ASSERT(p + kc->readlength - KEY_WIDTH >= pend, _act,\
-                "%u + %lu < %u?", p, kc->readlength - KEY_WIDTH, pend);\
+                Pfmt " + %u < " Pfmt "?", p, kc->readlength - KEY_WIDTH, pend);\
     } while(0)
 
 #define _build_key(kc, seq, p, pend, t)\
-    ASSERT(p < pend, return -EFAULT, "%u >= %u?", p, pend);\
-    ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%u/%lu?", pend, kc->s_l);\
-    ASSERT(p >= 0, return -EFAULT, "%u < 0 (%u)?", p, pend);\
+    ASSERT(p < pend, return -EFAULT, Pfmt " >= " Pfmt "?", p, pend);\
+    ASSERT(pend < (kc->s_l << 2), return -EFAULT, Pfmt "/%lu?", pend, kc->s_l);\
+    ASSERT(p >= 0, return -EFAULT, Pfmt " < 0 (" Pfmt ")?", p, pend);\
     do {\
         t = (kc->s[p>>2] >> ((p&3) << 1)) & 3;\
         seq.dna = _seq_next(t, seq);\
@@ -169,7 +169,7 @@ struct Hdr {
 struct kct_t {
     char* id;
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
-    uint32_t* ndxkct; // sparse array, complement independent index (ndx) => kct
+    seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
     uint64_t s_l, totNts;
