@@ -559,8 +559,9 @@ ext_uq_iter(kct_t* kc)
                     // XXX: for this to work also non-uniq kcts should be sorted on pos?
                     if (*k & DUP_BIT) {
                         if (_B2POS_OF(kc, k) > seq.p) { // first occurance of pot.multiple mv to start.
+                            ASSERT(sk <= k, return _PRNT_SEQ_BY_K(kc, sk) &
+                                    _PRNT_SEQ_BY_K(kc, k), "seq.p:" Pfmt, seq.p);
                             *k &= ~DUP_BIT; // unset for 1st occurance
-                            ASSERT(sk <= k, return _PRNT_SEQ_BY_K(kc, sk) & _PRNT_SEQ_BY_K(kc, k));
                             _EVAL(swap_kct(kc, sk, k, ndxkct, __LINE__));
                             ++kc->reeval;
                             k = sk++;

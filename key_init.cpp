@@ -23,7 +23,7 @@ end_pos(kct_t*C kc, Hdr* h)
         EPR("processed %lu(%lu) Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->totNts,
                 kc->id + h->part[0]);
 
-        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
+        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s - 1;
         if (dbg > 3)
             show_mantras(kc, h);
     }
