@@ -250,7 +250,7 @@ default:    if (isspace(c))
     }
     ASSERT(h != NULL, return -EFAULT);
     end_pos(kc, h);
-    fprintf(stderr, "Initially uniqe keys: %u / %u\n", kc->uqct, kc->kct_l);
+    fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;
 }
 

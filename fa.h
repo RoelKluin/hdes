@@ -46,17 +46,31 @@
 // stored position is one-based to ensure a bit is set
 #define NO_KCT -2u
 
-#define _B2POS_OF(k) ((k) & B2POS_MASK)
-// XXX ugly since assumes kc defined and return with value, but for debugging..
-#define B2POS_OF(k) ({\
+#define B2POS_OF(k) ((k) & B2POS_MASK)
+
+#define _PRNT_SEQ_BY_POS(kc, _p) ({\
+    keyseq_t __seq = {0};\
+    EPR0(Pfmt "\t", (pos_t)_p);\
+    __seq.p = (pos_t)_p - KEY_WIDTH;\
+    _build_key(kc, __seq, __seq.p, (pos_t)_p, __seq.t);\
+    print_seq(&__seq);\
+    -1;\
+})
+
+#define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
+
+// XXX ugly since returns with value, but for debugging..
+#define _B2POS_OF(kc, k) ({\
         ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
         ASSERT(k - kc->kct >= 0, return -EFAULT);\
         ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
-        EPQ(((*k) & B2POS_MASK) == dbgpos, "observed dbggpos at %lu (%s:%u)", k - kc->kct,\
-                __FILE__, __LINE__);\
-        _B2POS_OF(*k);\
+        if (B2POS_OF(*k) == dbgpos) {\
+            EPR("observed dbggpos at koffs:%lu (%s:%u)", K_OFFS(kc, k), __FILE__, __LINE__);\
+            _PRNT_SEQ_BY_POS(kc, dbgpos);\
+        }\
+        B2POS_OF(*k);\
 })
-//#define B2POS_lt(a, b) (B2POS_OF(a) < B2POS_OF(b))
+//#define B2POS_lt(a, b) (_B2POS_OF(a) < _B2POS_OF(b))
 
 // TODO: if a key is not unique, store pos or same seq and length in lower bits
 //#define UQ_MASK    0x000000000000000F // How many same Nts occur
@@ -72,7 +86,6 @@
 #define INFIOR_MASK (~STRAND_POS)
 #define INFIOR INFERIORITY
 
-#define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 #define IS_DBG_K(kc, k) (*k == dbgk || K_OFFS(kc, k) == dbgndxkct)
 
 #define DESCRIBE_KEY(kc, k, c) \
@@ -83,7 +96,7 @@
 
 //#define ALL_SAME_NTS(k) (IS_FIRST(k) && IS_DISTINCT(k))
 
-//#define _GET_NEXT_NT(kc, p) (((kc)->ts[B2POS_OF(p)>>2] >> (((p) & 3) << 1)) & 3)
+//#define _GET_NEXT_NT(kc, p) (((kc)->ts[_B2POS_OF(p)>>2] >> (((p) & 3) << 1)) & 3)
 
 //#define SAME_OR_UQ(k) (IS_UQ(k) || ALL_SAME_NTS(k))
 

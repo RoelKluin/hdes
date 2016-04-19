@@ -32,6 +32,7 @@ start_dbg(kct_t *C kc, Hdr *C h, seq_t C dna)
 
     if (dbg == 3 || dbg == 5)
         dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
+    dbg = 7;
 
     if (dbg > 3) {
         EPR0("----[\t%s%s:(" Pfmt "+)" Pfmt ".." Pfmt "\text:%u\t]----\tdna:",
@@ -150,7 +151,7 @@ print_dna(seq.dna, dbg >5);
 
         _EVAL(get_nextnt(kc, p));
         seq.dna = _seq_next(res, seq);
-        seq.p = B2POS_OF(kct);
+        seq.p = _B2POS_OF(kc, kct);
         if (seq.p >= p++) { // first occurance (pos not yet reset)
 
             *kct ^= ((uint64_t)!seq.t << ORIENT_SHFT) ^ seq.p ^ p;
@@ -251,15 +252,6 @@ out:
     return 0;
 }
 
-static inline int print_seq_from_pos(kct_t* kc, pos_t p)
-{
-    keyseq_t seq = {0};
-    EPR0(Pfmt "\t", p);
-    seq.p = p - KEY_WIDTH;
-    _build_key(kc, seq, seq.p, p, seq.t);
-    return print_seq(&seq);
-}
-
 // reset and remove non-uniqs, move uqs to start of kc->kct array
 static inline int
 extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k, std::set<uint64_t> &pk)
@@ -273,7 +265,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k, std::set<uint64_t> &pk
     EPQ(dbg > 4, Pfmt ".." Pfmt " excised", p, pend);
 
     ASSERT(pend < (kc->s_l << 2), return -EINVAL, Pfmt "/%lu?", pend, kc->s_l);
-    ASSERT(p < pend, return print_seq_from_pos(kc, pend), Pfmt " >= " Pfmt "?", p, pend);
+    ASSERT(p < pend, return _PRNT_SEQ_BY_POS(kc, pend), Pfmt " >= " Pfmt "?", p, pend);
 
     if (p + kc->ext + 1 >= pend && p + 1 != pend) { // within scope and keys to re-evaluate
 
@@ -303,7 +295,7 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k, std::set<uint64_t> &pk
 
             ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
             k = kc->kct + *ndxkct;
-//            EPR("..%lu..", B2POS_OF(k));
+//            EPR("..%lu..", _B2POS_OF(kc, k));
 //            print_seq(&seq);
             update_max_infior(k, infior);
 
@@ -311,23 +303,23 @@ extd_uq_by_k(kct_t* kc, pos_t p, pos_t pend, uint64_t *k, std::set<uint64_t> &pk
             //ASSERT(k > kc->kct_scope[0], return print_seq(&seq),
             //        "DUPBIT unset before kct occurance?");
             if (*k & DUP_BIT) {
-                if (B2POS_OF(k) > p) {
+                if (_B2POS_OF(kc, k) > p) {
                     ++kc->reeval;
-                } else if (B2POS_OF(k) == p) {
+                } else if (_B2POS_OF(kc, k) == p) {
                     // all remaining were excised this iteration
                     --kc->reeval; // this key won't extend
                     *k = 0; // position is not certain, but it happend in this iteration.
                 }
             } else {
-                ASSERT(B2POS_OF(k) < p, res = -EFAULT; goto err);
+                ASSERT(_B2POS_OF(kc, k) < p, res = -EFAULT; goto err);
                 // not certain yet, but may be unique. They are then handled in next iter.
             }
 
             if (IS_DBG_K(kc, k)) dbgndxkct = *ndxkct;
-            EPQ(IS_DBG_K(kc, k), "excised: [%lx, %lu, " Sfmt "]", K_OFFS(kc, k), _B2POS_OF(*k), *ndxkct);
+            EPQ(IS_DBG_K(kc, k), "excised: [%lx, %lu, " Sfmt "]", K_OFFS(kc, k), B2POS_OF(*k), *ndxkct);
         } while (++p != pend);
 
-        ASSERT(IS_UQ(k), return -EFAULT, Pfmt ", %lu", p, B2POS_OF(k));
+        ASSERT(IS_UQ(k), return -EFAULT, Pfmt ", %lu", p, _B2POS_OF(kc, k));
 
         // need to determine kcts for inbetween. Same can occur twice, use end instead.
     }
@@ -369,7 +361,7 @@ reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t prev, C pos_t 
 
     } else {
         (*kc->bdit).e = pend - KEY_WIDTH;
-        ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(2)");
+        ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(2) => possibly too late: occurs only at uniq (only has a valid pos)");
         if ((dbg > 1) && ((p - prev) > 1000000)) {
             keyseq_t seq = {0};
             seq.p = p - KEY_WIDTH;
@@ -377,8 +369,8 @@ reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t prev, C pos_t 
             seq_t ndx;
             ndx = _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
             EPR("1M+ diatance between uniques " Sfmt, ndx);
-            print_seq_from_pos(kc, prev);
-            print_seq_from_pos(kc, p);
+            _PRNT_SEQ_BY_POS(kc, prev);
+            _PRNT_SEQ_BY_POS(kc, p);
         }
     }
     track_regions(kc, h, p);
@@ -389,7 +381,7 @@ err:
 static int emplace_kct(kct_t* kc,  uint64_t *sk,  uint64_t *k)
 {
     keyseq_t seq = {0};
-    seq.p = B2POS_OF(k);
+    seq.p = _B2POS_OF(kc, k);
     pos_t p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t);
     seq_t *ndxkct = _get_kct(kc, seq, seq.t, return -EFAULT);
@@ -406,20 +398,19 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
 {
     EPQ(k1 == k2, "k1 == k2");
 
-//    EPR("swap %lu <-> %lu => uq", B2POS_OF(k1), B2POS_OF(k2));
+//    EPR("swap %lu <-> %lu => uq", _B2POS_OF(kc, k1), _B2POS_OF(kc, k2));
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
     keyseq_t seq = {0};
-    seq.p = B2POS_OF(k1);
+    seq.p = _B2POS_OF(kc, k1);
     pos_t p = seq.p - KEY_WIDTH;
     _build_key(kc, seq, p, seq.p, seq.t);
     seq_t *ndxkct1 = _get_kct(kc, seq, seq.t, return -EFAULT);
 
     if (dbg > 4) {
         EPR("swap_kct() called on %s:%u", __FILE__, line);
-        EPR("swap%u in %lu .. %lu:", ndxkct2 == NULL, _B2POS_OF(*k1), _B2POS_OF(*k2));
-        print_seq_from_pos(kc, p);
+        EPR("swap%u in %lu .. %lu:", ndxkct2 == NULL, B2POS_OF(*k1), B2POS_OF(*k2));
     }
 
     if (dbg > 4 || dbgndxkct == *ndxkct1 || dbgndxkct == *ndxkct2) {
@@ -428,8 +419,8 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
             dbgndx = (dbgndxkct == *ndxkct1 ? ndxkct2 : ndxkct1) - kc->ndxkct;
             dbgk = *k2;
         }
-        print_seq_from_pos(kc, seq.p);
-        print_seq_from_pos(kc, B2POS_OF(k2));
+        _PRNT_SEQ_BY_POS(kc, seq.p);
+        _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k2));
     }
 
     // ndxkct points to reordered kcts
@@ -441,7 +432,7 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
     t = *k1;
     *k1 = *k2;
     *k2 = t;
-    //ASSERT(p == B2POS_OF(kc->kct + *ndxkct2), return -EFAULT);
+    //ASSERT(p == _B2POS_OF(kc->kct + *ndxkct2), return -EFAULT);
     return 0;
 }
 
@@ -455,7 +446,7 @@ place_uniques(kct_t* kc, uint64_t* sk, uint64_t* &kend, std::set<uint64_t> &pk)
         uint64_t kv = *it;
         if (~kv & DUP_BIT) {
             ++kc->uqct;
-            p = _B2POS_OF(kv);
+            p = B2POS_OF(kv);
             keyseq_t seq = {0};
             seq.p = p - KEY_WIDTH;
             _build_key(kc, seq, seq.p, p, seq.t);
@@ -503,24 +494,20 @@ ext_uq_iter(kct_t* kc)
     // keys are kept sorted, first on uniqueness, then on position [TODO for non-uniques].
 
     //if (kc->iter > 0)
-        dbg = 6;
+    //    dbg = 6;
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
     uint64_t *sk = kc->kct;
     for (uint64_t *k = kc->kct; k < kend; ++k) {
         seq_t *ndxkct = NULL;
 
-        if (dbg > 5)  print_seq_from_pos(kc, _B2POS_OF(*k));
-        EPQ(IS_DBG_K(kc, k), "debug k: [%lx, %lu]", K_OFFS(kc, k), _B2POS_OF(*k)); // 1
+        if (dbg > 5)  _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k));
+        EPQ(IS_DBG_K(kc, k), "debug k: [%lx, %lu]", K_OFFS(kc, k), B2POS_OF(*k)); // 1
         if (IS_UQ(k)) {
-            p = B2POS_OF(k);
-            EPQ(dbg > 4, "%lu%s", _B2POS_OF(*k), p - prev < kc->ext + 1 ? " .. 2nd uq" : " => 1st uq");
+            p = _B2POS_OF(kc, k);
+            EPQ(dbg > 4, "%lu%s", B2POS_OF(*k), p - prev < kc->ext + 1 ? " .. 2nd uq" : " => 1st uq");
             pk.insert(*k);
             keyseq_t seq = {0};
-            if (p == dbgpos) {
-                print_seq_from_pos(kc, prev);
-                print_seq_from_pos(kc, p);
-            }
             ASSERT(p != prev || prev == b2start, return -EFAULT, "%lu", pk.size());
             if (p > b2end + (*h)->s_s) {
 
@@ -547,14 +534,14 @@ ext_uq_iter(kct_t* kc)
                     _EVAL(extd_uq_by_k(kc, prev, p, k, pk));
                 prev = p;
                 if (!ndxkct) {
-                    seq.p = B2POS_OF(k);
+                    seq.p = _B2POS_OF(kc, k);
                     p = seq.p - KEY_WIDTH;
                     _build_key(kc, seq, p, seq.p, seq.t);
                     ndxkct = _get_kct(kc, seq, seq.t, return -EFAULT);
                 } else {
-                    p = B2POS_OF(k);
+                    p = _B2POS_OF(kc, k);
                     uint32_t* test = _get_kct(kc, seq, seq.t, return -EFAULT);
-                    ASSERT(p == B2POS_OF(kc->kct + *ndxkct), return -EFAULT);
+                    ASSERT(p == _B2POS_OF(kc, kc->kct + *ndxkct), return -EFAULT);
                     ASSERT(ndxkct == test, return -EFAULT);
                 }
             } else { // first occurance. need to close previous, if set.
@@ -568,16 +555,16 @@ ext_uq_iter(kct_t* kc)
                 do {
                     k = kc->kct + *ndxkct;
                     EPQ(IS_DBG_K(kc, k), "debug k (2): [%lx, %lu, " Sfmt "]",
-                            K_OFFS(kc, k), _B2POS_OF(*k), *ndxkct);
+                            K_OFFS(kc, k), B2POS_OF(*k), *ndxkct);
                     // XXX: for this to work also non-uniq kcts should be sorted on pos?
                     if (*k & DUP_BIT) {
-                        if (B2POS_OF(k) > seq.p) { // first occurance of pot.multiple mv to start.
+                        if (_B2POS_OF(kc, k) > seq.p) { // first occurance of pot.multiple mv to start.
                             *k &= ~DUP_BIT; // unset for 1st occurance
                             ASSERT(sk <= k, return -EFAULT);
                             _EVAL(swap_kct(kc, sk, k, ndxkct, __LINE__));
                             ++kc->reeval;
                             k = sk++;
-                        } else if (B2POS_OF(k) == seq.p) {
+                        } else if (_B2POS_OF(kc, k) == seq.p) {
                             // all but last positions were excised, unique after all!
                             pk.insert(*k);
                             unsigned len = seq.p - prev;
@@ -596,7 +583,7 @@ ext_uq_iter(kct_t* kc)
                                 }
                             }
                         }
-                    } else if (B2POS_OF(k) < seq.p) { // no dup after all
+                    } else if (_B2POS_OF(kc, k) < seq.p) { // no dup after all
                         *k |= DUP_BIT;
                         --kc->reeval;
                     }
@@ -608,10 +595,11 @@ ext_uq_iter(kct_t* kc)
                 } while (++seq.p != p);
 
                 if (prev != p) {
-                    // 2: mark start of a new region
-                    if (p <= b2end + (*h)->s_s)
+                    // a new region starts if not adjoining end or at start
+                    if (p <= b2end + (*h)->s_s && prev != b2start - 1)
                         start_region(kc, *h, b2start, prev);
-                    if (b2start + (*h)->s_s <= p - KEY_WIDTH)
+                    // a region ends if not adjoining start or at end
+                    if (b2start + (*h)->s_s <= p - KEY_WIDTH && p != b2end)
                         (*kc->bdit).e = p - KEY_WIDTH;
                     prev = p;
                 } // else rollback entirely occurred.
