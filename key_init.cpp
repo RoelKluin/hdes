@@ -19,11 +19,11 @@ static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
     if (h) {
-        kc->totNts += kc->s_l - h->s_s + h->bnd.back().corr;
-        EPR("processed %lu(%lu) Nts for %s", kc->s_l - h->s_s + h->bnd.back().corr, kc->totNts,
+        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
+        kc->totNts += h->end_pos + h->bnd.back().corr;
+        EPR("processed %lu(%lu) Nts for %s", h->end_pos + h->bnd.back().corr, kc->totNts,
                 kc->id + h->part[0]);
 
-        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s - 1;
         if (dbg > 3)
             show_mantras(kc, h);
     }
@@ -224,7 +224,8 @@ default:    if (isspace(c))
     case 'C':   c ^= 0x2;
     case 'G':   c &= 0x3;
                 if (i == ((KEY_WIDTH - 1) << 8)) {
-                    if (kc->s_l - h->s_s != 0) { // N-stretch, unless at start, needs insertion
+                    ASSERT(h, return -EFAULT);
+                    if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
                         corr += h->bnd.back().corr;
                         ASSERT(h->s_s > kc->s_l, return -EFAULT);
