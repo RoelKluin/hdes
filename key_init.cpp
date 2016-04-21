@@ -21,7 +21,7 @@ end_pos(kct_t*C kc, Hdr* h)
     if (h) {
         h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
         kc->totNts += h->end_pos + h->bnd.back().corr;
-        EPR("processed %lu(%lu) Nts for %s", h->end_pos + h->bnd.back().corr, kc->totNts,
+        EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd.back().corr, kc->totNts,
                 kc->id + h->part[0]);
 
         if (dbg > 3)
