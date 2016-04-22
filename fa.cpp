@@ -47,16 +47,16 @@ start_dbg(kct_t *C kc, Hdr *C h, seq_t C dna)
 void
 free_kc(kct_t* kc)
 {
-    std::list<Hdr*>::iterator it;
-    for (it = kc->h.begin(); it != kc->h.end(); ++it) {
-        Hdr* h = *it;
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
         free(h->part);
-        delete h;
+        delete h->bnd;
     }
+
     _buf_free(kc->id);
     _buf_free(kc->s);
     _buf_free(kc->kct);
-    _buf_free(kc->hh);
+    _buf_free(kc->h);
+    _buf_free(kc->hk);
     _buf_free(kc->ndxkct);
 }
 
@@ -84,7 +84,7 @@ static inline void start_region(kct_t* kc, Hdr *C h, C pos_t b2start, C pos_t la
     if ((*kc->bdit).e == b2start) {
         (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
     }  else if ((*kc->bdit).e != last_uq_pos) { // not downstream adjoining.
-        h->bnd.insert(kc->bdit, *kc->bdit); // insert a copy of the current
+        h->bnd->insert(kc->bdit, *kc->bdit); // insert a copy of the current
         // start is earlier to enable building of the 1st key.
         (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
     }
@@ -178,7 +178,7 @@ print_dna(seq.dna, dbg >5);
     ASSERT(k != NULL, res = -EFAULT; goto err);
     if (IS_UQ(k)) {
         if ((*kc->bdit).s == b2start) {
-            kc->bdit = h->bnd.erase(kc->bdit);
+            kc->bdit = h->bnd->erase(kc->bdit);
         } else if (((*kc->bdit).e + index) == b2pos) {
             kc->bdit++;
         } else {
@@ -211,17 +211,17 @@ static int
 ext_uq_hdr(kct_t* kc, Hdr* h)
 {
     //FIXME: rather than % of all display % mapable of remaining (mantras)
-    kc->bdit = h->bnd.begin();
-    IFOUT(kc->bdit == h->bnd.end(), "Already fully mapable: %s", kc->id + h->part[0]);
+    kc->bdit = h->bnd->begin();
+    IFOUT(kc->bdit == h->bnd->end(), "Already fully mapable: %s", kc->id + h->part[0]);
 
     EPQ(dbg > 3, "Processing %s", kc->id + h->part[0]);
 
     do {
         int ret = ext_uq_bnd(kc, h);
         if (ret < 0) return ret;
-    } while (kc->bdit != h->bnd.end());
+    } while (kc->bdit != h->bnd->end());
 
-    IFOUT(h->bnd.begin() == h->bnd.end(), "Became fully mapable: %s", kc->id + h->part[0]);
+    IFOUT(h->bnd->begin() == h->bnd->end(), "Became fully mapable: %s", kc->id + h->part[0]);
 #ifdef DEBUG
     if (dbg > 4)
         show_mantras(kc, h);
@@ -299,12 +299,12 @@ err:
 }
 
 static int
-reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t prev, C pos_t p, std::set<uint64_t> &pk)
+reached_boundary(kct_t* kc, Hdr** h, C pos_t prev, C pos_t p, std::set<uint64_t> &pk)
 {
     int res = 0;
     if ((prev + kc->ext > (*kc->bdit).e) && ((*kc->bdit).e > prev)) {
         if ((*kc->bdit).s == (*kc->bdit).s + KEY_WIDTH) {
-            kc->bdit = (*h)->bnd.erase(kc->bdit); EPQ(dbg > 4, "(*h)->bnd.erase(kc->bdit)");
+            kc->bdit = (*h)->bnd->erase(kc->bdit); EPQ(dbg > 4, "(*h)->bnd.erase(kc->bdit)");
         } else {
             ++kc->bdit; EPQ(dbg > 4, "++kc->bdit(1)");
         }
@@ -324,10 +324,10 @@ reached_boundary(kct_t* kc, std::list<Hdr*>::iterator& h, C pos_t prev, C pos_t 
         }
     }
     for (;;) {
-        if (kc->bdit == (*h)->bnd.end()) {
+        if (kc->bdit == (*h)->bnd->end()) {
             if (dbg > 3)
                 show_mantras(kc, *h);
-            kc->bdit = (*++h)->bnd.begin();
+            kc->bdit = (*++h)->bnd->begin();
             EPQ(dbg > 4, "kc->bdit = (*++h)->bnd.begin()");
             start_dbg(kc, *h, 0ul);
         }
@@ -425,18 +425,18 @@ err:
 }
 
 
-static int handle_range(kct_t* kc, std::list<Hdr*>::iterator& h, pos_t &prev,
+static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
         C pos_t p, uint64_t** sk, std::set<uint64_t> &pk)
 {
     int res;
     seq_t *ndxkct;
     keyseq_t seq = {0};
-    C pos_t b2start = (*kc->bdit).s + (*h)->s_s;
-    C pos_t b2end = (*kc->bdit).e + (*h)->s_s;
+    C pos_t b2start = (*kc->bdit).s + h->s_s;
+    C pos_t b2end = (*kc->bdit).e + h->s_s;
 
     if (p - prev < kc->ext + 1) { // a 2nd uq
         if (prev == b2start + KEY_WIDTH - 1) { EPR("// adjoining boundary");
-            (*kc->bdit).s = p - (*h)->s_s; // shift start
+            (*kc->bdit).s = p - h->s_s; // shift start
         } else {
             //(*kc->bdit).e = prev;
             ASSERT (prev < p, return -EFAULT);
@@ -502,11 +502,11 @@ static int handle_range(kct_t* kc, std::list<Hdr*>::iterator& h, pos_t &prev,
         if (prev != p) {
             // a new region starts if not adjoining end or at start
             if (p <= b2end && prev != b2start + KEY_WIDTH - 1)
-                start_region(kc, *h, b2start + KEY_WIDTH, prev);
+                start_region(kc, h, b2start + KEY_WIDTH, prev);
             // a region ends if not adjoining start or at end
             if (b2start + KEY_WIDTH  <= p - KEY_WIDTH) {
-                EPR("(*kc->bdit).e = p - (*h)->s_s (%lu)", p - (*h)->s_s);
-                (*kc->bdit).e = p - (*h)->s_s;
+                EPR("(*kc->bdit).e = p - h->s_s (%lu)", p - h->s_s);
+                (*kc->bdit).e = p - h->s_s;
             }
             prev = p;
         } // else rollback entirely occurred.
@@ -529,16 +529,16 @@ ext_uq_iter(kct_t* kc)
     int res;
 
     uint64_t * kend = kc->kct + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
-    std::list<Hdr*>::iterator h = kc->h.begin();
+    Hdr* h = kc->h;
     ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
     std::set<uint64_t> pk;     // storage for unique key offsetss
-    kc->bdit = (*h)->bnd.begin();
-    pos_t b2start = (*kc->bdit).s + (*h)->s_s;
-    pos_t b2end = (*kc->bdit).e + (*h)->s_s;
-    EPR("[%s] " Pfmt " .. " Pfmt, kc->id + (*h)->part[0], b2start, b2end);
+    kc->bdit = h->bnd->begin();
+    pos_t b2start = (*kc->bdit).s + h->s_s;
+    pos_t b2end = (*kc->bdit).e + h->s_s;
+    EPR("[%s] " Pfmt " .. " Pfmt, kc->id + h->part[0], b2start, b2end);
     ++b2end;
     pos_t prev = b2start + KEY_WIDTH;
-    start_dbg(kc, *h, 0ul);
+    start_dbg(kc, h, 0ul);
     // iterate over keys
     // 1) reset and remove non-uniqs, move uqs to start of array
     // 2) determine, extend unique regions and decr_excise *only new* ones
@@ -569,13 +569,13 @@ ext_uq_iter(kct_t* kc)
 
                 _EVAL(handle_range(kc, h, prev, b2end, &sk, pk));
                 // handle last boundary
-                _EVAL(reached_boundary(kc, h, prev, p, pk));
-                pos_t b2start = (*kc->bdit).s + (*h)->s_s;
-                pos_t b2end = (*kc->bdit).e + (*h)->s_s;
+                _EVAL(reached_boundary(kc, &h, prev, p, pk));
+                pos_t b2start = (*kc->bdit).s + h->s_s;
+                pos_t b2end = (*kc->bdit).e + h->s_s;
                 //ASSERT(p >= b2start + KEY_WIDTH, return -EFAULT,
                 //    Pfmt ", %lu", p, b2start + KEY_WIDTH);
                 EPQ(kc->iter == 0 || dbg > 5, "[%s] " Pfmt " .. " Pfmt,
-                        kc->id + (*h)->part[0], b2start, b2end);
+                        kc->id + h->part[0], b2start, b2end);
                 ++b2end;
                 prev = b2start + KEY_WIDTH;
             }
@@ -593,9 +593,9 @@ ext_uq_iter(kct_t* kc)
     // TODO: some uniques no longer occur: all are excised.
     kc->last_uqct = kc->uqct;
 
-    /*for (h = kc->h.begin(); h != kc->h.end(); ++h) {
+    /*for (h = kc->h; h !=kc->h + kc->h_l; ++h) {
         // over ref headers
-        int ret = ext_uq_hdr(kc, *h);
+        int ret = ext_uq_hdr(kc, h);
         if (ret < 0) return ret;
     }*/
     EPQ(dbg > 0, "observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",

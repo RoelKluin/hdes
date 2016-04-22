@@ -103,14 +103,18 @@ if (cond) { \
     buf##_l = 0;\
     /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
-    if_ever (__t == NULL) error_action;\
+    if_ever (__t == NULL) {\
+        error_action;\
+    }\
     __t;\
 })
 #define _buf_init_err_m(buf, m, error_action) ({\
     buf##_l = 0;\
     /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
-    if_ever (__t == NULL) error_action;\
+    if_ever (__t == NULL) {\
+        error_action;\
+    }\
     __t;\
 })
 #define _buf_init(buf, sz) _buf_init_err(buf, sz, return -ENOMEM)
@@ -119,7 +123,9 @@ if (cond) { \
     buf##_m = sz;\
     /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
-    if_ever (__t == NULL) error_action;\
+    if_ever (__t == NULL) {\
+        error_action;\
+    }\
     __t;\
 })
 
@@ -127,7 +133,9 @@ if (cond) { \
 if (((buf##_l + step) >> shft) >= (1ul << m)) {\
     EPQ(dbg < 0, #buf " realloc, %lu", sizeof(*(buf)) << (buf##_m + 1));\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
-    if_ever (__t == NULL) error_action;\
+    if_ever (__t == NULL) {\
+        error_action;\
+    }\
     buf = __t;\
 }
 #define _buf_grow(buf, step, shft) _buf_grow_err_m(buf, step, buf##_m, shft, return -ENOMEM)

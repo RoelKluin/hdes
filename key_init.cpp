@@ -19,9 +19,9 @@ static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
     if (h) {
-        h->end_pos =  h->bnd.back().e = kc->s_l - h->s_s;
-        kc->totNts += h->end_pos + h->bnd.back().corr;
-        EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd.back().corr, kc->totNts,
+        h->end_pos =  h->bnd->back().e = kc->s_l - h->s_s;
+        kc->totNts += h->end_pos + h->bnd->back().corr;
+        EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd->back().corr, kc->totNts,
                 kc->id + h->part[0]);
 
         if (dbg > 3)
@@ -38,22 +38,27 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 {
     int c;
     uint32_t p = ID;
+    const char* hdr;
+    Hdr_umap::const_iterator got;
 
     if (h)
         end_pos(kc, h);
 
-    h = new Hdr;
+    _buf_grow_err(kc->h, 1ul, 0, return NULL);
+    h = kc->h + kc->h_l++;
+    //    new Hdr;
     h->part = (uint32_t*)malloc(ENS_HDR_PARTCT * sizeof(uint32_t));
     ASSERT(h->part != NULL, return NULL);
+    h->bnd = new std::list<Mantra>();
 
     h->part[p] = kc->id_l;
 
     while ((c = gc(g)) != -1) {
-        //fputc(c, stderr);
+        //EPR("%u\t%c", p, c);
         switch (c) {
-            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL); break;
+            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err); break;
             case ' ':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
                 if (p == IDTYPE) {
                     char* q = kc->id + h->part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -68,7 +73,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     h->part[p] = kc->id_l;
                 continue;
             case ':':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
@@ -80,7 +85,6 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                             EPR("\nWARNING: aligning against cDNA");
                         } else if (strncmp(q, "pep", strlen(q)) == 0) {
                             EPR("\nERROR: peptide alignment?");
-                            delete h;
                             return NULL;
                         } else if (strncmp(q, "rna", strlen(q)) == 0) {
                             EPR("\nWARNING: aligning against rna");
@@ -95,62 +99,65 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     c = '\0';
                     p = UNKNOWN_HDR;
                 }
-                _buf_grow_add_err(kc->id, 1ul, 0, c, return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, c, h = NULL; goto err);
                 continue;
         }
         break;
     }
-    const char* hdr = kc->id + h->part[ID];
-    Hdr_umap::const_iterator got = lookup.find(hdr);
+    if (c == -1)
+        return NULL;
+    hdr = kc->id + h->part[ID];
+    got = lookup.find(hdr);
 
-    Hdr* lh = NULL;
     if (got != lookup.end()) {
+        Hdr* lh = NULL;
         EPR("contig occurred twice: %s", hdr);
         lh = got->second;
 
         if (p != NR && p != META) {
             lh->p_l = UNKNOWN_HDR;
-            lh->bnd.back().e = h->end_pos = ~0u;
+            lh->bnd->back().e = h->end_pos = ~0u;
             WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
             return lh;
         }
 
         // To fix order reversal would need kc->s movement and adaptations including h->s_s.
-        ASSERT(h->part[START] > lh->part[END], return NULL, "Duplicate entries in reversed order");
-        ASSERT(kc->h.back() == lh, return NULL, "Duplicate entries, but not in series");
+        ASSERT(h->part[START] > lh->part[END], h = NULL; goto err, "Duplicate entries in reversed order");
+        ASSERT(lh == kc->h + kc->h_l - 1, h = NULL; goto err, "Duplicate entries, but not in series");
 
         // only insert when last contig had any sequence
         Mantra contig = {0};
 
         // correction propagation Not thoroughly checked yet...
-        contig.corr += h->bnd.back().corr - h->bnd.back().e; // start of current is added later.
+        contig.corr += h->bnd->back().corr - h->bnd->back().e; // start of current is added later.
 
-        if (h->bnd.back().e == h->bnd.back().s)
-            h->bnd.push_back(contig);
+        if (h->bnd->back().e == h->bnd->back().s)
+            h->bnd->push_back(contig);
 
         h = lh;
 
     } else {
-        kc->h.push_back(h);
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
         h->s_s = kc->s_l;
-        h->bnd.push_back({0});
+        h->bnd->push_back({0});
     }
 
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        h->bnd.back().corr += atoi(kc->id + h->part[START]) - 1;
+        h->bnd->back().corr += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
-        h->bnd.back().e = h->end_pos - KEY_WIDTH;
+        h->bnd->back().e = h->end_pos - KEY_WIDTH;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
-        h->bnd.back().corr = 0;
-        h->bnd.back().e = h->end_pos = ~0u;
+        h->bnd->back().corr = 0;
+        h->bnd->back().e = h->end_pos = ~0u;
         EPQ(dbg > 3, "\nWARNING: non-ensembl reference.");
     }
-
+err:
+    if (h == NULL)
+        delete h->bnd;
     return h;
 }
 
@@ -169,6 +176,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     seq_t ndx;
     Hdr* h = NULL;
     keyseq_t seq = {0};
+    HK hk = {0};
     kc->s_l = 0;
     kc->uqct = 0;
     kc->totNts = 0;
@@ -190,6 +198,7 @@ case 'G':   c &= 0x3;
             _addtoseq(kc->s, c); // kc->s_l grows here.
             seq_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
             if (*n == NO_KCT) {
+                ++hk.kct;
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
                 kc->kct[*n] = 0ul;
@@ -227,12 +236,12 @@ default:    if (isspace(c))
                     ASSERT(h, return -EFAULT);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
-                        corr += h->bnd.back().corr;
+                        corr += h->bnd->back().corr;
                         ASSERT(h->s_s > kc->s_l, return -EFAULT);
                         ASSERT(kc->s_l - h->s_s <= 0xffffffff, return -EFAULT);
-                        h->bnd.push_back({.s = (pos_t)(kc->s_l - h->s_s), .e = 0, .corr = 0});
+                        h->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s), .e = 0, .corr = 0});
                     }
-                    h->bnd.back().corr += corr;
+                    h->bnd->back().corr += corr;
                     corr = 0;
                 }
                 i -= 0x100;
@@ -240,7 +249,13 @@ default:    if (isspace(c))
                 _addtoseq(kc->s, c);
                 //print_dna(seq.dna);
                 break;
-    case 0x1e:  h = new_header(kc, h, g, gc, lookup);
+    case 0x1e:  if (h) {
+                    // FIXME: convert header to reallocable for this purpose
+                    hk.hoffs = kc->h_l - 1;
+                    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
+                }
+                h = new_header(kc, h, g, gc, lookup);
+                hk.kct = 0;
                 ASSERT(h != NULL, return -EFAULT);
 
                 i = (KEY_WIDTH - 1) << 8;
@@ -263,6 +278,8 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->kct = _buf_init_err(kc->kct, 16, goto err);
     kc->id = _buf_init_err(kc->id, 5, goto err);
     kc->s = _buf_init_err(kc->s, 8, goto err);
+    kc->h = _buf_init_err(kc->h, 1, goto err);
+    kc->hk = _buf_init_err(kc->hk, 1, goto err);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->ndxkct[i] = NO_KCT;

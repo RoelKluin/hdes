@@ -13,6 +13,7 @@
 #define RK_FA_H
 #include <errno.h> // ENOMEM
 #include <list>
+#include <queue>
 #include "seq.h"
 #include "klib/khash.h"
 #include "gz.h"
@@ -179,9 +180,15 @@ enum ensembl_parts {ID, SEQTYPE, IDTYPE,
 struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    std::list<Mantra> bnd; //
-    uint32_t end_pos, end_corr, mapable; // mapable is only used in fa.cpp
+    uint32_t end_pos, end_corr; // mapable is only used in fa.cpp
+    std::list<Mantra> *bnd; //
     uint8_t p_l;
+};
+
+struct HK {
+    uint32_t kct;
+    uint32_t hoffs;
+    uint32_t ext;
 };
 
 struct kct_t {
@@ -190,12 +197,12 @@ struct kct_t {
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t** kct_scope;
-    uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, uqct, reeval, ext, last_uqct;
+    uint64_t s_l, totNts, h_l;
+    uint32_t id_l, kct_l, hk_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
-    uint8_t id_m, s_m, ndxkct_m;
-    uint8_t kct_m;
-    std::list<Hdr*> h;
+    uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
+    Hdr* h;
+    HK* hk;
     std::list<Mantra>::iterator bdit;
     // could be possible to move bnd here.
 };

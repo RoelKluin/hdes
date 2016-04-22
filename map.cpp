@@ -58,45 +58,44 @@ static int
 get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
 {
     // FIXME: no looping here, store ref to header in boundary?.
-    std::list<Hdr*>::iterator hdr;
     std::list<Mantra>::iterator bd;
+    Hdr* h;
 
-    for (hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
-        bd = (*hdr)->bnd.end();
+    for (h = kc->h; h != kc->h + kc->h_l; ++h) {
+        bd = h->bnd->end();
         --bd;
 
         //position beyond end of last boundary of this contig must be on a later one.
-        if (((*hdr)->s_s + (*bd).e + bufi) < *pos)
+        if ((h->s_s + (*bd).e + bufi) < *pos)
             continue;
 
-        EPQ(dbg > 16, "%s", kc->id + (*hdr)->part[0]);
-        while ((((*hdr)->s_s + (*bd).s + bufi) > *pos) && bd != (*hdr)->bnd.begin()) {
+        EPQ(dbg > 16, "%s", kc->id + h->part[0]);
+        while (((h->s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
 
-            EPQ(dbg > 16, "%lu > %lu?", ((*hdr)->s_s + (*bd).s), *pos);
+            EPQ(dbg > 16, "%lu > %lu?", (h->s_s + (*bd).s), *pos);
             --bd;
         }
-        ASSERT (((*hdr)->s_s + (*bd).s) <= *pos, return -EFAULT)
+        ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT)
         break;
     }
-    ASSERT (hdr != kc->h.end(), return -EFAULT)
-    EPQ(dbg > 6, "%ld <= %u + %u", *pos - (*hdr)->s_s, (*bd).corr, bufi);
+    ASSERT (h != kc->h + kc->h_l, return -EFAULT)
+    EPQ(dbg > 6, "%ld <= %u + %u", *pos - h->s_s, (*bd).corr, bufi);
 
-    ASSERT(*pos + (*bd).corr > (*hdr)->s_s + bufi, return -EFAULT,
-            "%s\t%lu\t%lu", kc->id + (*hdr)->part[0], *pos + (*bd).corr, (*hdr)->s_s + bufi
-            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, (*hdr)->s_s, bufi, KEY_WIDTH*/)
-    *pos += (*bd).corr - (*hdr)->s_s + KEY_WIDTH - bufi - 1;
+    ASSERT(*pos + (*bd).corr > h->s_s + bufi, return -EFAULT,
+            "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, h->s_s + bufi
+            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/)
+    *pos += (*bd).corr - h->s_s + KEY_WIDTH - bufi - 1;
 
-    return (*hdr)->part[0];
+    return h->part[0];
 }
 
 static void
 print_hdr(kct_t *C kc, char C*C commandline)
 {
     std::list<Hdr*>::iterator h;
-    for (std::list<Hdr*>::iterator hdr = kc->h.begin(); hdr != kc->h.end(); ++hdr) {
-        Hdr* h = *hdr;
-        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd.back().corr);
-        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd.back().corr);
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
+        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
+        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
     }
     OPR("@PG\tID:" PROGRAM_NAME "\tPN:" PROGRAM_NAME "\tVN:" PROGRAM_VERSION "\tCL:%s",
             commandline);
@@ -119,7 +118,7 @@ fq_read(kct_t* kc, seqb2_t *seq)
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
     keyseq_t ks = {0};
-    Hdr* lh = kc->h.back();
+    Hdr* lh = kc->h + kc->h_l - 1;
     const uint64_t end_pos = lh->s_s + lh->end_pos;
     //struct mapstat_t ms = {0};
 

@@ -24,42 +24,52 @@
     EPQ(dbg > 5, "writing poiner " #x "");\
     if (fhout->write(fhout, (const char*)(x), (l) * sizeof(*(x))) < 0)\
         goto err;
+#define __WRITE_LMPTR(buf)\
+    __WRITE_VAL(buf##_l)\
+    __WRITE_VAL(buf##_m)\
+    __WRITE_PTR(buf, buf##_l)
 
 #define __READ_VAL(x) \
     ASSERT(fhin->fp != NULL, return -EFAULT);\
     ASSERT(fhin->read != NULL, return -EFAULT);\
     if (fhin->read(fhin, (char*)&(x), sizeof(x)) < 0) \
-        return res;
+        return -EFAULT;
 #define __READ_PTR(x, l) \
     x = (decltype(x))malloc((l) * sizeof(*(x)));\
     ASSERT(x != NULL, return -ENOMEM);\
     if (fhin->read(fhin, (char*)x, l * sizeof(*(x))))\
-        return res;
+        return -EFAULT;
+#define __READ_LMPTR(buf) \
+    __READ_VAL(buf##_l)\
+    __READ_VAL(buf##_m)\
+    buf = (decltype(buf))malloc((1ul << buf##_m) * sizeof(*(buf)));\
+    ASSERT(buf != NULL, return -ENOMEM);\
+    if (fhin->read(fhin, (char*)buf, buf##_l * sizeof(*(buf))))\
+        return -EFAULT;
 
 int
 save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
-    uint32_t val, len = kc->h.size();
+    uint32_t val, len;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
 
     // 1: buffer sizes
-    __WRITE_VAL(len)
+    __WRITE_VAL(kc->h_l)
     __WRITE_VAL(kc->id_l)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
 
-    for(std::list<Hdr*>::iterator hit = kc->h.begin(); hit != kc->h.end(); ++hit)
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
-        Hdr* h = *hit;
         __WRITE_VAL(h->end_pos)
-        len = h->bnd.size();
+        len = h->bnd->size();
         __WRITE_VAL(len)
         __WRITE_VAL(h->s_s)
-        for(std::list<Mantra>::iterator b = h->bnd.begin(); b != h->bnd.end(); ++b) {
+        for(std::list<Mantra>::iterator b = h->bnd->begin(); b != h->bnd->end(); ++b) {
             val = (*b).corr;
             __WRITE_VAL(val)
             val = (*b).s;
@@ -81,19 +91,19 @@ int
 load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 {
     int res;
-    uint32_t len, blen;
+    uint32_t blen;
     kc->id = NULL;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
     // 1: buffer sizes
-    __READ_VAL(len) // header size: how many contigs (and uniq regions)
+    __READ_VAL(kc->h_l) // header size: how many contigs (and uniq regions)
     __READ_VAL(kc->id_l)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
+    kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
 
-    for (uint32_t i=0; i != len; ++i) {
-        Hdr *h = new Hdr;
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
         __READ_VAL(h->end_pos)
         __READ_VAL(blen)
         __READ_VAL(h->s_s)
@@ -102,11 +112,11 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
             __READ_VAL(contig.corr)
             __READ_VAL(contig.s)
             __READ_VAL(contig.e)
-            h->bnd.push_back(contig);
+            h->bnd = new std::list<Mantra>();
+            h->bnd->push_back(contig);
         }
         __READ_VAL(h->p_l)
         __READ_PTR(h->part, h->p_l)
-        kc->h.push_back(h);
     }
     res = 0;
 err:
@@ -154,6 +164,7 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
+    __WRITE_LMPTR(kc->hk)
 
     __WRITE_VAL(kc->kct_l)
     __WRITE_PTR(kc->kct, kc->kct_l)
@@ -173,6 +184,8 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     kc->kct = NULL;
     // 0: version number
     // 1: buffer sizes
+    __READ_LMPTR(kc->hk)
+
     __READ_VAL(kc->kct_l)
     __READ_PTR(kc->kct, kc->kct_l);
 
