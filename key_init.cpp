@@ -37,21 +37,13 @@ static Hdr*
 new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 {
     int c;
-    uint32_t p = ID;
+    uint32_t p = ID, part[ENS_HDR_PARTCT];
     const char* hdr;
     Hdr_umap::const_iterator got;
+    part[p] = kc->id_l;
 
-    if (h)
-        end_pos(kc, h);
+    end_pos(kc, h);
 
-    _buf_grow_err(kc->h, 1ul, 0, return NULL);
-    h = kc->h + kc->h_l++;
-    //    new Hdr;
-    h->part = (uint32_t*)malloc(ENS_HDR_PARTCT * sizeof(uint32_t));
-    ASSERT(h->part != NULL, return NULL);
-    h->bnd = new std::list<Mantra>();
-
-    h->part[p] = kc->id_l;
 
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
@@ -60,7 +52,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
             case ' ':
                 _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
                 if (p == IDTYPE) {
-                    char* q = kc->id + h->part[p];
+                    char* q = kc->id + part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
                             strncmp(q, "supercontig", strlen(q)) != 0 &&
                             strncmp(q, "nonchromosomal", strlen(q)) != 0) {
@@ -69,15 +61,15 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                 } else if (p != ID) {
                     p = UNKNOWN_HDR;
                 }
-                if (++p < ENS_HDR_PARTCT)
-                    h->part[p] = kc->id_l;
+                if (p != UNKNOWN_HDR && ++p < ENS_HDR_PARTCT)
+                    part[p] = kc->id_l;
                 continue;
             case ':':
                 _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
-                    char* q = kc->id + h->part[p];
+                    char* q = kc->id + part[p];
                     if (strncmp(q, "dna", strlen(q)) != 0) {
                         if (strncmp(q, "dna_rm", strlen(q)) == 0) {
                             EPR("\nWARNING: reference is repeatmasked");
@@ -91,8 +83,8 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                         } // else could still be ok.
                     }
                 }
-                if (++p < ENS_HDR_PARTCT)
-                    h->part[p] = kc->id_l;
+                if (p != UNKNOWN_HDR && ++p < ENS_HDR_PARTCT)
+                    part[p] = kc->id_l;
                 continue;
             default:
                 if (isspace(c)) {
@@ -106,41 +98,45 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     }
     if (c == -1)
         return NULL;
-    hdr = kc->id + h->part[ID];
+    hdr = kc->id + part[ID];
     got = lookup.find(hdr);
 
-    if (got != lookup.end()) {
-        Hdr* lh = NULL;
-        EPR("contig occurred twice: %s", hdr);
-        lh = got->second;
+    if (got == lookup.end()) {
 
-        if (p != NR && p != META) {
-            lh->p_l = UNKNOWN_HDR;
-            lh->bnd->back().e = h->end_pos = ~0u;
-            WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
-            return lh;
-        }
+        //    new Hdr;
+        _buf_grow_err(kc->h, 1ul, 0, return NULL);
+        h = kc->h + kc->h_l++;
 
-        // To fix order reversal would need kc->s movement and adaptations including h->s_s.
-        ASSERT(h->part[START] > lh->part[END], h = NULL; goto err, "Duplicate entries in reversed order");
-        ASSERT(lh == kc->h + kc->h_l - 1, h = NULL; goto err, "Duplicate entries, but not in series");
+        h->part = (uint32_t*)malloc(++p * sizeof(uint32_t));
+        ASSERT(h->part != NULL, return NULL);
+        memcpy(h->part, part, p * sizeof(*part));
 
-        // only insert when last contig had any sequence
-        Mantra contig = {0};
-
-        // correction propagation Not thoroughly checked yet...
-        contig.corr += h->bnd->back().corr - h->bnd->back().e; // start of current is added later.
-
-        if (h->bnd->back().e == h->bnd->back().s)
-            h->bnd->push_back(contig);
-
-        h = lh;
-
-    } else {
+        h->bnd = new std::list<Mantra>();
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
         h->s_s = kc->s_l;
         h->bnd->push_back({0});
+    } else {
+
+        EPR("contig occurred twice: %s", hdr);
+        // To fix order reversal would need kc->s movement and adaptations including h->s_s.
+        ASSERT(h->part[START] > got->second->part[END], h = NULL; goto err, "Duplicate entries in reversed order");
+        h = got->second;
+        ASSERT(h == kc->h + kc->h_l - 1, h = NULL; goto err, "Duplicate entries, but not in series");
+
+        // only insert when last contig had any sequence
+        if (h->bnd->back().e != h->bnd->back().s) {
+            if (p != NR && p != META) {
+                h->p_l = UNKNOWN_HDR;
+                h->end_pos = ~0u;
+                WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
+                return h;
+            }
+
+            // correction propagation Not thoroughly checked yet...
+            pos_t corr = h->bnd->back().corr - h->bnd->back().e; // start of current is added later.
+            h->bnd->push_back({.s=0, .e=0, .corr=corr });
+        }
     }
 
     if (p == NR || p == META) {
