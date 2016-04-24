@@ -340,4 +340,4 @@ sys	21m5.217s
 time (cat ${bn}.1.hdr.sam; ../uqct ../fakeq/${bn}.1.fastq.gz ../${bn}.2b -l 51) | samtools view -Sub - | $samtools sort - ${bn}.1.uqct
 
 
-
+gpg -o uqct_0.017.tar.gz.gpg -c uqct_0.017.tar.gz

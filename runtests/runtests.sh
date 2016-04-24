@@ -4,6 +4,9 @@ echo $hdesdir
 
 cd $hdesdir/runtests
 
+mode=valgrind
+[ "$1" = "-g" ] && mode=gdb
+
 FASTAS=($(ls -1 *.fa))
 for i in $(seq 0 $((${#FASTAS[@]}-1))); do
   echo -e "$i)\t${FASTAS[${i}]}"
@@ -24,17 +27,21 @@ while read BN KW RL; do
   if [ "$KW" != "$LASTKW" ]; then
     cd $hdesdir;
     make clean
-    DEFINES="-DKEY_LENGTH=${KW}" make;
+    [ "$mode" = "gdb" ] && DEFINES="-DKEY_LENGTH=${KW} -ggdb" make || DEFINES="-DKEY_LENGTH=${KW}" make;
     cd -
     LASTKW="$KW"
   fi
   rm $BN.{2b,nn,bd,ub,kc,uq};
-  valgrind --leak-check=full $hdesdir/uqct ${BN}.fa -l ${RL}
-  valgrind --leak-check=full $hdesdir/uqct ${BN}.fq ${BN}.2b -l ${RL} |
-  $samtools view -Sub - |
-  $samtools sort -m 20000000 - ${BN} &&
-  $samtools index ${BN}.bam
-
+  if [ "$mode" = "gdb" ];then
+    xterm -e "DEFINES='-DKEY_LENGTH=${KW}' gdb --args $hdesdir/uqct -f ${BN}.fa -l ${RL}"
+#    xterm -e "gdb --args $hdesdir/uqct -f ${BN}.fq ${BN}.2b -l ${RL}"
+  else
+    valgrind --leak-check=full $hdesdir/uqct ${BN}.fa -l ${RL}
+    valgrind --leak-check=full $hdesdir/uqct ${BN}.fq ${BN}.2b -l ${RL} |
+    $samtools view -Sub - |
+    $samtools sort -m 20000000 - ${BN} &&
+    $samtools index ${BN}.bam
+  fi
 done
 echo
 echo
