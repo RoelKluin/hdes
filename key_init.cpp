@@ -284,7 +284,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");
     _ACTION(save_seqb2(fh, kc), "writing seqb2: %s", fh[0].name);
     _ACTION(save_kc(fh + 3, kc), "writing keycounts file: %s", fh[3].name);
-    _ACTION(reopen(fh + 1, ".nn", ".bd"), "")
+    _ACTION(reopen(fh + 1, ".nn", ".bd"), "");
     _ACTION(save_boundaries(fh + 1, kc), "writing boundaries: %s", fh[1].name);
 
     res = 0;

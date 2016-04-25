@@ -68,31 +68,39 @@ static void handler(int sig) {
 }
 
 #define ASSERT(cond, action, ...) \
-if_ever (!(cond)) { \
-    WARN("assertion '" #cond "' failed " __VA_ARGS__);\
-    action;\
-}
+do {\
+    if_ever (!(cond)) { \
+        WARN("assertion '" #cond "' failed " __VA_ARGS__);\
+        action;\
+    }\
+} while(0)
 
 #define IFOUT(cond, ...) \
-if (cond) { \
-    EPR(__VA_ARGS__);\
-    goto out;\
-}
+do {\
+    if (cond) { \
+        EPR(__VA_ARGS__);\
+        goto out;\
+    }\
+} while(0)
 
 
 #define _ACTION0(fun, msg, ...)\
+do {\
     res = fun;\
     ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
-    EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);
+    EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);\
+} while(0)
 
 #define _EVAL(fun)\
     ASSERT((res = (fun)) >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
 
 
 #define _ACTION(fun, msg, ...)\
+do {\
     res = fun;\
     ASSERT(res >= 0, goto err, msg "(%u) at %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
-    EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);
+    EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);\
+} while(0)
 
 #define packed_struct struct __attribute__ ((__packed__))
 
@@ -130,6 +138,7 @@ if (cond) { \
 })
 
 #define _buf_grow_err_m(buf, step, m, shft, error_action) \
+do {\
 if (((buf##_l + step) >> shft) >= (1ul << m)) {\
     EPQ(dbg < 0, #buf " realloc, %lu", sizeof(*(buf)) << (buf##_m + 1));\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
@@ -137,7 +146,9 @@ if (((buf##_l + step) >> shft) >= (1ul << m)) {\
         error_action;\
     }\
     buf = __t;\
-}
+}\
+} while(0)
+
 #define _buf_grow(buf, step, shft) _buf_grow_err_m(buf, step, buf##_m, shft, return -ENOMEM)
 #define _buf_growm(buf, step, m, shft) _buf_grow_err_m(buf, step, m, shft, return -ENOMEM)
 #define _buf_grow0(buf, step) _buf_grow_err_m(buf, step, buf##_m, 0, return -ENOMEM)
@@ -152,19 +163,23 @@ if (((buf##_l + step) >> shft) >= (1ul << m)) {\
 
 
 #define _buf_grow2(buf, step, s) \
-if (buf##_l + step >= (1ul << buf##_m)) {\
-    /*fprintf(stderr, #buf " realloc, %lu\n", sizeof((*buf)) << (buf##_m + 1));fflush(NULL);*/\
-    s = (decltype(buf))realloc(buf, sizeof((*buf)) << ++(buf##_m));\
-    if_ever (s == NULL) return -ENOMEM;\
-    buf = s;\
-    s += buf##_l;\
-}
+do {\
+    if (buf##_l + step >= (1ul << buf##_m)) {\
+        /*fprintf(stderr, #buf " realloc, %lu\n", sizeof((*buf)) << (buf##_m + 1));fflush(NULL);*/\
+        s = (decltype(buf))realloc(buf, sizeof((*buf)) << ++(buf##_m));\
+        if_ever (s == NULL) return -ENOMEM;\
+        buf = s;\
+        s += buf##_l;\
+    }\
+} while (0)
 
 #define _buf_free(buf) \
-if (buf != NULL) {\
-    free(buf);\
-    /*buf = NULL;*/\
-}
+do {\
+    if (buf != NULL) {\
+        free(buf);\
+        /*buf = NULL;*/\
+    }\
+} while (0)
 /* copy buffer and return pointer to one past it
  * s must be zero terminated, and out have sufficient size always.
  */

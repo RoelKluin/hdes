@@ -413,7 +413,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 
         len = strlen(fh[2].name);
         strncpy(fh[0].name, fh[2].name, ++len);
-        _ACTION0(reopen(fh, ext[0], ext[5]), "")
+        _ACTION0(reopen(fh, ext[0], ext[5]), "");
     }
     ASSERT(len < 256, return -EFAULT, "filename too long: %s", fh[0].name);
     if (fh[1].name == NULL)
@@ -431,22 +431,22 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
     if (fh[0].fp) {
         mode = 2;
     } else {
-         _ACTION0(reopen(fh, ext[5], ext[4]), "trying to open %s instead", ext[4])
+         _ACTION0(reopen(fh, ext[5], ext[4]), "trying to open %s instead", ext[4]);
         mode = fh[0].fp != NULL;
     }
     if (mode) {
-        _ACTION(load_boundaries(fh, &kc), "loading boundary file %s", fh[0].name)
+        _ACTION(load_boundaries(fh, &kc), "loading boundary file %s", fh[0].name);
     }
 
     // keycount file did not exist, check twobit file.
     _ACTION0(reopen(fh, ext[mode == 2 ? 5 : 4], ext[1]),
-                "%s does%s exist", ext[1], fh[0].fp ? "" : " not")
-    _ACTION0(reopen(fh + 1, ext[5], ext[2]), "%s does%s exist", ext[2], fh[1].fp ? "" : " not")
-    _ACTION0(reopen(fh + 3, ext[5], ext[3]), "%s does%s exist", ext[3], fh[3].fp ? "" : " not")
+                "%s does%s exist", ext[1], fh[0].fp ? "" : " not");
+    _ACTION0(reopen(fh + 1, ext[5], ext[2]), "%s does%s exist", ext[2], fh[1].fp ? "" : " not");
+    _ACTION0(reopen(fh + 3, ext[5], ext[3]), "%s does%s exist", ext[3], fh[3].fp ? "" : " not");
 
     if (mode && fh[0].fp && fh[1].fp && fh[3].fp) {
-         _ACTION(load_seqb2(fh, &kc), "loading twobit sequence file")
-         _ACTION(load_kc(fh + 3, &kc), "loading keycounts file")
+         _ACTION(load_seqb2(fh, &kc), "loading twobit sequence file");
+         _ACTION(load_kc(fh + 3, &kc), "loading keycounts file");
     } else {
         bool found = false;
         for (int i=0; i != 4; ++i) {
@@ -468,12 +468,12 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
         }
         if (found) goto err;
         EPR("starting from scratch.");
-        _ACTION(fa_read(fh, &kc), "reading fasta")
+        _ACTION(fa_read(fh, &kc), "reading fasta");
     }
     if (mode < 2) {
-        _ACTION(reopen(fh, ext[1], ext[5]), "")
-        _ACTION(reopen(fh + 3, ext[3], ext[6]), "")
-        _ACTION(extd_uniqbnd(&kc, fh), "extending unique boundaries")
+        _ACTION(reopen(fh, ext[1], ext[5]), "");
+        _ACTION(reopen(fh + 3, ext[3], ext[6]), "");
+        _ACTION(extd_uniqbnd(&kc, fh), "extending unique boundaries");
     }
     EPR("All seems fine.");
 err:

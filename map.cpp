@@ -75,15 +75,15 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
             EPQ(dbg > 16, "%lu > %lu?", (h->s_s + (*bd).s), *pos);
             --bd;
         }
-        ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT)
+        ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
     }
-    ASSERT (h != kc->h + kc->h_l, return -EFAULT)
+    ASSERT (h != kc->h + kc->h_l, return -EFAULT);
     EPQ(dbg > 6, "%ld <= %u + %u", *pos - h->s_s, (*bd).corr, bufi);
 
     ASSERT(*pos + (*bd).corr > h->s_s + bufi, return -EFAULT,
             "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, h->s_s + bufi
-            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/)
+            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/);
     *pos += (*bd).corr - h->s_s + KEY_WIDTH - bufi - 1;
 
     return h->part[0];
@@ -326,14 +326,14 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
     // TODO: first read in several reads to verify 
 
-    _ACTION(init_fq(seq), "intializing memory")
+    _ACTION(init_fq(seq), "intializing memory");
 
     for (int i=0; i != 3; ++i) {
         if (fhio[i]->name == NULL) {
             fhio[i]->name = &file[len*i];
             strncpy(fhio[i]->name, fhio[1]->name, len);
             _ACTION0(reopen(fhio[i], ext[1], ext[i]), 
-                    "%s %s", ext[i], fhio[i]->fp ? "exists" : "does not exist")
+                    "%s %s", ext[i], fhio[i]->fp ? "exists" : "does not exist");
         }
     }
     ASSERT(fhio[0]->fp && fhio[1]->fp && fhio[2]->fp, return -EFAULT,
@@ -341,17 +341,17 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     kc.ndxkct = _buf_init_arr_err(kc.ndxkct, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
-    _ACTION(load_kc(fhio[0], &kc), "loading keycounts file")
-    _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file")
-    _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file")
+    _ACTION(load_kc(fhio[0], &kc), "loading keycounts file");
+    _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file");
+    _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file");
 
-    _ACTION(reopen(fhio[0], ext[0], ext[3]), "")
-    _ACTION(ammend_kc(fhio[0], &kc), "ammending keycounts from file")
+    _ACTION(reopen(fhio[0], ext[0], ext[3]), "");
+    _ACTION(ammend_kc(fhio[0], &kc), "ammending keycounts from file");
     
     // 4) print header
     print_hdr(&kc, cmdl);
     // 5) open fq for reading
-    _ACTION(fq_read(&kc, seq), "mapping reads")
+    _ACTION(fq_read(&kc, seq), "mapping reads");
     //...
     EPR("All seems fine.");
 err:

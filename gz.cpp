@@ -231,7 +231,7 @@ reopen(struct gzfh_t* fhio, const char* search, const char* replace)
     int res = rclose(fhio);
     if (res < 0)
         return res;
-    _ACTION(fn_convert(fhio, search, replace), "")
+    _ACTION(fn_convert(fhio, search, replace), "");
 
     fhio->fp = fopen(fhio->name, "r");
     res = 0;
