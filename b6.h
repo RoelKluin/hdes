@@ -113,13 +113,13 @@ typedef uint64_t seq_t;
         t ^= -((c & 0x8e) == 0x4) & B6_RNA;\
         t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
         t = -((t | B6_MASK) == B6_MASK) & (t >> 1);\
-        dna = (dna << 2) | t;\
-        rev = ((seq_t)t << KEYNT_TOP) | (rev >> 2);\
+        dna = dna << 2 | t;\
+        rev = (seq_t)t << KEYNT_TOP | rev >> 2;\
 })
 
 #define add_b(t, dna, rev) ({\
-        dna = (dna << 2) | t;\
-        rev = ((seq_t)t << KEYNT_TOP) | (rev >> 2);\
+        dna = dna << 2 | t;\
+        rev = (seq_t)t << KEYNT_TOP | rev >> 2;\
 })
 
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
@@ -128,9 +128,9 @@ unsigned b6(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 #define REVSEQ(dna, m) ({\
     m = ODD_TWOBIT_MASK;\
-    dna = ((dna & m) << 2) | ((dna & ~m) >> 2);\
+    dna = (dna & m) << 2 | (dna & ~m) >> 2;\
     m = ODD_NIBBLE_MASK;\
-    dna = ((dna & m) << 4) | ((dna & ~m) >> 4);\
+    dna = (dna & m) << 4 | (dna & ~m) >> 4;\
     m = ODD_BYTE_MASK;\
     asm ("bswap %0" : "=r" (dna) : "0" (dna));\
     dna >> ((sizeof(dna) << 3) - (KEY_WIDTH << 1));\

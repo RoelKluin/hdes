@@ -240,7 +240,8 @@ static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
             uint64_t *k = kc->kct + *ndxkct;
             // XXX: for this to work also non-uniq kcts should be sorted on pos?
             if (*k & DUP_BIT) {
-                if (k - kc->kct >= koffs || (_B2POS_OF(kc, k) + ho) > seq.p) { // first occurance of pot.multiple mv to start.
+                if (k - kc->kct >= koffs || _B2POS_OF(kc, k) + ho > seq.p) {
+                    // first occurance of pot. multiple, mv to start.
                     ASSERT(*sk <= k, return _PRNT_SEQ_BY_POS(kc, B2POS_OF(**sk) + ho));
                     *k &= ~DUP_BIT; // unset for 1st occurance
                     _EVAL(swap_kct(kc, *sk, k, ndxkct, ho));
@@ -265,15 +266,15 @@ static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
                         }
                     }
                 }
-            } else if ((_B2POS_OF(kc, k) + ho) < seq.p) { // no dup after all
+            } else if (_B2POS_OF(kc, k) < seq.p - ho) { // no dup after all
                 *k |= DUP_BIT;
                 --kc->reeval;
             }
             *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
-            *k |= ((uint64_t)!seq.t << ORIENT_SHFT) | (seq.p - ho); // set new pos and strand
+            *k |= (uint64_t)!seq.t << ORIENT_SHFT | (seq.p - ho); // set new pos and strand
             _EVAL(get_nextnt(kc, seq.p));
             seq.dna = _seq_next(res, seq);
-        } while (++seq.p != (p + ho));
+        } while (++seq.p != p + ho);
 
         if (prev != p) {
             // a new region starts if not adjoining end or at start
