@@ -94,7 +94,7 @@ int main(int argc, char* const* argv)
 //    seq.fh[0].fp = seq.fh[2].fp = stdin; // default to stdin
     seq.fh[fhsz - 1].fp = stdout;
     seq.fh[fhsz - 1].write = &b2_write;
-    signal(SIGSEGV, handler);   // install our handler
+    signal(SIGSEGV, handler);   // needed for trace, gdb record complains here
 
 
     /* parse cmdline args */
@@ -201,7 +201,7 @@ int main(int argc, char* const* argv)
 //                EPR("== Readlength needed for indexing.");
 //                goto out;
 //            }
-            c = fa_index(seq.fh, seq.readlength);
+            c = fa_index(seq.fh, seq.mode, seq.readlength);
             if (c < 0) {
                 EPR("== failed to create keyct.");
                 goto out;

@@ -212,7 +212,7 @@ case 'G':   c &= 0x3;
             /*ASSERT((kc->kct[*n] & ((seq.t != 0) << ORIENT_SHFT)) == 0 &&
                     (kc->kct[*n] & (kc->s_l + 1)) == 0 &&
                     (((seq.t != 0) << ORIENT_SHFT) & (kc->s_l + 1)) == 0, return -EFAULT);*/
-            kc->kct[*n] ^= ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | kc->s_l; // set latest pos + orient
+            kc->kct[*n] ^= ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | (kc->s_l - h->s_s); // set latest pos + orient
             break;
         }
 case 'N':   i = (KEY_WIDTH - 1) << 8;
@@ -251,7 +251,7 @@ default:    if (isspace(c))
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                 }
                 h = new_header(kc, h, g, gc, lookup);
-                hk.kct = 0;
+                // hk.kct is cumulutive;
                 ASSERT(h != NULL, return -EFAULT);
 
                 i = (KEY_WIDTH - 1) << 8;

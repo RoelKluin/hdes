@@ -19,14 +19,6 @@
 #include "gz.h"
 #include "b6.h"
 
-// length of the next NTs, when in sequence format, i.e. the lower bits
-// contain a twobit rather than a index to a extended keycount (kct_ext)
-//#define B2LEN_SHFT 58
-//#define ONE_B2SEQ (1ul << B2LEN_SHFT)
-
-//#define B2SEQ_MASK  (ONE_B2SEQ - 1ul)
-//#define B2LEN_MASK  (~B2SEQ_MASK)
-
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
 //#define BIG_SHFT 36
@@ -51,16 +43,11 @@
 
 #define _PRNT_SEQ_BY_POS(kc, _p) ({\
     keyseq_t __seq = {0};\
-    EPR0(Pfmt "\t", (pos_t)_p);\
-    __seq.p = (pos_t)_p - KEY_WIDTH;\
-    _build_key(kc, __seq, __seq.p, (pos_t)_p, __seq.t);\
+    EPR0("%lu\t", _p);\
+    __seq.p = _p - KEY_WIDTH;\
+    _build_key(kc, __seq, __seq.p, (_p), __seq.t);\
     print_seq(&__seq);\
     -1;\
-})
-
-#define _PRNT_SEQ_BY_K(kc, k) ({\
-    EPR0("koffs:%lu\t",  K_OFFS(kc, k));\
-    _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k));\
 })
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
@@ -70,10 +57,6 @@
         ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
         ASSERT(k - kc->kct >= 0, return -EFAULT);\
         ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
-        if (B2POS_OF(*k) == dbgpos) {\
-            EPR("observed dbggpos at koffs:%lu (%s:%u)", K_OFFS(kc, k), __FILE__, __LINE__);\
-            _PRNT_SEQ_BY_POS(kc, dbgpos);\
-        }\
         B2POS_OF(*k);\
 })
 //#define B2POS_lt(a, b) (_B2POS_OF(a) < _B2POS_OF(b))
@@ -148,9 +131,9 @@ packed_struct Mantra { // not yet covered by unique keys
     } while(0)
 
 #define _build_key(kc, seq, p, pend, t)\
-    ASSERT(p < pend, return -EFAULT, Pfmt " >= " Pfmt "?", p, pend);\
-    ASSERT(pend < (kc->s_l << 2), return -EFAULT, Pfmt "/%lu?", pend, kc->s_l);\
-    ASSERT(p >= 0, return -EFAULT, Pfmt " < 0 (" Pfmt ")?", p, pend);\
+    ASSERT(p < pend, return -EFAULT, "%lu >= %lu?", p, pend);\
+    ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
+    ASSERT(p >= 0, return -EFAULT, "%lu < 0 (%lu)?", p, pend);\
     do {\
         t = (kc->s[p>>2] >> ((p&3) << 1)) & 3;\
         seq.dna = _seq_next(t, seq);\
@@ -168,23 +151,19 @@ packed_struct Mantra { // not yet covered by unique keys
 
 #define DEBUG 1
 
-packed_struct kct_ext {
-    uint64_t m: 8;
-    uint64_t l: 40;
-    uint64_t* b2;
-};
-
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
     uint64_t s_s;
     uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    uint32_t end_pos, end_corr; // mapable is only used in fa.cpp
-    std::list<Mantra> *bnd; //
+    std::list<Mantra> *bnd; // XXX: waarom van header? Mantra *end in plaats, list in kct_t?
+    Mantra* mend;
+    uint32_t end_pos; // mapable is only used in fa.cpp
     uint8_t p_l;
 };
 
+// to look up key offset to 1) respective header and 2) for what extension the keys became uniq
 struct HK {
     uint32_t kct;
     uint32_t hoffs;
@@ -196,7 +175,7 @@ struct kct_t {
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
-    uint64_t** kct_scope;
+    uint64_t* kct_next;
     uint64_t s_l, totNts, h_l;
     uint32_t id_l, kct_l, hk_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
@@ -204,6 +183,7 @@ struct kct_t {
     Hdr* h;
     HK* hk;
     std::list<Mantra>::iterator bdit;
+    std::list<Mantra> bnd;
     // could be possible to move bnd here.
 };
 
@@ -234,7 +214,7 @@ struct kct_t {
  */
 void free_kc(kct_t* kc);
 int fa_read(struct gzfh_t*, kct_t*);
-int fa_index(struct gzfh_t*, unsigned readlength);
+int fa_index(struct gzfh_t*, uint64_t optm, unsigned readlength);
 
 int save_seqb2(struct gzfh_t*, kct_t*);
 int load_seqb2(struct gzfh_t*, kct_t*);

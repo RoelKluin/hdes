@@ -22,10 +22,10 @@ show_mantras(kct_t C*C kc, Hdr *C h)
         do {
             keyseq_t seq = {0};
             pos_t p = (*it).s;
-            seq.p = p + KEY_WIDTH;
-            _build_key(kc, seq, p, seq.p, seq.t);
+            seq.p = h->s_s + p;
+            _build_key(kc, seq, seq.p, h->s_s + p + KEY_WIDTH, seq.t);
             EPR0("[%s%u]:\t(" Pfmt "+) %lu - %lu\t", it != kc->bdit ? "" : "* ",
-                    j++, (*it).corr, (*it).s + h->s_s, (*it).e + h->s_s);
+                    j++, (*it).corr, h->s_s + (*it).s, h->s_s + (*it).e);
             print_dna(seq.dna);
         } while (++it != h->bnd->end());
     } else {

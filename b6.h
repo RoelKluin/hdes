@@ -144,7 +144,8 @@ inline seq_t revcmp(seq_t dna) /* Reverse Complement, is ok. */
 }
 
 struct __attribute__ ((__packed__)) keyseq_t {
-    seq_t dna, rc, t, p;
+    seq_t dna, rc, t;
+    uint64_t p;
 };
 
 #define _get_ndx(t, dna, rc) ({\
