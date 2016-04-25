@@ -25,7 +25,7 @@
 static int
 start_dbg(kct_t *C kc, Hdr *C h, seq_t C dna)
 {
-    char C* hdr = kc->id + h->part[0];
+    char C *hdr = kc->id + h->part[0];
 
     // TODO: if not start of contig or just after a N-stretch, the dna key should be
     // just after an unique key. we could check this.
@@ -45,9 +45,9 @@ start_dbg(kct_t *C kc, Hdr *C h, seq_t C dna)
 }
 
 void
-free_kc(kct_t* kc)
+free_kc(kct_t *kc)
 {
-    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
+    for (Hdr *h = kc->h; h != kc->h + kc->h_l; ++h) {
         free(h->part);
         delete h->bnd;
     }
@@ -67,7 +67,7 @@ get_nextnt(kct_t C*C kc, pos_t p)
     return (kc->s[p>>2] >> ((p&3) << 1)) & 3;
 }
 
-static inline void start_region(kct_t* kc, Hdr *C h, C pos_t b2start, C pos_t last_uq_pos)
+static inline void start_region(kct_t *kc, Hdr *C h, C pos_t b2start, C pos_t last_uq_pos)
 {
     if ((*kc->bdit).e == b2start) {
         (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
@@ -81,7 +81,7 @@ static inline void start_region(kct_t* kc, Hdr *C h, C pos_t b2start, C pos_t la
 
 // reset and remove non-uniqs, move uqs to start of kc->kct array
 static inline int
-extd_uq_by_p(kct_t* kc, pos_t p, pos_t pend, uint64_t ho, std::set<uint64_t> &pk)
+extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint64_t ho, std::set<uint64_t> &pk)
 {
     seq_t *ndxkct;
     int res;
@@ -152,7 +152,7 @@ err:
     return res;    
 }
 
-static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint64_t ho)
+static int swap_kct(kct_t *kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint64_t ho)
 {
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
@@ -176,11 +176,11 @@ static int swap_kct(kct_t* kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
 }
 
 static int
-place_uniques(kct_t* kc, uint64_t* sk, uint64_t* &kend, uint64_t ho, std::set<uint64_t> &pk)
+place_uniques(kct_t *kc, uint64_t *sk, uint64_t* &kend, uint64_t ho, std::set<uint64_t> &pk)
 {
     pos_t p;
     int res;
-    HK* hk = kc->hk;
+    HK *hk = kc->hk;
 
     for (std::set<uint64_t>::iterator it = pk.begin(); it != pk.end(); ++it) {
         uint64_t kv = *it;
@@ -305,7 +305,7 @@ err:
  * 
  */
 static int
-ext_uq_iter(kct_t* kc)
+ext_uq_iter(kct_t *kc)
 {
     int res;
 
@@ -368,7 +368,7 @@ err:
 }
 
 static int
-extd_uniqbnd(kct_t* kc, struct gzfh_t* fhout)
+extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res;
     kc->uqct = kc->reeval = 0;
@@ -394,7 +394,7 @@ err:
 }
 
 int
-fa_index(struct gzfh_t* fh, uint64_t optm, unsigned readlength)
+fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 {
     int len, res = -ENOMEM;
     char file[1024];
@@ -402,7 +402,7 @@ fa_index(struct gzfh_t* fh, uint64_t optm, unsigned readlength)
     kc.readlength = readlength;
     unsigned mode;
 
-    C char* ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
+    C char *ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
 
     if (fh[0].name) {
         len = strlen(fh[0].name);
