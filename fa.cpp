@@ -61,21 +61,10 @@ free_kc(kct_t *kc)
 }
 
 static inline C int
-get_nextnt(kct_t C*C kc, pos_t p)
+get_nextnt(kct_t C*C kc, uint64_t p)
 {
     ASSERT(p < (kc->s_l << 2), return -EFAULT, Pfmt "/%lu", p, kc->s_l);
     return (kc->s[p>>2] >> ((p&3) << 1)) & 3;
-}
-
-static inline void start_region(kct_t *kc, Hdr *C h, C pos_t b2start, C pos_t last_uq_pos)
-{
-    if ((*kc->bdit).e == b2start) {
-        (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
-    }  else if ((*kc->bdit).e != last_uq_pos) { // not downstream adjoining.
-        h->bnd->insert(kc->bdit, *kc->bdit); // insert a copy of the current
-        // start is earlier to enable building of the 1st key.
-        (*kc->bdit).s = last_uq_pos - KEY_WIDTH;
-    }
 }
 
 
@@ -94,13 +83,20 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint64_t ho, std::set<uint64_t> &pk
     if (p + kc->ext + 1 >= pend && p + 1 != pend) { // within scope and keys to re-evaluate
 
         // could continue with key if adjacent
+        seq.p = pend + ho - KEY_WIDTH;
+        _build_key(kc, seq, seq.p, pend + ho, seq.t);
+        ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
+        uint64_t *k = kc->kct + *ndxkct;
+        ASSERT(IS_UQ(k), return _PRNT_SEQ_BY_POS(kc, pend + ho), Pfmt ", %lu", pend, _B2POS_OF(kc, k));
+
         seq.p = p + ho - KEY_WIDTH;
         _build_key(kc, seq, seq.p, p + ho, seq.t);
         ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
+        k = kc->kct + *ndxkct;
+        ASSERT(IS_UQ(k), return _PRNT_SEQ_BY_POS(kc, p + ho), Pfmt ", %lu", p, _B2POS_OF(kc, k));
 
-        uint64_t *k;
         do {
-            _EVAL(get_nextnt(kc, p));
+            _EVAL(get_nextnt(kc, p + ho));
             seq.dna = _seq_next(res, seq);
 
             ndxkct = _get_kct(kc, seq, seq.t, res = -EFAULT; goto err);
@@ -119,15 +115,12 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint64_t ho, std::set<uint64_t> &pk
                     *k |= ((uint64_t)!seq.t << ORIENT_SHFT) | p;
                     pk.insert(*k);
                 }
-            } else {
-                ASSERT(_B2POS_OF(kc, k) < p, res = -EFAULT; goto err);
-                // not certain yet, but may be unique. They are then handled in next iter.
+            } else { // may be unique - next iter.
+                ++kc->reeval;
             }
-
             if (IS_DBG_K(kc, k)) dbgndxkct = *ndxkct;
         } while (++p != pend);
-
-        ASSERT(IS_UQ(k), return -EFAULT, Pfmt ", %lu", p, _B2POS_OF(kc, k));
+        ASSERT(IS_UQ(k), return _PRNT_SEQ_BY_POS(kc, p + ho - 1), Pfmt ", %lu", p, _B2POS_OF(kc, k));
 
         // need to determine kcts for inbetween. Same can occur twice, use end instead.
     }
@@ -137,9 +130,11 @@ err:
 }
 
 static int
-reached_boundary(kct_t* kc, Hdr* h, C pos_t prev, std::set<uint64_t> &pk)
+reached_boundary(kct_t *kc, Hdr *h, uint64_t C*C prevk, std::set<uint64_t> &pk)
 {
+    C pos_t prev = prevk ? B2POS_OF(*prevk) : (*kc->bdit).s + KEY_WIDTH - 1;
     int res = 0;
+    show_mantras(kc, h);
     if ((prev + kc->ext > (*kc->bdit).e) && ((*kc->bdit).e > prev)) {
         if ((*kc->bdit).s == (*kc->bdit).s + KEY_WIDTH) {
             kc->bdit = h->bnd->erase(kc->bdit);
@@ -175,6 +170,7 @@ static int swap_kct(kct_t *kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uin
     return 0;
 }
 
+// XXX XXX hk need insertions.
 static int
 place_uniques(kct_t *kc, uint64_t *sk, uint64_t* &kend, uint64_t ho, std::set<uint64_t> &pk)
 {
@@ -203,24 +199,45 @@ err:
     return res;
 }
 
+/*
+ * kc->bdit contains ranges per contig for sequence cannot yet be mapped, but may become so.
+ * Initially there are one or more dependent on the presence and number of N-stretches.
+ * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
+ * shrinks (here).
+ */
+static int
+uq_bounded(kct_t *kc, Hdr *h, uint64_t C*C prevk, uint64_t C*C thisk, C pos_t prev, C pos_t p)
+{
+    if (prevk) {
+        ASSERT(prev < p, return -EFAULT);
+        C pos_t b2end = (*kc->bdit).e;
+        (*kc->bdit).e = prev; // shift end
+        if (thisk) {
+            h->bnd->insert(kc->bdit, *kc->bdit); // insert a copy of the current
+            (*kc->bdit).e = b2end; // restore orig end
+        }
+    } else {
+        (*kc->bdit).s = p; // shift start
+    }
+    return 0;
+}
 
-static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
-        C pos_t p, C uint32_t koffs, uint64_t** sk, std::set<uint64_t> &pk)
+
+static int
+handle_range(kct_t *kc, Hdr *h, uint64_t C*C prevk, uint64_t C*C thisk,
+        C uint32_t koffs, uint64_t** sk, std::set<uint64_t> &pk)
 {
     int res;
     seq_t *ndxkct;
     keyseq_t seq = {0};
     uint64_t ho = h->s_s;
-    C pos_t b2start = (*kc->bdit).s + ho;
-    C pos_t b2end = (*kc->bdit).e + ho;
+    C pos_t b2start = (*kc->bdit).s;
+    C pos_t b2end = (*kc->bdit).e;
+    pos_t prev = prevk ? B2POS_OF(*prevk) : b2start + KEY_WIDTH - 1;
+    C pos_t p = thisk ? B2POS_OF(*thisk) : b2end;
 
-    if (p - prev < kc->ext + 1) { // a 2nd uq
-        if (prev == b2start + KEY_WIDTH - 1) {
-            (*kc->bdit).s = p - ho; // shift start
-        } else {
-            //(*kc->bdit).e = prev;
-            ASSERT (prev < p, return -EFAULT);
-        }
+    if (p - prev <= kc->ext + 1) { // a 2nd uq
+        _EVAL(uq_bounded(kc, h, prevk, thisk, prev, p));
 
         // what if all remaining occurances happen between two boundaries?
         if (prev - p > 1)
@@ -238,26 +255,31 @@ static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
         do {
             ndxkct = _get_kct(kc, seq, seq.t, return -EFAULT);
             uint64_t *k = kc->kct + *ndxkct;
-            // XXX: for this to work also non-uniq kcts should be sorted on pos?
+
             if (*k & DUP_BIT) {
                 if (k - kc->kct >= koffs || _B2POS_OF(kc, k) + ho > seq.p) {
                     // first occurance of pot. multiple, mv to start.
                     ASSERT(*sk <= k, return _PRNT_SEQ_BY_POS(kc, B2POS_OF(**sk) + ho));
                     *k &= ~DUP_BIT; // unset for 1st occurance
-                    _EVAL(swap_kct(kc, *sk, k, ndxkct, ho));
+//                    _EVAL(swap_kct(kc, *sk, k, ndxkct, ho)); //XXX XXX: valid ???
                     ++kc->reeval;
-                    k = (*sk)++;
-                } else if (_B2POS_OF(kc, k) + ho == seq.p) {
+//                    k = (*sk)++;
+                } else if (B2POS_OF(*k) == seq.p - ho) {
                     // all but last positions were excised, unique after all!
+                    EPR("HERE %u, %u", k - kc->kct, koffs);
+                    _PRNT_SEQ_BY_POS(kc, B2POS_OF(*k) + ho);
+                    _EVAL(uq_bounded(kc, h, prevk, thisk, prev, seq.p - ho));
                     pk.insert(*k);
-                    unsigned len = seq.p - ho - prev;
-                    if (len < kc->ext + 1) {
-                        if (len > 1)
-                            _EVAL(extd_uq_by_p(kc, prev, seq.p - ho, ho, pk));
-                        prev = seq.p - ho;
+                    unsigned at = seq.p - ho;
+                    if (at < prev + kc->ext + 1) {
+                        if (at > prev + 1)
+                            _EVAL(extd_uq_by_p(kc, prev, at, ho, pk));
+                        prev = at;
                         if (p - prev < kc->ext + 1) {
-                            seq.p = ho + p - KEY_WIDTH;
-                            _build_key(kc, seq, seq.p, ho + p, seq.t);
+                            //rollback entirely
+                            _EVAL(uq_bounded(kc, h, prevk, NULL, prev, p));
+                            seq.p = p + ho - KEY_WIDTH;
+                            _build_key(kc, seq, seq.p, p + ho, seq.t);
                             ndxkct = _get_kct(kc, seq, seq.t, return -EFAULT);
                             if (p - prev > 1)
                                 _EVAL(extd_uq_by_p(kc, prev, p, ho, pk));
@@ -275,16 +297,6 @@ static int handle_range(kct_t* kc, Hdr* h, pos_t &prev,
             _EVAL(get_nextnt(kc, seq.p));
             seq.dna = _seq_next(res, seq);
         } while (++seq.p != p + ho);
-
-        if (prev != p) {
-            // a new region starts if not adjoining end or at start
-            if (p <= b2end && prev != b2start + KEY_WIDTH - 1)
-                start_region(kc, h, b2start + KEY_WIDTH, prev);
-            // a region ends if not adjoining start or at end
-            if (b2start + KEY_WIDTH  <= p - KEY_WIDTH)
-                (*kc->bdit).e = p - ho;
-            prev = p;
-        } // else rollback entirely occurred.
     }
     res = 0;
 err:
@@ -310,15 +322,13 @@ ext_uq_iter(kct_t *kc)
 {
     int res;
 
-    uint64_t * kend = kc->kct + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
-    HK* hk = kc->hk;
-    Hdr* h = kc->h + hk->hoffs;
-    ASSERT(kc->uqct < kc->kct_l, return -EFAULT);
+    uint64_t *kend = kc->kct + kc->kct_l - kc->last_uqct - 1; // location after uniques, from last time
+    HK *hk = kc->hk;
+    Hdr *h = kc->h + hk->hoffs;
+    uint64_t *kctnext = kc->kct_next; // TODO: use this instead of pk below.
     std::set<uint64_t> pk;     // storage for unique key offsetss
     kc->bdit = h->bnd->begin();
-    pos_t b2end = (*kc->bdit).e;
-    pos_t prev = (*kc->bdit).s + KEY_WIDTH - 1;
-
+    uint64_t *prev = NULL;
 
     // keys are kept sorted, first on uniqueness, then on position.
 
@@ -326,31 +336,30 @@ ext_uq_iter(kct_t *kc)
     uint64_t *sk = kc->kct;
     for (uint64_t *k = kc->kct; k < kend; ++k) {
         if (IS_UQ(k)) {
-            // p is one-based. kc->s_l already incremented at write.
-            C pos_t p = _B2POS_OF(kc, k);
             pk.insert(*k);
-            if (k - kc->kct > hk->kct) {
+            if (k - kc->kct >= hk->koffs) {
 
-                _EVAL(handle_range(kc, h, prev, b2end, hk->kct, &sk, pk));
+                _EVAL(handle_range(kc, h, prev, NULL, hk->koffs, &sk, pk));
                 // handle last boundary
                 _EVAL(reached_boundary(kc, h, prev, pk));
 
-                while (k - kc->kct > hk->kct)
+                while (k - kc->kct >= hk->koffs)
                     ++hk;
                 h = kc->h + hk->hoffs;
 
                 kc->bdit = h->bnd->begin();
-                while (p >= (*kc->bdit).e)
+                // one-based. kc->s_l already incremented at write.
+                while (B2POS_OF(*k) >= (*kc->bdit).e)
                     ++kc->bdit;
 
-                b2end = (*kc->bdit).e;
-                prev = (*kc->bdit).s + KEY_WIDTH - 1;
+                prev = NULL;
             }
-            _EVAL(handle_range(kc, h, prev, p, hk->kct, &sk, pk));
-            prev = p;
+            _EVAL(handle_range(kc, h, prev, k, hk->koffs, &sk, pk));
+            prev = k;
         }
     }
-    _EVAL(handle_range(kc, h, prev, b2end, hk->kct, &sk, pk));
+    _EVAL(handle_range(kc, h, prev, NULL, hk->koffs, &sk, pk));
+    _EVAL(reached_boundary(kc, h, prev, pk));
 
     _EVAL(place_uniques(kc, sk, kend, h->s_s, pk));
     //ASSERT(0, return -EFAULT, "(NOT!;) end of loop reached! (TODO: swapping..)");

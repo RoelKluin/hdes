@@ -173,6 +173,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     Hdr* h = NULL;
     keyseq_t seq = {0};
     HK hk = {0};
+    hk.koffs;
     kc->s_l = 0;
     kc->uqct = 0;
     kc->totNts = 0;
@@ -194,7 +195,7 @@ case 'G':   c &= 0x3;
             _addtoseq(kc->s, c); // kc->s_l grows here.
             seq_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
             if (*n == NO_KCT) {
-                ++hk.kct;
+                ++hk.koffs;
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
                 kc->kct[*n] = 0ul;
@@ -251,7 +252,7 @@ default:    if (isspace(c))
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                 }
                 h = new_header(kc, h, g, gc, lookup);
-                // hk.kct is cumulutive;
+                // hk.koffs is cumulutive;
                 ASSERT(h != NULL, return -EFAULT);
 
                 i = (KEY_WIDTH - 1) << 8;

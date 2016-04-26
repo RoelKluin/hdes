@@ -165,7 +165,7 @@ struct Hdr {
 
 // to look up key offset to 1) respective header and 2) for what extension the keys became uniq
 struct HK {
-    uint32_t kct;
+    uint32_t koffs;
     uint32_t hoffs;
     uint32_t ext;
 };
