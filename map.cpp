@@ -168,7 +168,7 @@ default:            seq_next(seq);
 		    }
 		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
 		    // seq.t only has strand at offset KEY_WIDTH.
-                    ndx = _get_ndx(seq.t, seq.dna, seq.rc);
+                    ndx = get_ndx(seq);
                     uint32_t k = kc->ndxkct[ndx];
  EPR("%u:%lx\t%x", i, (uint64_t)ndx, k);
 		    // put not recognized and multimapper keys to end - unused.

@@ -166,7 +166,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     int (*gc) (void*);
     pos_t corr = 0;
     unsigned i = ~0u; // skip until '>'
-    seq_t ndx;
     Hdr* h = NULL;
     keyseq_t seq = {0};
     kc->s_l = 0;
@@ -185,10 +184,11 @@ case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
+            seq_t ndx;
             seq_next(seq);
             //print_dna(seq.dna);
             _addtoseq(kc->s, seq.t); // kc->s_l grows here.
-            seq_t* n = kc->ndxkct + get_kct0(kc, seq, seq.t, ndx);
+            seq_t* n = kc->ndxkct + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;

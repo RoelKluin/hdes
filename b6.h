@@ -142,8 +142,8 @@ inline seq_t revcmp(seq_t dna) /* Reverse Complement, is ok. */
 }
 
 struct __attribute__ ((__packed__)) keyseq_t {
-    seq_t dna, rc, t;
     pos_t p;
+    seq_t dna, rc, t;
 };
 
 static inline void
@@ -160,7 +160,7 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 
 #define build_key(s, seq, pend)\
     do {\
-        get_next_nt_seq(s + ho, seq);\
+        get_next_nt_seq(s, seq);\
     } while (++seq.p != pend)
 
 #define _get_ndx(t, dna, rc) ({\
@@ -175,6 +175,7 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
             "\nm\t" Sfmt "\nx\t" Sfmt, dna, rc, dna ^ rc, t, __m, __x);\
     __x;\
 })
+#define get_ndx(seq) _get_ndx(seq.t, seq.dna, seq.rc)
 
 /* With the b6 conversion, only the specified characters are converted to
  * 2bits, left shifted by one, with all other bits zeroed. With the function

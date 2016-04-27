@@ -81,20 +81,16 @@ seq_next(struct keyseq_t &seq)
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
 }
 
-#define get_kct0(kc, seq, t, ndx) ({\
-    ndx = _get_ndx(t, seq.dna, seq.rc);\
-    NB(ndx < KEYNT_BUFSZ, Sfmt ", 0x%lx", print_seq(&seq) & ndx, KEYNT_BUFSZ);\
-    dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct ||\
-            (kc->ndxkct[ndx] != NO_KCT && kc->kct[kc->ndxkct[ndx]] == dbgk)) ? dbg | 8 : dbg & ~8;\
-    EPQ(dbg & 8, "observed dbg ndx " Sfmt " / ndxkct " Sfmt " / k 0x%lx: %s +%u",\
-            ndx, kc->ndxkct[ndx], kc->kct[kc->ndxkct[ndx]], __FILE__, __LINE__);\
+#define get_kct0(kc, seq, ndx) ({\
+    ndx = get_ndx(seq);\
+    NB(ndx < KEYNT_BUFSZ);\
     ndx;\
 })
 
-#define get_kct(kc, seq, t) ({\
+#define get_kct(kc, seq) ({\
     seq_t __ndx;\
-    __ndx = get_kct0(kc, seq, t, __ndx);\
-    NB(kc->ndxkct[__ndx] < kc->kct_l, Sfmt "\t" Sfmt, print_seq(&seq) & __ndx, kc->ndxkct[__ndx]);\
+    __ndx = get_kct0(kc, seq, __ndx);\
+    NB(kc->ndxkct[__ndx] < kc->kct_l);\
     kc->ndxkct + __ndx;\
 })
 
@@ -162,6 +158,19 @@ b2pos_of(uint64_t C k)
     NB((k & B2POS_MASK) != NO_KCT);
     return k & B2POS_MASK;
 }
+
+static seq_t
+build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
+{
+    pos_t p = seq.p;
+    seq.p -= KEY_WIDTH;
+    build_key(s, seq, p);
+    seq_t ndx = get_ndx(seq);
+    NB(ndx < KEYNT_BUFSZ);
+    return ndx;
+}
+
+
 
 /* == kct in key_init stage: ==
  * key count in lowest bits.
