@@ -18,20 +18,20 @@
  * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
  */
 static inline int
-init_fq(seqb2_t *seq)
+init_fq(seqb2_t *sb2)
 {
 
-    seq->s = _buf_init(seq->s, INIT_BUFSIZEBIT);
-    *seq->s = '\0';
+    sb2->s = _buf_init(sb2->s, INIT_BUFSIZEBIT);
+    *sb2->s = '\0';
 
-    size_t i, v = 1, l = sizeof(*seq->lookup) * KEYNT_BUFSZ;
-    seq->lookup = (uint32_t*)malloc(l);
-    if (seq->lookup == NULL) {
-        _buf_free(seq->s);
+    size_t i, v = 1, l = sizeof(*sb2->lookup) * KEYNT_BUFSZ;
+    sb2->lookup = (uint32_t*)malloc(l);
+    if (sb2->lookup == NULL) {
+        _buf_free(sb2->s);
         return -ENOMEM;
     }
-    for (i = 0; i != l; i += sizeof(*seq->lookup))
-        memcpy(((char*)seq->lookup) + i, &v, sizeof(*seq->lookup));
+    for (i = 0; i != l; i += sizeof(*sb2->lookup))
+        memcpy(((char*)sb2->lookup) + i, &v, sizeof(*sb2->lookup));
     return 0;
 }
 
@@ -103,21 +103,21 @@ print_hdr(kct_t *C kc, char C*C commandline)
 
 
 static int
-fq_read(kct_t* kc, seqb2_t *seq)
+fq_read(kct_t* kc, seqb2_t *sb2)
 {
     void* g;
     int (*gc) (void*);
-    struct gzfh_t* fhin = seq->fh;
+    struct gzfh_t* fhin = sb2->fh;
 //dbg = 7;
-    uint64_t l = seq->s_l;//, m = seq->s_m;
-    uint8_t *s = seq->s + l;
-    //const unsigned phred_offset = seq->phred_offset;
-    unsigned fq_ent_max = SEQ_MAX_NAME_ETC + seq->readlength + 1;
+    uint64_t l = sb2->s_l;//, m = sb2->s_m;
+    uint8_t *s = sb2->s + l;
+    //const unsigned phred_offset = sb2->phred_offset;
+    unsigned fq_ent_max = SEQ_MAX_NAME_ETC + sb2->readlength + 1;
     seq_t ndx, b = 0ul;
     int c = kc->readlength - KEY_WIDTH + 1;
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
-    keyseq_t ks = {0};
+    keyseq_t seq = {0};
     Hdr* lh = kc->h + kc->h_l - 1;
     const uint64_t end_pos = lh->s_s + lh->end_pos;
     //struct mapstat_t ms = {0};
@@ -129,9 +129,9 @@ fq_read(kct_t* kc, seqb2_t *seq)
     }
     do {
         unsigned i = 0;
-        _buf_grow0(seq->s, fq_ent_max); // at least enough space for one read
+        _buf_grow0(sb2->s, fq_ent_max); // at least enough space for one read
 
-        s = seq->s + seq->s_l;
+        s = sb2->s + sb2->s_l;
         uint8_t* h = s;
 
         while (!isspace(c = gc(g)) && (c >= 0)) *s++ = c; /* header */
@@ -156,7 +156,7 @@ case 'G': case 'g': b ^= 1;
 case 'U': case 'u':
 case 'T': case 't': b ^= 2;
 case 'A': case 'a': *s = 0x3e;
-default:            ks.dna = _seq_next(b, ks);
+default:            seq.dna = _seq_next(b, seq);
                     *s++ |= (b << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
@@ -167,19 +167,19 @@ default:            ks.dna = _seq_next(b, ks);
 			break;
 		    }
 		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
-		    // ks.t only has strand at offset KEY_WIDTH.
-                    ndx = _get_ndx(ks.t, ks.dna, ks.rc);
+		    // seq.t only has strand at offset KEY_WIDTH.
+                    ndx = _get_ndx(seq.t, seq.dna, seq.rc);
                     uint32_t k = kc->ndxkct[ndx];
  EPR("%u:%lx\t%x", i, (uint64_t)ndx, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
-                        bufi[i - KEY_WIDTH] = i ^ ks.t;
+                        bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }
 		    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // beyond chromosomes?
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
-                        bufi[i - KEY_WIDTH] = i ^ ks.t;
+                        bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }
                     if (dbg > 6) {
@@ -187,7 +187,7 @@ default:            ks.dna = _seq_next(b, ks);
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) {
                             buf[i - KEY_WIDTH] = ~0ul;
-                            bufi[i - KEY_WIDTH] = i ^ ks.t;
+                            bufi[i - KEY_WIDTH] = i ^ seq.t;
                             continue;
                         }
                         EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
@@ -196,25 +196,25 @@ default:            ks.dna = _seq_next(b, ks);
                     }
 		    if (i == KEY_WIDTH) {
 	                    buf[0] = k;
-			    bufi[0] = i ^ ks.t;
+			    bufi[0] = i ^ seq.t;
 		    } else if (buf[0] == ~0ul){
 			buf[i - KEY_WIDTH] = buf[0];
 			bufi[i - KEY_WIDTH] = bufi[0];
 			buf[0] = k;
-			bufi[0] = i ^ ks.t;
+			bufi[0] = i ^ seq.t;
 		    } else {
 			// test infior - in high bits.
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         if (kc->kct[k] > kc->kct[t]) {
                             buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
-		            bufi[i - KEY_WIDTH] = i ^ ks.t;
+		            bufi[i - KEY_WIDTH] = i ^ seq.t;
 			} else {
 			    // lowest inferiority
                             buf[i - KEY_WIDTH] = buf[0];
                             bufi[i - KEY_WIDTH] = bufi[0];
                             buf[0] = k;
-                            bufi[0] = i ^ ks.t;
+                            bufi[0] = i ^ seq.t;
                         }
                     }
             }
@@ -238,8 +238,8 @@ default:            ks.dna = _seq_next(b, ks);
 
         if (((uint32_t)ndx < kc->kct_l) && IS_UQ(kc->kct + ndx)) {
             mq = 37;
-            flag = (ks.t ^ 1) & 1;
-            if ((ks.t & 1)) { //XXX
+            flag = (seq.t ^ 1) & 1;
+            if ((seq.t & 1)) { //XXX
                 while ((c = gc(g)) != -1 && c != '@') {}
                 continue;
             }
@@ -311,22 +311,22 @@ out:
 }
 
 int
-map_fq_se(struct seqb2_t* seq, char C*C cmdl)
+map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
 {
     int res = -ENOMEM;
 
     // 1) open keyindex, infior and strand
-    struct gzfh_t* fhio[3] = { seq->fh + 1, seq->fh + 2, seq->fh + 3};
+    struct gzfh_t* fhio[3] = { sb2->fh + 1, sb2->fh + 2, sb2->fh + 3};
     const char* ext[4] = {".kc",".2b",".bd",  ".uq"};
     char file[768];
     kct_t kc = {0};
-    kc.readlength = seq->readlength;
+    kc.readlength = sb2->readlength;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
     // TODO: first read in several reads to verify 
 
-    _ACTION(init_fq(seq), "intializing memory");
+    _ACTION(init_fq(sb2), "intializing memory");
 
     for (int i=0; i != 3; ++i) {
         if (fhio[i]->name == NULL) {
@@ -351,13 +351,13 @@ map_fq_se(struct seqb2_t* seq, char C*C cmdl)
     // 4) print header
     print_hdr(&kc, cmdl);
     // 5) open fq for reading
-    _ACTION(fq_read(&kc, seq), "mapping reads");
+    _ACTION(fq_read(&kc, sb2), "mapping reads");
     //...
     EPR("All seems fine.");
 err:
     EPQ(res, "an error occured:%d", res);
-    free(seq->lookup);
-    free(seq->s);
+    free(sb2->lookup);
+    free(sb2->s);
     free_kc(&kc);
     return res;
 }
