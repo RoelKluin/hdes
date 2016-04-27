@@ -106,7 +106,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         h = kc->h + kc->h_l++;
 
         h->part = (uint32_t*)malloc(++p * sizeof(uint32_t));
-        ASSERT(h->part != NULL, return NULL);
+        NB(h->part != NULL);
         memcpy(h->part, part, p * sizeof(*part));
 
         h->bnd = new std::list<Mantra>();
@@ -118,9 +118,9 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         EPR("contig occurred twice: %s", hdr);
         // To fix order reversal would need kc->s movement and adaptations including h->s_s.
-        ASSERT(h->part[START] > got->second->part[END], h = NULL; goto err, "Duplicate entries in reversed order");
+        NB(h->part[START] > got->second->part[END], "Duplicate entries in reversed order");
         h = got->second;
-        ASSERT(h == kc->h + kc->h_l - 1, h = NULL; goto err, "Duplicate entries, but not in series");
+        NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had any sequence
         if (h->bnd->back().e != h->bnd->back().s) {
@@ -188,7 +188,7 @@ case 'G':   seq.t &= 0x3;
             seq_next(seq);
             //print_dna(seq.dna);
             _addtoseq(kc->s, seq.t); // kc->s_l grows here.
-            seq_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
+            seq_t* n = kc->ndxkct + get_kct0(kc, seq, seq.t, ndx);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
@@ -221,12 +221,12 @@ default:    if (isspace(seq.t))
     case 'C':   seq.t ^= 0x2;
     case 'G':   seq.t &= 0x3;
                 if (i == ((KEY_WIDTH - 1) << 8)) { // key after header/stretch to be rebuilt
-                    ASSERT(h, return -EFAULT);
+                    NB(h != NULL);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
                         corr += h->bnd->back().corr;
-                        ASSERT(h->s_s > kc->s_l, return -EFAULT);
-                        ASSERT(kc->s_l - h->s_s <= 0xffffffff, return -EFAULT);
+                        NB(h->s_s > kc->s_l);
+                        NB(kc->s_l - h->s_s <= 0xffffffff);
                         h->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s), .e = 0, .corr = 0});
                     }
                     h->bnd->back().corr += corr;
@@ -241,7 +241,7 @@ default:    if (isspace(seq.t))
                 _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                 // hk.koffs is cumulutive;
                 h = new_header(kc, h, g, gc, lookup);
-                ASSERT(h != NULL, return -EFAULT);
+                NB(h != NULL);
 
                 i = (KEY_WIDTH - 1) << 8;
                 corr = -1u;

@@ -16,12 +16,16 @@ int
 show_mantras(kct_t C*C kc, Hdr *C h)
 {
     unsigned j = 0;
+    return -1;
 
-    std::list<Mantra>::iterator it = h->bnd->begin();
+/*    std::list<Mantra>::iterator it = h->bnd->begin();
     if (it != h->bnd->end()) {
         do {
             keyseq_t seq = {0};
             pos_t p = (*it).s;
+            seq.p = p - KEY_WIDTH;
+            build_key(kc->s + ho, seq, p);
+
             seq.p = h->s_s + p;
             _build_key(kc, seq, h->s_s + p + KEY_WIDTH);
             EPR0("[%s%u]:\t(" Pfmt "+) %lu - %lu\t", it != kc->bdit ? "" : "* ",
@@ -31,6 +35,6 @@ show_mantras(kct_t C*C kc, Hdr *C h)
     } else {
         EPR("[ entirely mapable ]");
     }
-    return -1;
+    return -1;*/
 }
 

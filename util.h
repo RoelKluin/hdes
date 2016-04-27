@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <execinfo.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "b6.h"
 
 #define DEBUG 1
@@ -67,6 +68,16 @@ static void handler(int sig) {
   exit(EXIT_FAILURE);
 }
 
+// continue debugging after assertion failure.
+// http://stackoverflow.com/questions/1721543/continue-to-debug-after-failed-assertion-on-linux#1721575
+#define NB(cond, ...) \
+do {\
+    if_ever (!(cond)) { \
+        WARN("assertion '" #cond "' failed " __VA_ARGS__);\
+        raise(SIGTRAP);\
+    }\
+} while(0)
+
 #define ASSERT(cond, action, ...) \
 do {\
     if_ever (!(cond)) { \
@@ -87,18 +98,18 @@ do {\
 #define _ACTION0(fun, msg, ...)\
 do {\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
+    NB(res >= 0, msg "(%u) %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg ".", ##__VA_ARGS__);\
 } while(0)
 
 #define _EVAL(fun)\
-    ASSERT((res = (fun)) >= 0, goto err, "(%u) at %s:%u.", res, __FILE__, __LINE__);
+    NB((res = (fun)) >= 0, "(%u) at %s:%u.", res, __FILE__, __LINE__);
 
 
 #define _ACTION(fun, msg, ...)\
 do {\
     res = fun;\
-    ASSERT(res >= 0, goto err, msg "(%u) at %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
+    NB(res >= 0, msg "(%u) at %s:%u.", ##__VA_ARGS__, res, __FILE__, __LINE__);\
     EPQ(msg[0] != '\0', msg "..\tdone", ##__VA_ARGS__);\
 } while(0)
 

@@ -41,27 +41,7 @@
 // stored position is one-based to ensure a bit is set
 #define NO_KCT -2u
 
-#define B2POS_OF(k) ((k) & B2POS_MASK)
-
-#define _PRNT_SEQ_BY_POS(kc, _p) ({\
-    keyseq_t __seq = {0};\
-    EPR0("%lu\t", _p);\
-    __seq.p = _p - KEY_WIDTH;\
-    _build_key(kc, __seq, (_p));\
-    print_seq(&__seq);\
-    -1;\
-})
-
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
-
-// XXX ugly since returns with value, but for debugging..
-#define _B2POS_OF(kc, k) ({\
-        ASSERT(k - kc->kct < kc->kct_l, return -EFAULT);\
-        ASSERT(k - kc->kct >= 0, return -EFAULT);\
-        ASSERT(((*k) & B2POS_MASK) != NO_KCT, return -EFAULT);\
-        B2POS_OF(*k);\
-})
-//#define B2POS_lt(a, b) (_B2POS_OF(a) < _B2POS_OF(b))
 
 // TODO: if a key is not unique, store pos or same seq and length in lower bits
 //#define UQ_MASK    0x000000000000000F // How many same Nts occur
@@ -85,13 +65,6 @@
 // XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
 //#define MARKED 0x8000000000000000
 
-//#define ALL_SAME_NTS(k) (IS_FIRST(k) && IS_DISTINCT(k))
-
-//#define _GET_NEXT_NT(kc, p) (((kc)->ts[_B2POS_OF(p)>>2] >> (((p) & 3) << 1)) & 3)
-
-//#define SAME_OR_UQ(k) (IS_UQ(k) || ALL_SAME_NTS(k))
-
-
 packed_struct Mantra { // not yet covered by unique keys
     pos_t s, e; // start and end of mantra, position where we jump to.
     pos_t corr; // 'real' position correction
@@ -108,9 +81,9 @@ seq_next(struct keyseq_t &seq)
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
 }
 
-#define _get_kct0(kc, seq, t, ndx, _act) ({\
+#define get_kct0(kc, seq, t, ndx) ({\
     ndx = _get_ndx(t, seq.dna, seq.rc);\
-    ASSERT(ndx < KEYNT_BUFSZ, print_seq(&seq); _act, Sfmt ", 0x%lx", ndx, KEYNT_BUFSZ);\
+    NB(ndx < KEYNT_BUFSZ, Sfmt ", 0x%lx", print_seq(&seq) & ndx, KEYNT_BUFSZ);\
     dbg = (ndx == dbgndx || kc->ndxkct[ndx] == dbgndxkct ||\
             (kc->ndxkct[ndx] != NO_KCT && kc->kct[kc->ndxkct[ndx]] == dbgk)) ? dbg | 8 : dbg & ~8;\
     EPQ(dbg & 8, "observed dbg ndx " Sfmt " / ndxkct " Sfmt " / k 0x%lx: %s +%u",\
@@ -118,28 +91,12 @@ seq_next(struct keyseq_t &seq)
     ndx;\
 })
 
-#define _get_kct(kc, seq, t, _act) ({\
+#define get_kct(kc, seq, t) ({\
     seq_t __ndx;\
-    __ndx = _get_kct0(kc, seq, t, __ndx, _act);\
-    ASSERT(kc->ndxkct[__ndx] < kc->kct_l, print_seq(&seq); _act, Sfmt "\t" Sfmt, __ndx, kc->ndxkct[__ndx]);\
+    __ndx = get_kct0(kc, seq, t, __ndx);\
+    NB(kc->ndxkct[__ndx] < kc->kct_l, Sfmt "\t" Sfmt, print_seq(&seq) & __ndx, kc->ndxkct[__ndx]);\
     kc->ndxkct + __ndx;\
 })
-
-#define ASSERT_SCOPE_RNG(kc, p, pend, _act)\
-    do {\
-        ASSERT(pend < (kc->s_l << 2), _act, Pfmt "/%lu?", pend, kc->s_l);\
-        ASSERT(p < pend, _act, Pfmt " >= " Pfmt "?", p, pend);\
-        ASSERT(p + kc->readlength - KEY_WIDTH >= pend, _act,\
-                Pfmt " + %u < " Pfmt "?", p, kc->readlength - KEY_WIDTH, pend);\
-    } while(0)
-
-#define _build_key(kc, seq, pend)\
-    ASSERT(seq.p < pend, return -EFAULT, "%lu >= %lu?", seq.p, pend);\
-    ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
-    do {\
-        seq.t = (kc->s[seq.p>>2] >> ((seq.p&3) << 1)) & 3;\
-        seq_next(seq);\
-    } while (++seq.p != pend)
 
 #define _addtoseq(buf, b)\
     do {\
@@ -188,6 +145,23 @@ struct kct_t {
     std::list<Mantra> bnd;
     // could be possible to move bnd here.
 };
+
+static inline pos_t
+b2pos_of(kct_t C*C kc, uint64_t C*C k)
+{
+    NB(k - kc->kct < kc->kct_l);
+    NB(k - kc->kct >= 0);
+    NB((*k & B2POS_MASK) != NO_KCT);
+    
+    return *k & B2POS_MASK;
+}
+
+static inline pos_t
+b2pos_of(uint64_t C k)
+{
+    NB((k & B2POS_MASK) != NO_KCT);
+    return k & B2POS_MASK;
+}
 
 /* == kct in key_init stage: ==
  * key count in lowest bits.

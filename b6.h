@@ -8,9 +8,10 @@
  *
  *         Author:  Roel Kluin,
  */
-
 #ifndef RK_B6_H
 # define RK_B6_H
+#include <stdint.h>
+
 # define BITS_PER_LONG 64
 
 # define B6_MASK			0x6
@@ -61,7 +62,6 @@ typedef uint64_t seq_t;
 #define ODD_NIBBLE_MASK 0x0f0f0f0f0f0f0f0fUL
 #define ODD_TWOBIT_MASK 0x3333333333333333UL
 #endif
-
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
@@ -124,8 +124,6 @@ typedef uint64_t seq_t;
 
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
 
-unsigned b6(unsigned c);
-unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 #define REVSEQ(dna, m) ({\
     m = ODD_TWOBIT_MASK;\
     dna = (dna & m) << 2 | (dna & ~m) >> 2;\
@@ -145,8 +143,25 @@ inline seq_t revcmp(seq_t dna) /* Reverse Complement, is ok. */
 
 struct __attribute__ ((__packed__)) keyseq_t {
     seq_t dna, rc, t;
-    uint64_t p;
+    pos_t p;
 };
+
+static inline void
+get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq)
+{
+    seq.t = (s[seq.p>>2] >> ((seq.p&3) << 1)) & 3;
+    seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
+    seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
+}
+
+extern inline void get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq);
+unsigned b6(unsigned c);
+unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
+
+#define build_key(s, seq, pend)\
+    do {\
+        get_next_nt_seq(s + ho, seq);\
+    } while (++seq.p != pend)
 
 #define _get_ndx(t, dna, rc) ({\
     t = dna ^ rc;\
