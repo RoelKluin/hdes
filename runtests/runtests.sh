@@ -8,7 +8,7 @@ cd $hdesdir
 mode=valgrind
 [ "$1" = "-g" ] && mode=gdb
 
-FASTAS=($(ls -1 *.fa))
+FASTAS=($(ls -1 runtests/*.fa))
 for i in $(seq 0 $((${#FASTAS[@]}-1))); do
   echo -e "$i)\t${FASTAS[${i}]}"
 done
@@ -23,24 +23,23 @@ echo
 
 make cleartest
 LASTKW=
-echo "${FASTAS[@]}" | tr " " "\n" | sed -n -r 's/^(KW([0-9]+)_RL([0-9]+)_no[0-9]+)\.fa$/\1 \2 \3/p' |
-while read BN KW RL; do
-  echo "--------------------------[ $BN $KW $RL ]--------------------------";
+echo "${FASTAS[@]}" | tr " " "\n" | sed -n -r 's/^(runtests\/KW([0-9]+)_RL([0-9]+)_no[0-9]+)\.fa$/\1 \2 \3/p' |
+while read BASE KW RL; do
+  echo "--------------------------[ $BASE $KW $RL ]--------------------------";
   if [ "$KW" != "$LASTKW" ]; then
     make clean
     [ "$mode" = "gdb" ] && DEFINES="-DKEY_LENGTH=${KW}" OPT="$GDB_OPT -ggdb3" make || DEFINES="-DKEY_LENGTH=${KW}" make;
     LASTKW="$KW"
   fi
-  rm $BN.{2b,nn,bd,ub,kc,uq};
   if [ "$mode" = "gdb" ];then
-    xterm -e "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f runtests/${BN}.fa -l ${RL}"
-#    xterm -e "gdb --args uqct -f runtests/${BN}.fq runtests/${BN}.2b -l ${RL}"
+    xterm -e "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
+#    xterm -e "gdb --args uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
   else
-    valgrind --leak-check=full ./uqct runtests/${BN}.fa -l ${RL}
-    valgrind --leak-check=full ./uqct runtests/${BN}.fq runtests/${BN}.2b -l ${RL} |
+    valgrind --leak-check=full ./uqct ${BASE}.fa -l ${RL}
+    valgrind --leak-check=full ./uqct ${BASE}.fq ${BASE}.2b -l ${RL} |
     $samtools view -Sub - |
-    $samtools sort -m 20000000 - runtests/${BN} &&
-    $samtools index runtests/${BN}.bam
+    $samtools sort -m 20000000 - ${BASE} &&
+    $samtools index ${BASE}.bam
   fi
 done
 echo
