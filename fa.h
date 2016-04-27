@@ -19,6 +19,8 @@
 #include "gz.h"
 #include "b6.h"
 
+// TODO: INFIOR no longer needed and pos per contig - should fit in 32 bits
+
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
 //#define BIG_SHFT 36
@@ -45,7 +47,7 @@
     keyseq_t __seq = {0};\
     EPR0("%lu\t", _p);\
     __seq.p = _p - KEY_WIDTH;\
-    _build_key(kc, __seq, __seq.p, (_p), __seq.t);\
+    _build_key(kc, __seq, (_p));\
     print_seq(&__seq);\
     -1;\
 })
@@ -99,11 +101,12 @@ packed_struct Mantra { // not yet covered by unique keys
 // of next-NTs within range of unique indices and can therefore be skipped
 // in future iterations - the number of next-Nts per key remains constant.
 
-#define _seq_next(c, seq) ({\
-    seq_t __b = c;\
-    seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (__b ^ 2);\
-    (__b << KEYNT_TOP) | (seq.dna >> 2);\
-})
+static inline void
+seq_next(struct keyseq_t &seq)
+{
+    seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
+    seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
+}
 
 #define _get_kct0(kc, seq, t, ndx, _act) ({\
     ndx = _get_ndx(t, seq.dna, seq.rc);\
@@ -130,14 +133,13 @@ packed_struct Mantra { // not yet covered by unique keys
                 Pfmt " + %u < " Pfmt "?", p, kc->readlength - KEY_WIDTH, pend);\
     } while(0)
 
-#define _build_key(kc, seq, p, pend, t)\
-    ASSERT(p < pend, return -EFAULT, "%lu >= %lu?", p, pend);\
+#define _build_key(kc, seq, pend)\
+    ASSERT(seq.p < pend, return -EFAULT, "%lu >= %lu?", seq.p, pend);\
     ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
-    ASSERT(p >= 0, return -EFAULT, "%lu < 0 (%lu)?", p, pend);\
     do {\
-        t = (kc->s[p>>2] >> ((p&3) << 1)) & 3;\
-        seq.dna = _seq_next(t, seq);\
-    } while (++p != pend)
+        seq.t = (kc->s[seq.p>>2] >> ((seq.p&3) << 1)) & 3;\
+        seq_next(seq);\
+    } while (++seq.p != pend)
 
 #define _addtoseq(buf, b)\
     do {\
@@ -176,8 +178,8 @@ struct kct_t {
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
     uint64_t* kct_next;
-    uint64_t s_l, totNts, h_l;
-    uint32_t id_l, kct_l, hk_l, uqct, reeval, ext, last_uqct;
+    uint64_t s_l, totNts;
+    uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
     uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
     Hdr* h;

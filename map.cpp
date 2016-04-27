@@ -113,7 +113,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     uint8_t *s = sb2->s + l;
     //const unsigned phred_offset = sb2->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + sb2->readlength + 1;
-    seq_t ndx, b = 0ul;
+    seq_t ndx;
     int c = kc->readlength - KEY_WIDTH + 1;
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
@@ -149,15 +149,15 @@ fq_read(kct_t* kc, seqb2_t *sb2)
         i = 0;
         while ((c = gc(g)) != '\n') {
             ASSERT(c != -1, c = -EFAULT; goto out);
-            *s = b ^= b;
+            *s = seq.t = 0;
             switch(c) {
-case 'C': case 'c': b = 2;
-case 'G': case 'g': b ^= 1;
+case 'C': case 'c': seq.t = 2;
+case 'G': case 'g': seq.t ^= 1;
 case 'U': case 'u':
-case 'T': case 't': b ^= 2;
+case 'T': case 't': seq.t ^= 2;
 case 'A': case 'a': *s = 0x3e;
-default:            seq.dna = _seq_next(b, seq);
-                    *s++ |= (b << 6) | 1; // for seqphred storage
+default:            seq_next(seq);
+                    *s++ |= (seq.t << 6) | 1; // for seqphred storage
                     if (++i < KEY_WIDTH) // first only complete key
                         continue;
 		    if (i > kc->readlength) { // none of keys mappable

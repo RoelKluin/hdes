@@ -1,7 +1,5 @@
 open Makefile
 vs main.cpp
-winc r
-44sp Makefile
 tabnew fa.cpp
 vs fa.h
 winc r
@@ -14,12 +12,10 @@ winc r
 44sp fq.cpp
 tabnew b6.cpp
 vs b6.h
-winc r
-44sp b6.cpp
 tabnew gz.cpp
 vs gz.h
 winc r
-44sp gz.cpp
+44sp mantra.cpp
 tabnew util.h
 vs 
 winc r
@@ -44,8 +40,8 @@ winc r
 "vs 
 "winc r
 "44sp map.cpp
-"tabnew indexio.cpp
-"vs 
+tabnew indexio.cpp
+vs indexio.cpp
 "winc r
 "44sp indexio.cpp
 "tabnew IDEE
@@ -64,8 +60,10 @@ winc r
 "vs 
 "winc r
 "44sp documentation.txt
-"tabnew dodev
-"vs 
+tabnew dodev
+vs dodev.vim
+tabnew runtests/KW3_RL5_no2.fa
+vs runtests/KW3_RL5_no1.fa
 "winc r
 "44sp dodev
 "tabnew BUGS

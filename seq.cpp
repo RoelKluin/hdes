@@ -20,7 +20,8 @@
 unsigned
 get_fastx_type(char* f, const unsigned fhsz)
 {
-    unsigned i = 0, c = strlen(f) - 1;
+    int c = strlen(f) - 1;
+    unsigned i = 0;
     f += c; // parse extension from right
 
     if (*f == 'z') {

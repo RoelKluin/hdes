@@ -1,4 +1,7 @@
 HOST=$(shell hostname)
+ifndef OPT
+    OPT=	-O3
+endif
 #There must be a space between ifeq and (
 ifeq	($(HOST),utonium)
   CC=		/opt/rh/devtoolset-3/root/usr/bin/x86_64-redhat-linux-g++
@@ -8,7 +11,7 @@ endif
 ##CCC=		colorgcc
 #CC=		clang++-3.5 --analyze
 #-fprofile-arcs -ftest-coverage
-CFLAGS=		-c -Wall -Wno-unused-function -O3 -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
+CFLAGS=		-c -Wall -Wextra -Wno-unused-label -Wno-unused-function -Wno-missing-field-initializers $(OPT) -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
 VERSION=	0.018
@@ -20,7 +23,6 @@ OBJS=		b6.o
 EXTERNAL_ZLIB=zlib-1.2.8/
 LIBS=		-L. -L./zlib-1.2.8/
 DEBUG=		-g #-pg --coverage -rdynamic
-OPT=		-O3
 SOURCES=	gz.cpp b6.cpp seq.cpp mantra.cpp map.cpp indexio.cpp key_init.cpp \
 		fa.cpp fq.cpp main.cpp
 DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\" # -DKEY_LENGTH=11
@@ -55,6 +57,8 @@ libuqct.a:$(OBJS)
 
 coverage:
 	$(GCOV) -b $(SOURCES)
+cleartest:
+	rm runtests/*.{2b,nn,bd,ub,kc,uq} 2>/dev/null; echo
 clean:
 	rm -f $(PREPROCESSED) $(ASSEMBLIES) $(OBJECTS) $(PROG) core vgcore.*
 

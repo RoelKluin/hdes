@@ -18,15 +18,14 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
-    if (h) {
-        h->end_pos =  h->bnd->back().e = kc->s_l - h->s_s;
-        kc->totNts += h->end_pos + h->bnd->back().corr;
-        EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd->back().corr, kc->totNts,
-                kc->id + h->part[0]);
+    if (!h) return;
+    h->end_pos =  h->bnd->back().e = kc->s_l - h->s_s;
+    kc->totNts += h->end_pos + h->bnd->back().corr;
+    EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd->back().corr, kc->totNts,
+            kc->id + h->part[0]);
 
-        if (dbg > 3)
-            show_mantras(kc, h);
-    }
+    if (dbg > 3)
+        show_mantras(kc, h);
 }
 
 #define ENS_HDR_PARTCT 10
@@ -43,7 +42,6 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     part[p] = kc->id_l;
 
     end_pos(kc, h);
-
 
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
@@ -167,13 +165,10 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     void* g;
     int (*gc) (void*);
     pos_t corr = 0;
-    int c;
     unsigned i = ~0u; // skip until '>'
     seq_t ndx;
     Hdr* h = NULL;
     keyseq_t seq = {0};
-    HK hk = {0};
-    hk.koffs;
     kc->s_l = 0;
     kc->uqct = 0;
     kc->totNts = 0;
@@ -181,24 +176,24 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
-    while ((c = gc(g)) >= 0) {
-        //EPR("%c," Pfmt,c, corr);
-        switch((c | i) & ~0x20) {
-case 'U':   c ^= 0x2;
-case 'A':   c ^= 0x3;
+    while ((seq.t = gc(g)) <= 0xff) {
+        //EPR("%seq.t," Pfmt,seq.t, corr);
+        switch((seq.t | i) & ~0x20) {
+case 'U':   seq.t ^= 0x2;
+case 'A':   seq.t ^= 0x3;
 case 'T': 
-case 'C':   c ^= 0x2;
-case 'G':   c &= 0x3;
+case 'C':   seq.t ^= 0x2;
+case 'G':   seq.t &= 0x3;
         {
-            seq.dna = _seq_next(c, seq);
+            seq_next(seq);
             //print_dna(seq.dna);
-            _addtoseq(kc->s, c); // kc->s_l grows here.
+            _addtoseq(kc->s, seq.t); // kc->s_l grows here.
             seq_t* n = kc->ndxkct + _get_kct0(kc, seq, seq.t, ndx, return -EFAULT);
             if (*n == NO_KCT) {
-                ++hk.koffs;
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
-                kc->kct[*n] = 0ul;
+                // set first pos + orient
+                kc->kct[*n] = ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | (kc->s_l - h->s_s);
                 ++kc->uqct;
             } else {
                 C uint64_t m = 1ul << ORIENT_SHFT;
@@ -210,26 +205,22 @@ case 'G':   c &= 0x3;
             }
             EPQ(dbg >4, "[%lu, " Sfmt ", 0x%lx, " Sfmt "]:debug %u", kc->s_l, seq.dna,
                     n - kc->ndxkct, *n, print_dna(seq.dna));
-            /*ASSERT((kc->kct[*n] & ((seq.t != 0) << ORIENT_SHFT)) == 0 &&
-                    (kc->kct[*n] & (kc->s_l + 1)) == 0 &&
-                    (((seq.t != 0) << ORIENT_SHFT) & (kc->s_l + 1)) == 0, return -EFAULT);*/
-            kc->kct[*n] ^= ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | (kc->s_l - h->s_s); // set latest pos + orient
             break;
         }
 case 'N':   i = (KEY_WIDTH - 1) << 8;
-            //EPR("%c",c);
+            //EPR("%seq.t",seq.t);
 case 'N' | ((KEY_WIDTH - 1) << 8):
             ++corr;
             break;
-default:    if (isspace(c))
+default:    if (isspace(seq.t))
                 continue;
-            switch (c & ~0x20) {
-    case 'U':   c ^= 0x2;
-    case 'A':   c ^= 0x3;
+            switch (seq.t & ~0x20) {
+    case 'U':   seq.t ^= 0x2;
+    case 'A':   seq.t ^= 0x3;
     case 'T': 
-    case 'C':   c ^= 0x2;
-    case 'G':   c &= 0x3;
-                if (i == ((KEY_WIDTH - 1) << 8)) {
+    case 'C':   seq.t ^= 0x2;
+    case 'G':   seq.t &= 0x3;
+                if (i == ((KEY_WIDTH - 1) << 8)) { // key after header/stretch to be rebuilt
                     ASSERT(h, return -EFAULT);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
@@ -242,26 +233,23 @@ default:    if (isspace(c))
                     corr = 0;
                 }
                 i -= 0x100;
-                seq.dna = _seq_next(c, seq);
-                _addtoseq(kc->s, c);
+                seq_next(seq);
+                _addtoseq(kc->s, seq.t);
                 //print_dna(seq.dna);
                 break;
-    case 0x1e:  if (h) {
-                    // FIXME: convert header to reallocable for this purpose
-                    hk.hoffs = kc->h_l - 1;
-                    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
-                }
-                h = new_header(kc, h, g, gc, lookup);
+    case 0x1e:{ HK hk = { .koffs = kc->kct_l, .hoffs = kc->h_l, .ext = 0};
+                _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                 // hk.koffs is cumulutive;
+                h = new_header(kc, h, g, gc, lookup);
                 ASSERT(h != NULL, return -EFAULT);
 
                 i = (KEY_WIDTH - 1) << 8;
                 corr = -1u;
+            }
     default:    ++corr;
             }
         }
     }
-    ASSERT(h != NULL, return -EFAULT);
     end_pos(kc, h);
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;
