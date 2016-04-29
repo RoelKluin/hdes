@@ -177,13 +177,13 @@ default:            seq_next(seq);
                         bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }
-		    if ((kc->kct[k] & B2POS_MASK) >= end_pos) { // beyond chromosomes?
+		    if (b2pos_of(kc->kct[k]) >= end_pos) { // beyond chromosomes?
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }
                     if (dbg > 6) {
-                        uint64_t pos = kc->kct[k] & B2POS_MASK;
+                        uint64_t pos = b2pos_of(kc->kct[k]);
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) {
                             buf[i - KEY_WIDTH] = ~0ul;
@@ -229,7 +229,7 @@ default:            seq_next(seq);
         while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
         unsigned seqlen = i, tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
-	if ((kc->kct[ndx] & B2POS_MASK) >= end_pos) {
+	if (b2pos_of(kc->kct[ndx]) >= end_pos) {
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
         }
@@ -248,7 +248,7 @@ default:            seq_next(seq);
 
 
 
-            uint64_t pos = kc->kct[ndx] & B2POS_MASK;
+            uint64_t pos = b2pos_of(kc->kct[ndx]);
 
             EPQ(dbg >> 6, "pos:%lu", pos);
             c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
