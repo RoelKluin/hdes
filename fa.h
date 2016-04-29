@@ -106,6 +106,8 @@ seq_next(struct keyseq_t &seq)
 
 #define DEBUG 1
 
+#define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
+
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
@@ -120,9 +122,17 @@ struct Hdr {
 
 // to look up key offset to 1) respective header and 2) for what extension the keys became uniq
 struct HK {
-    uint32_t koffs;
     uint32_t hoffs;
     uint32_t ext;
+    uint32_t koffs;
+};
+
+struct Bnd {
+    uint64_t *sk;
+    HK *hk;
+    Hdr *h;
+    uint64_t *prev;
+    std::list<Mantra>::iterator it;
 };
 
 struct kct_t {
@@ -130,14 +140,12 @@ struct kct_t {
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
-    uint64_t* kct_next;
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
     uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;
-    std::list<Mantra>::iterator bdit;
     std::list<Mantra> bnd;
     // could be possible to move bnd here.
 };

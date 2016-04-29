@@ -172,6 +172,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     kc->uqct = 0;
     kc->totNts = 0;
     Hdr_umap lookup;
+    HK hk = { .hoffs = kc->h_l, .ext = 0};
     set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -237,9 +238,10 @@ default:    if (isspace(seq.t))
                 _addtoseq(kc->s, seq.t);
                 //print_dna(seq.dna);
                 break;
-    case 0x1e:{ HK hk = { .koffs = kc->kct_l, .hoffs = kc->h_l, .ext = 0};
-                _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
-                // hk.koffs is cumulutive;
+    case 0x1e:{ if (h) {
+                    hk.koffs = kc->kct_l;
+                    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
+                }
                 h = new_header(kc, h, g, gc, lookup);
                 NB(h != NULL);
 
@@ -250,6 +252,9 @@ default:    if (isspace(seq.t))
             }
         }
     }
+    NB(h != NULL);
+    hk.koffs = kc->kct_l;
+    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
     end_pos(kc, h);
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;

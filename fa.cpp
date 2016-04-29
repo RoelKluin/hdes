@@ -24,27 +24,6 @@
 #include "fa.h"
 #include "b6.h"
 
-static void
-start_dbg(kct_t *C kc, Hdr *C h, seq_t C dna)
-{
-    char C *hdr = kc->id + h->part[0];
-
-    // TODO: if not start of contig or just after a N-stretch, the dna key should be
-    // just after an unique key. we could check this.
-
-    if (dbg == 3 || dbg == 5)
-        dbg = strncmp(hdr, dbgchr, strlen(hdr)) ? 3 : 5;
-    dbg = 7;
-
-    if (dbg > 3) {
-        EPR0("----[\t%s%s:(" Pfmt "+)" Pfmt ".." Pfmt "\text:%u\t]----\tdna:",
-                strlen(hdr) < 8 ? "\t": "", hdr, (*kc->bdit).corr, (*kc->bdit).s,
-                (*kc->bdit).e, kc->ext);
-        print_dna(dna);
-        show_mantras(kc, h);
-    }
-}
-
 void
 free_kc(kct_t *kc)
 {
@@ -60,194 +39,184 @@ free_kc(kct_t *kc)
     _buf_free(kc->ndxkct);
 }
 
-// reset and remove non-uniqs, move uqs to start of kc->kct array
-static inline void
-extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, C uint32_t koffs, std::set<uint64_t> &pk)
-{
-    seq_t *ndxkct;
-    keyseq_t seq = {0};
-    NB(pend < (kc->s_l << 2) && p < pend);
-
-    if (p + kc->ext + 1 >= pend && p + 1 != pend) {
-        seq.p = p;
-        ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
-        uint64_t*k = kc->kct + *ndxkct;
-        NB(kc->kct[*ndxkct] & DUP_BIT);
-
-        for (;seq.p != pend; ++seq.p) {
-            get_next_nt_seq(s, seq);
-            ndxkct = get_kct(kc, seq);
-            k = kc->kct + *ndxkct;
-
-            // in next iteration: reeval whether this is still a dup.
-            if (*k & DUP_BIT) {
-                if (k - kc->kct < koffs || b2pos_of(kc, k) < seq.p) {
-                    ++kc->reeval;
-                } else if (b2pos_of(kc, k) == seq.p) {
-                    // all remaining were excised this iteration
-                    --kc->reeval;
-                    // this position should be recognisable since it is the only with
-                    // k before the adjacent uniq's k.
-                    *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
-                    *k |= ((uint64_t)!seq.t << ORIENT_SHFT) | seq.p;
-                    pk.insert(*k);
-                }
-            } else { // may be unique - next iter.
-                ++kc->reeval;
-            }
-        }
-        // need to determine kcts for inbetween. Same can occur twice, use end instead.
-    }
-}
-
 static void
-reached_boundary(kct_t *kc, Hdr *h, uint64_t C*C last, C uint32_t koffs, std::set<uint64_t> &pk)
+swap_kct(seq_t *kcnxk,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint8_t C*C s)
 {
-    C pos_t p = last ? b2pos_of(*last) : (*kc->bdit).e;
-    show_mantras(kc, h);
-    if ((p > (*kc->bdit).s) && (p - kc->ext <= (*kc->bdit).s)) {
-        if (last) {
-            --kc->bdit;
-        } else {
-            kc->bdit = h->bnd->erase(kc->bdit);
-        }
-        extd_uq_by_p(kc, (*kc->bdit).s, p, kc->s + h->s_s, koffs, pk);
-    }
-}
-
-static void
-swap_kct(kct_t *kc,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint8_t C*C s)
-{
+    if (k1 == k2)
+        return;
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
-    keyseq_t seq = {.p = b2pos_of(kc, k1)};
-    seq_t *ndxkct1 = kc->ndxkct + build_ndx_kct(seq, s);
+    keyseq_t seq = {.p = b2pos_of(*k1)};
+    seq_t *ndxkct1 = kcnxk + build_ndx_kct(seq, s);
     std::swap(*ndxkct1, *ndxkct2); // ndxkct points to reordered kcts
     std::swap(*k1, *k2);           // and swap info at kcts
 }
 
-// XXX XXX hk need insertions.
-static void
-place_uniques(kct_t *kc, uint64_t *sk, uint64_t* &kend, uint8_t C*C s, std::set<uint64_t> &pk)
-{
-    HK *hk = kc->hk;
-    NB(0, "FIXME: hk need insertions. koffs need to be updated");
-
-    for (std::set<uint64_t>::iterator it = pk.begin(); it != pk.end(); ++it) {
-        uint64_t kv = *it;
-        if (~kv & DUP_BIT) {
-            ++kc->uqct;
-            keyseq_t seq = {.p = b2pos_of(kv)};
-            seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
-            // If smaller than sk, an ambiguous key was apparently unique. These are handled in
-            // next iteration
-            NB(kc->kct + *ndxkct >= sk);
-
-            swap_kct(kc, kc->kct + *ndxkct, kend--, ndxkct, s);
-        }
-    }
-}
-
 /*
- * kc->bdit contains ranges per contig for sequence cannot yet be mapped, but may become so.
- * Initially there are one or more dependent on the presence and number of N-stretches.
+ * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
+ * Initially there are one or more dependent on the presence and number of N-stretches;
  * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
  * shrinks (here).
  */
 static void
-uq_bounded(kct_t *kc, Hdr *h, uint64_t C*C prevk, uint64_t C*C thisk, C pos_t prev, C pos_t p)
+unique_covered(Bnd &b, uint64_t C*C thisk, C pos_t prev, C pos_t p)
 {
-    if (prevk) { NB(prev < p);
-        C pos_t b2end = (*kc->bdit).e;
-        (*kc->bdit).e = prev; // shift end
-        if (thisk) {
-            h->bnd->insert(kc->bdit, *kc->bdit); // insert a copy of the current
-            (*kc->bdit).e = b2end; // restore orig end
-        }
-    } else {
-        (*kc->bdit).s = p; // shift start
+    if (b.prev) {                          // if not at chr start
+        C pos_t end = (*b.it).e;           // store original end
+        (*b.it).e = prev;                  // shift end
+        if (thisk) {                       // if not last boundary either
+            b.h->bnd->insert(b.it, *b.it); // insert a copy of the current
+            (*b.it).s = p;                 // it became two smaller ranges, so
+            (*b.it).e = end;               // and reinstate original end
+        }                                  // (otherwise the last boundary just got smaller)
+    } else if (thisk) {     // if at chr start, but not at chr end
+        (*b.it).s = p;      // shift start
+    } else {                              // entire region became mapable
+        b.it = b.h->bnd->erase(b.it);     // this returns the next element
+        NB(b.it != b.h->bnd->end(), "FIXME: boundaries became adjoining");
+        b.prev = NULL;
     }
 }
+
+/*
+ * If two unique keys occur within scope, all reads (i.e. KEY_WIDTH + current extension)
+ * within these are mapable due to the two. This site no longer needs to be considered
+ * for the inbetween - these keys may henceforth become secondary uniques elsewhere.
+ *
+ * Of unique keys the stored position is guaranteed correct. (of non-uniques there is only
+ * the garuantee that the stored position results in the key that corresponds).
+ *
+ */
+static inline void
+extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, uint64_t C*C sk)
+{
+    NB(pend < (kc->s_l << 2) && p < pend);
+
+    if (p + kc->ext + 1 < pend || p + 1 == pend) // do we have keys between unique?
+        return;                                  // no: then nothing to do here.
+
+    keyseq_t seq = {.p = p + 1};
+    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
+
+    for(;;) {
+        uint64_t *k = kc->kct + *ndxkct;
+
+        // stored first occurance matches current position and contig
+        if (b2pos_of(kc, k) == seq.p && k >= sk) { // k is always before 'kend'.
+
+            NB(*k & DUP_BIT);    // the first occurance of the key is excised.
+            ++kc->reeval;        // leave dup bit set to mark a position is pending
+        }
+        if (++seq.p == pend)
+            break;
+
+        get_next_nt_seq(s, seq);
+        ndxkct = get_kct(kc, seq);
+    }
+}
+
+static void
+reached_boundary(kct_t *kc, Bnd &b)
+{
+    C pos_t prev = _prev_or_bnd_start(b);
+    if ((prev + kc->ext > (*b.it).e) && ((*b.it).e > prev)) {
+        if (b.prev) {
+            ++b.it;
+        } else {
+            b.it = b.h->bnd->erase(b.it);
+        }
+        extd_uq_by_p(kc, (*b.it).s, prev, kc->s + b.h->s_s, b.sk);
+    }
+}
+
 
 
 static void
-handle_range(kct_t *kc, Hdr *h, uint64_t C*C prevk, uint64_t C*C thisk,
-        C uint32_t koffs, uint64_t** sk, std::set<uint64_t> &pk)
+handle_range(kct_t *kc, Bnd &b, uint64_t C*C thisk)
 {
-    seq_t *ndxkct;
-    keyseq_t seq = {0};
-    uint8_t C*C s = kc->s + h->s_s;
-    C pos_t b2start = (*kc->bdit).s;
-    C pos_t b2end = (*kc->bdit).e;
-    pos_t prev = prevk ? b2pos_of(*prevk) : b2start + KEY_WIDTH - 1;
-    C pos_t p = thisk ? b2pos_of(*thisk) : b2end; NB(prev < p);
+    uint8_t C*C s = kc->s + b.h->s_s;
+    pos_t prev = _prev_or_bnd_start(b);
+    C pos_t pend = thisk ? b2pos_of(*thisk) : (*b.it).e;
+    NB(prev < pend);
 
-    if (p - prev <= kc->ext + 1) { // a 2nd uq
-        uq_bounded(kc, h, prevk, thisk, prev, p);
+    if (pend - prev <= kc->ext + 1) { // a 2nd uniq in scope
 
-        // what if all remaining occurances happen between two boundaries?
-        if (prev - p > 1)
-            extd_uq_by_p(kc, prev, p, s, koffs, pk);
-        seq.p = prev = p;
-        ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
+        unique_covered(b, thisk, prev, pend);
+        extd_uq_by_p(kc, prev, pend, s, b.sk);
+        return;
 
-    } else { // first occurance.
+    }
 
-        // 1: from prev till now, add position and dup reevaluation
-        seq.p = prev - KEY_WIDTH + 1;
-        build_key(s, seq, prev + 1);
+    // first uniq in scope. from prev to p, add position if pending and reevaluate dupbit
+    keyseq_t seq = { .p = prev + 1};
+    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
 
-        do {
-            ndxkct = get_kct(kc, seq);
-            uint64_t *k = kc->kct + *ndxkct;
+    for(;;) {
+        uint64_t *k = kc->kct + *ndxkct;
 
-            if (*k & DUP_BIT) {
-                if (k - kc->kct < koffs || b2pos_of(kc, k) < seq.p) {
-                    *k &= ~DUP_BIT; NB(*sk <= k); // unset for 1st occurance
-//                    swap_kct(kc, *sk, k, ndxkct, s); //XXX XXX: valid ???
-                    ++kc->reeval;
-//                    k = (*sk)++;
-                } else if (b2pos_of(*k) == seq.p) {
-                    // all but last positions were excised, unique after all!
-                    uq_bounded(kc, h, prevk, thisk, prev, seq.p);
-                    pk.insert(*k);
-                    unsigned at = seq.p;
-                    if (at < prev + kc->ext + 1) {
-                        if (at > prev + 1)
-                            extd_uq_by_p(kc, prev, at, s, koffs, pk);
-                        prev = at;
-                        if (p - prev < kc->ext + 1) {
-                            //rollback entirely
-                            uq_bounded(kc, h, prevk, NULL, prev, p);
-                            seq.p = p;
-                            ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
-                            if (p - prev > 1)
-                                extd_uq_by_p(kc, prev, p, s, koffs, pk);
-                            prev = p;
-                            break;
-                        }
-                    }
-                }
-            } else if (b2pos_of(kc, k) < seq.p) { // no dup after all
-                *k |= DUP_BIT;
+        if (~*k & DUP_BIT) {
+
+            if (k < b.sk) {
+                *k |= DUP_BIT;      // second occurance, no dup after all
                 --kc->reeval;
+            } else {
+
+                EPR("uniq");
+                print_seq(&seq);
+                *k |= DUP_BIT; // FIXME don't want this.
+                //swap_kct(kc->ndxkct, b.sk++, k, ndxkct, s);
             }
-            *k &= INFIOR_MASK; // unset strand bit and pos (dupbit is highest and preserved)
-            *k |= (uint64_t)!seq.t << ORIENT_SHFT | seq.p; // set new pos and strand
-            get_next_nt_seq(s, seq);
-            seq_next(seq);
-        } while (++seq.p != p);
+
+        } else if (k >= b.sk) { // 1st occurance, place it now.
+
+            if (b2pos_of(kc, k) == seq.p) {
+
+                ++kc->reeval;   // may yet be unique or we decrement this later.
+
+            } else {
+                // a position is pending,  see extd_uq_by_p()
+
+                NB(b2pos_of(kc, k) < seq.p || b.hk == kc->hk || k < kc->kct + (b.hk-1)->koffs);
+
+                *k &= INFIOR_MASK; // unset strand bit and pos, dupbit (highest) is kept.
+                *k |= (uint64_t)!seq.t << ORIENT_SHFT | seq.p; // set new pos and strand
+            }
+
+            *k &= ~DUP_BIT;
+            swap_kct(kc->ndxkct, b.sk++, k, ndxkct, s);
+        }
+        if (++seq.p == pend)
+            break;
+
+        get_next_nt_seq(s, seq);
+        ndxkct = get_kct(kc, seq);
     }
 }
 
-static Hdr*
-next_hdr(kct_t *kc, HK *hk, uint64_t *k)
+static void
+update_header(kct_t *kc, uint64_t *k, Bnd &b)
 {
-    Hdr *h = kc->h + hk->hoffs;
-    for (kc->bdit = h->bnd->end(); b2pos_of(*k) < (*--kc->bdit).s;)
-        {}
-    return h;
+    while (k >= kc->kct + b.hk->koffs) {
+        handle_range(kc, b, NULL);
+        reached_boundary(kc, b);
+        NB(b.hk < kc->hk + kc->hk_l);
+        b.h = kc->h + (++b.hk)->hoffs;
+        b.it = b.h->bnd->begin();
+        b.prev = NULL;
+    }
+}
+
+static void
+update_boundary(kct_t *kc, uint64_t *k, Bnd &b)
+{
+    while (b2pos_of(*k) >= (*b.it).e) {
+        handle_range(kc, b, NULL);
+        reached_boundary(kc, b);
+        ++b.it;
+        NB(b.it != b.h->bnd->end());
+        b.prev = NULL;
+    }
 }
 
 /*
@@ -264,36 +233,30 @@ next_hdr(kct_t *kc, HK *hk, uint64_t *k)
 static void
 ext_uq_iter(kct_t *kc)
 {
-    uint64_t *kend = kc->kct + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
-    HK *hk = kc->hk + kc->hk_l;
-    Hdr *h = next_hdr(kc, --hk, kend);
-    uint64_t *kctnext = kc->kct_next; // TODO: use this instead of pk below.
-    std::set<uint64_t> pk;     // storage for unique key offsetss
-    uint64_t *last = NULL;
+    uint64_t *k = kc->kct;
+    uint64_t *kend = k + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
+    Bnd b = {
+        .sk = k,
+        .hk = kc->hk,
+        .h = kc->h + kc->hk->hoffs,
+        .prev = NULL,
+        .it = kc->h->bnd->begin()
+    };
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    uint64_t *sk = kc->kct;
-    for (uint64_t *k = kend; k != kc->kct - 1; --k) {
+    for (; k != kend; ++k) {
 
-        if (IS_DUP(k))
+        if (IS_DUP(k)) // they are handled during excision (or postponed) - handle_range()
             continue;
 
-        pk.insert(*k);
-        if (k - kc->kct < hk->koffs) {
-
-            handle_range(kc, h, NULL, last, hk->koffs, &sk, pk);
-            reached_boundary(kc, h, last, hk->koffs, pk);
-
-            h = next_hdr(kc, --hk, k);
-            last = NULL;
-        }
-        handle_range(kc, h, k, last, hk->koffs, &sk, pk);
-        last = k;
+        update_header(kc, k, b);
+        update_boundary(kc, k, b);
+        handle_range(kc, b, k);
+        b.prev = k;
     }
-    handle_range(kc, h, NULL, last, hk->koffs, &sk, pk);
-    reached_boundary(kc, h, last, hk->koffs, pk);
+    handle_range(kc, b, NULL);
+    reached_boundary(kc, b);
 
-    place_uniques(kc, sk, kend, kc->s + h->s_s, pk);
     //NB(0, "(NOT!;) end of loop reached! (TODO: swapping..)");
     // FIXME: iteration over swapped instead of uniques
     //
@@ -311,18 +274,12 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
     int res;
     kc->uqct = kc->reeval = 0;
 
-    kc->kct_next = (uint64_t*)malloc(kc->kct_l * sizeof(uint64_t));
-    if (kc->kct_next == NULL) {
-        res = -ENOMEM;
-        goto err;
-    }
     for (kc->ext = res = 1; res > 0 && kc->ext != kc->readlength - KEY_WIDTH + 1;++kc->ext) {
         kc->iter = 0;
         do { // until no no more new uniques
             ext_uq_iter(kc);
         } while (kc->reeval > 0);
     }
-    _buf_free(kc->kct_next);
     if (res == 0) {
         _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
         _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
