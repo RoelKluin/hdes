@@ -40,7 +40,7 @@ free_kc(kct_t *kc)
 }
 
 static void
-swap_kct(seq_t *kcnxk,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint8_t C*C s)
+swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *ndxkct2, uint8_t C*C s)
 {
     if (k1 == k2)
         return;
@@ -60,7 +60,7 @@ swap_kct(seq_t *kcnxk,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint8_t C*C
  * shrinks (here).
  */
 static void
-unique_covered(Bnd &b, uint64_t C*C thisk, C pos_t prev, C pos_t p)
+unique_covered(Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 {
     if (b.prev) {                          // if not at boundary start
         C pos_t end = (*b.it).e;           // store original end
@@ -88,7 +88,7 @@ unique_covered(Bnd &b, uint64_t C*C thisk, C pos_t prev, C pos_t p)
  *
  */
 static inline void
-extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, uint64_t C*C sk)
+extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, pos_t C*C sk)
 {
     NB(pend < (kc->s_l << 2) && p < pend);
 
@@ -99,7 +99,7 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, uint64_t C*C sk)
     seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
 
     for(;;) {
-        uint64_t *k = kc->kct + *ndxkct;
+        pos_t *k = kc->kct + *ndxkct;
 
         // stored first occurance matches current position and contig
         if (b2pos_of(kc, k) == seq.p && k >= sk) {
@@ -132,7 +132,7 @@ reached_boundary(kct_t *kc, Bnd &b)
 
 
 static void
-handle_range(kct_t *kc, Bnd &b, uint64_t C*C thisk)
+handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
     uint8_t C*C s = kc->s + b.h->s_s;
     pos_t prev = _prev_or_bnd_start(b);
@@ -152,37 +152,31 @@ handle_range(kct_t *kc, Bnd &b, uint64_t C*C thisk)
     seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
 
     for(;;) {
-        uint64_t *k = kc->kct + *ndxkct;
+        pos_t *k = kc->kct + *ndxkct;
 
-        if (~*k & DUP_BIT) {
+        if (k < b.sk) {
+            // second occurance
 
-            if (k < b.sk) {
-                *k |= DUP_BIT;      // second occurance, no dup after all
+            if (~*k & DUP_BIT) {
+                //no dup after all
+
+                *k |= DUP_BIT;
                 --kc->reeval;
-            } else {
-
-                EPR("uniq");
-                print_seq(&seq);
-                *k |= DUP_BIT; // FIXME don't want this.
-                //swap_kct(kc->ndxkct, b.sk++, k, ndxkct, s);
             }
-
-        } else if (k >= b.sk) { // 1st occurance, place it now.
-
+        } else {
+            // 1st occurance, place it now.
             if (b2pos_of(kc, k) == seq.p) {
 
                 ++kc->reeval;   // may yet be unique or we decrement this later.
+                *k &= ~DUP_BIT;
 
             } else {
-                // a position is pending,  see extd_uq_by_p()
+                // a position is pending, first was excised, see extd_uq_by_p()
 
                 NB(b2pos_of(kc, k) < seq.p || b.hk == kc->hk || k < kc->kct + (b.hk-1)->koffs);
-
-                *k &= INFIOR_MASK; // unset strand bit and pos, dupbit (highest) is kept.
-                *k |= (uint64_t)!seq.t << ORIENT_SHFT | seq.p; // set new pos and strand
+                *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
 
-            *k &= ~DUP_BIT;
             swap_kct(kc->ndxkct, b.sk++, k, ndxkct, s);
         }
         if (++seq.p == pend)
@@ -194,7 +188,7 @@ handle_range(kct_t *kc, Bnd &b, uint64_t C*C thisk)
 }
 
 static void
-update_header(kct_t *kc, uint64_t *k, Bnd &b)
+update_header(kct_t *kc, pos_t *k, Bnd &b)
 {
     while (k >= kc->kct + b.hk->koffs) {
         handle_range(kc, b, NULL);
@@ -207,7 +201,7 @@ update_header(kct_t *kc, uint64_t *k, Bnd &b)
 }
 
 static void
-update_boundary(kct_t *kc, uint64_t *k, Bnd &b)
+update_boundary(kct_t *kc, pos_t *k, Bnd &b)
 {
     while (b2pos_of(*k) >= (*b.it).e) {
         handle_range(kc, b, NULL);
@@ -232,8 +226,8 @@ update_boundary(kct_t *kc, uint64_t *k, Bnd &b)
 static void
 ext_uq_iter(kct_t *kc)
 {
-    uint64_t *k = kc->kct;
-    uint64_t *kend = k + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
+    pos_t *k = kc->kct;
+    pos_t *kend = k + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
     Bnd b = {
         .sk = k,
         .hk = kc->hk,

@@ -29,28 +29,21 @@
 
 // TODO: do not count, rather write pos on 1st occurance (1-based), in case of multiple, set length
 
-#define DUP_BIT    0x8000000000000000 // Set if key is uniq for remaining sections (and pos stored).
-#define STRAND_BIT 0x0000001000000000 // the bit to store the original orientation of ref once uniq.
-#define MAX_INFIOR 0x7FFFFFD000000000 // inferiority per key - stays when unique
-#define B2POS_MASK 0x0000000FFFFFFFFF // position, once unique
-
-#if ((1 << ORIENT_SHFT) != STRAND_BIT)
-#error "(1 << ORIENT_SHFT) != STRAND_BIT)"
-#endif
+#define DUP_BIT    0x80000000 // Set if key is uniq for remaining sections (and pos stored).
+#define STRAND_BIT 0x00000001 // the bit to store the original orientation of ref once uniq.
+#define B2POS_MASK 0x7FFFFFFF // position, once unique
 
 // stored position is one-based to ensure a bit is set
 #define NO_KCT -2u
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 
-#define IS_DUP(k)      (*(k) & DUP_BIT)
+#define IS_DUP(k) ({\
+    decltype(*(k)) __t = *(k);\
+    NB(b2pos_of(__t) > KEY_WIDTH - 1 && __t != NO_KCT);\
+    __t & DUP_BIT;\
+})
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
-
-#define INFIOR_SHFT (ORIENT_SHFT + 1)
-#define INFERIORITY (1ul << INFIOR_SHFT)
-#define STRAND_POS (INFERIORITY - 1ul)
-#define INFIOR_MASK (~STRAND_POS)
-#define INFIOR INFERIORITY
 
 #define IS_DBG_K(kc, k) (*k == dbgk || K_OFFS(kc, k) == dbgndxkct)
 
@@ -122,10 +115,10 @@ struct HK {
 };
 
 struct Bnd {
-    uint64_t *sk;
+    pos_t *sk;
     HK *hk;
     Hdr *h;
-    uint64_t *prev;
+    pos_t *prev;
     std::list<Mantra>::iterator it;
 };
 
@@ -133,7 +126,7 @@ struct kct_t {
     char* id;
     uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
-    uint64_t* kct; // each 2 u64s with different usage in various stages, see below.
+    pos_t* kct;
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, ext, last_uqct;
     unsigned readlength, iter;
@@ -144,21 +137,22 @@ struct kct_t {
     // could be possible to move bnd here.
 };
 
+// TODO: pos rshift may not be necessary.
 static inline pos_t
-b2pos_of(kct_t C*C kc, uint64_t C*C k)
+b2pos_of(kct_t C*C kc, pos_t C*C k)
 {
     NB(k - kc->kct < kc->kct_l);
     NB(k - kc->kct >= 0);
     NB(*k != NO_KCT);
     
-    return *k & B2POS_MASK;
+    return (*k & B2POS_MASK) >> 1;
 }
 
 static inline pos_t
-b2pos_of(uint64_t C k)
+b2pos_of(pos_t C k)
 {
     NB(k != NO_KCT);
-    return k & B2POS_MASK;
+    return (k & B2POS_MASK) >> 1;
 }
 
 static seq_t
@@ -172,33 +166,6 @@ build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
     return ndx;
 }
 
-
-
-/* == kct in key_init stage: ==
- * key count in lowest bits.
- *
- * == unique boundary extension: ==
- * inferiority is needed, 23 bits originally. Highest bits for sorting?
- * one bit to mark unique
- * if unique, low bits contain position
- *
- * if not unique
- * key counts are needed.
- * required 2 bits to keep last nt, 1 bit to mark all same.
- *
- * The 2nd u64 of kct contains kc->ts offset in its low 40, nextNt count in high 24.
- * In the scope of another unique key, remaining non unique positions are no longer
- * considered. They can be skipped and therefore their respective nextNts are
- * excised and moved upwards. The nextNt count is decremented.
- *
- * The 1st u64 is unset and will be used for keeping track which nextnts are passed
- * for this index in the low 40 bits. The inferiority is stored in the highest 23th
- * bit and the 40th bit contains the orientation of the complement independent index
- * on reference once unique. Once unique the low 40 bits are used instead for the
- * (genomic) b2pos storage.
- * [0]: pos:40, strand:1, infior:23;
- * [1] ts_offs:40, remain:24;
- */
 void free_kc(kct_t* kc);
 int fa_read(struct gzfh_t*, kct_t*);
 int fa_index(struct gzfh_t*, uint64_t optm, unsigned readlength);

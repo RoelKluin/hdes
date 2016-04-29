@@ -194,15 +194,14 @@ case 'G':   seq.t &= 0x3;
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
                 // set first pos + orient
-                kc->kct[*n] = ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | (kc->s_l - h->s_s);
+                kc->kct[*n] = (kc->s_l - h->s_s) << 1 | (seq.t != 0);
+                NB(b2pos_of(kc->kct[*n]) > KEY_WIDTH - 1);
             } else {
                 if (!(kc->kct[*n] & DUP_BIT)) {
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
                     --kc->uqct;
                 }
             }
-            EPQ(dbg >4, "[%lu, " Sfmt ", 0x%lx, " Sfmt "]:debug %u", kc->s_l, seq.dna,
-                    n - kc->ndxkct, *n, print_dna(seq.dna));
             break;
         }
 case 'N':   i = (KEY_WIDTH - 1) << 8;

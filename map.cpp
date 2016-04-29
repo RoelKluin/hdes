@@ -57,6 +57,8 @@ seqphred(uint8_t *s, int q)
 static int
 get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
 {
+    // FIXME: pos_t plus contig offset.
+
     // FIXME: no looping here, store ref to header in boundary?.
     std::list<Mantra>::iterator bd;
     Hdr* h;
@@ -69,17 +71,14 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
         if ((h->s_s + (*bd).e + bufi) < *pos)
             continue;
 
-        EPQ(dbg > 16, "%s", kc->id + h->part[0]);
         while (((h->s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
 
-            EPQ(dbg > 16, "%lu > %lu?", (h->s_s + (*bd).s), *pos);
             --bd;
         }
         ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
     }
     ASSERT (h != kc->h + kc->h_l, return -EFAULT);
-    EPQ(dbg > 6, "%ld <= %u + %u", *pos - h->s_s, (*bd).corr, bufi);
 
     ASSERT(*pos + (*bd).corr > h->s_s + bufi, return -EFAULT,
             "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, h->s_s + bufi
@@ -143,7 +142,6 @@ fq_read(kct_t* kc, seqb2_t *sb2)
         } else {
             dbg |= 8;
         }
-        EPQ(dbg > 6, "%s", (char*)h);
 
         //char* seqstart = (char*)s;
         i = 0;
@@ -183,15 +181,13 @@ default:            seq_next(seq);
                         continue;
                     }
                     if (dbg > 6) {
-                        uint64_t pos = b2pos_of(kc->kct[k]);
+                        pos_t pos = b2pos_of(kc->kct[k]);
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) {
                             buf[i - KEY_WIDTH] = ~0ul;
                             bufi[i - KEY_WIDTH] = i ^ seq.t;
                             continue;
                         }
-                        EPR0("%s:%lu\t%lu\t0x%lx\t", kc->id + c, pos,
-                                kc->kct[k] >> INFIOR_SHFT, (uint64_t)ndx);
                         print_ndx(ndx);
                     }
 		    if (i == KEY_WIDTH) {
@@ -250,7 +246,6 @@ default:            seq_next(seq);
 
             uint64_t pos = b2pos_of(kc->kct[ndx]);
 
-            EPQ(dbg >> 6, "pos:%lu", pos);
             c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
 	    if (c < 0) {
 		while ((c = gc(g)) != '@' && c != -1) {}
