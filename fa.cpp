@@ -92,8 +92,8 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, uint64_t C*C sk)
 {
     NB(pend < (kc->s_l << 2) && p < pend);
 
-    if (p + kc->ext + 1 < pend || p + 1 == pend) // do we have keys between unique?
-        return;                                  // no: then nothing to do here.
+    if (!in_scope(kc, p, pend))  // no keys between uniques?
+        return;                  // then nothing to do here.
 
     keyseq_t seq = {.p = p + 1};
     seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
@@ -119,7 +119,7 @@ static void
 reached_boundary(kct_t *kc, Bnd &b)
 {
     C pos_t prev = _prev_or_bnd_start(b);
-    if ((prev + kc->ext > (*b.it).e) && ((*b.it).e > prev)) {
+    if (in_scope(kc, prev, (*b.it).e)) {
         if (b.prev) {
             ++b.it;
         } else {
