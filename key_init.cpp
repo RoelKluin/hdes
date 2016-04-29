@@ -196,8 +196,6 @@ case 'G':   seq.t &= 0x3;
                 // set first pos + orient
                 kc->kct[*n] = ((uint64_t)(seq.t != 0) << ORIENT_SHFT) | (kc->s_l - h->s_s);
             } else {
-                C uint64_t m = 1ul << ORIENT_SHFT;
-                kc->kct[*n] &= m ^ -m; // clear position and orientation
                 if (!(kc->kct[*n] & DUP_BIT)) {
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
                     --kc->uqct;
