@@ -43,13 +43,8 @@
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 
-// TODO: if a key is not unique, store pos or same seq and length in lower bits
-//#define UQ_MASK    0x000000000000000F // How many same Nts occur
-//#define SAME_SEQ   0X00000003FFFFFFF0
-
 #define IS_DUP(k)      (*(k) & DUP_BIT)
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
-//#define IS_FIRST(k)    ((*(k) & B2POS_MASK) == 0ul)
 
 #define INFIOR_SHFT (ORIENT_SHFT + 1)
 #define INFERIORITY (1ul << INFIOR_SHFT)
@@ -61,9 +56,6 @@
 
 #define DESCRIBE_KEY(kc, k, c) \
   EPR("[k:%lx, dbgk: %lx] %c\t%s", *k, K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
-
-// XXX: Could use just one of these: not DISTINCT in non 1st iteration means MARKED.
-//#define MARKED 0x8000000000000000
 
 packed_struct Mantra { // not yet covered by unique keys
     pos_t s, e; // start and end of mantra, position where we jump to.
@@ -107,6 +99,8 @@ seq_next(struct keyseq_t &seq)
 #define DEBUG 1
 
 #define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
+
+#define in_scope(kc, fst, nxt) ((nxt) - (fst) - 1u < (kc)->ext)
 
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
@@ -155,7 +149,7 @@ b2pos_of(kct_t C*C kc, uint64_t C*C k)
 {
     NB(k - kc->kct < kc->kct_l);
     NB(k - kc->kct >= 0);
-    NB((*k & B2POS_MASK) != NO_KCT);
+    NB(*k != NO_KCT);
     
     return *k & B2POS_MASK;
 }
@@ -163,7 +157,7 @@ b2pos_of(kct_t C*C kc, uint64_t C*C k)
 static inline pos_t
 b2pos_of(uint64_t C k)
 {
-    NB((k & B2POS_MASK) != NO_KCT);
+    NB(k != NO_KCT);
     return k & B2POS_MASK;
 }
 

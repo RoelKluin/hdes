@@ -62,19 +62,18 @@ swap_kct(seq_t *kcnxk,  uint64_t *k1,  uint64_t *k2, seq_t *ndxkct2, uint8_t C*C
 static void
 unique_covered(Bnd &b, uint64_t C*C thisk, C pos_t prev, C pos_t p)
 {
-    if (b.prev) {                          // if not at chr start
+    if (b.prev) {                          // if not at boundary start
         C pos_t end = (*b.it).e;           // store original end
         (*b.it).e = prev;                  // shift end
-        if (thisk) {                       // if not last boundary either
+        if (thisk) {                       // if not at boundary end either
             b.h->bnd->insert(b.it, *b.it); // insert a copy of the current
-            (*b.it).s = p;                 // it became two smaller ranges, so
-            (*b.it).e = end;               // and reinstate original end
+            (*b.it).s = p;                 // mantra became divided in two smaller ranges.
+            (*b.it).e = end;               // reinstate original end
         }                                  // (otherwise the last boundary just got smaller)
     } else if (thisk) {     // if at chr start, but not at chr end
         (*b.it).s = p;      // shift start
     } else {                              // entire region became mapable
         b.it = b.h->bnd->erase(b.it);     // this returns the next element
-        NB(b.it != b.h->bnd->end(), "FIXME: boundaries became adjoining");
         b.prev = NULL;
     }
 }
@@ -103,7 +102,7 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, uint64_t C*C sk)
         uint64_t *k = kc->kct + *ndxkct;
 
         // stored first occurance matches current position and contig
-        if (b2pos_of(kc, k) == seq.p && k >= sk) { // k is always before 'kend'.
+        if (b2pos_of(kc, k) == seq.p && k >= sk) {
 
             NB(*k & DUP_BIT);    // the first occurance of the key is excised.
             ++kc->reeval;        // leave dup bit set to mark a position is pending
