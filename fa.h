@@ -116,7 +116,6 @@ struct HK {
 
 struct Bnd {
     pos_t *sk;
-    HK *hk;
     Hdr *h;
     pos_t *prev;
     std::list<Mantra>::iterator it;

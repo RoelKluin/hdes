@@ -181,7 +181,7 @@ default:            seq_next(seq);
                         continue;
                     }
                     if (dbg > 6) {
-                        pos_t pos = b2pos_of(kc->kct[k]);
+                        uint64_t pos = b2pos_of(kc->kct[k]);
                         c = get_tid_and_pos(kc, &pos, i);
 			if (c < 0) {
                             buf[i - KEY_WIDTH] = ~0ul;

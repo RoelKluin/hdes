@@ -173,7 +173,6 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
             } else {
                 // a position is pending, first was excised, see extd_uq_by_p()
 
-                NB(b2pos_of(kc, k) < seq.p || b.hk == kc->hk || k < kc->kct + (b.hk-1)->koffs);
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
 
@@ -188,13 +187,13 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
 }
 
 static void
-update_header(kct_t *kc, pos_t *k, Bnd &b)
+update_header(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
 {
-    while (k >= kc->kct + b.hk->koffs) {
+    while (k >= kc->kct + hk->koffs) {
         handle_range(kc, b, NULL);
         reached_boundary(kc, b);
-        NB(b.hk < kc->hk + kc->hk_l);
-        b.h = kc->h + (++b.hk)->hoffs;
+        NB(hk < kc->hk + kc->hk_l);
+        b.h = kc->h + (++hk)->hoffs;
         b.it = b.h->bnd->begin();
         b.prev = NULL;
     }
@@ -228,10 +227,10 @@ ext_uq_iter(kct_t *kc)
 {
     pos_t *k = kc->kct;
     pos_t *kend = k + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
+    HK *hk = kc->hk;
     Bnd b = {
         .sk = k,
-        .hk = kc->hk,
-        .h = kc->h + kc->hk->hoffs,
+        .h = kc->h + hk->hoffs,
         .prev = NULL,
         .it = kc->h->bnd->begin()
     };
@@ -242,7 +241,7 @@ ext_uq_iter(kct_t *kc)
         if (IS_DUP(k)) // they are handled during excision (or postponed) - handle_range()
             continue;
 
-        update_header(kc, k, b);
+        update_header(kc, k, hk, b);
         update_boundary(kc, k, b);
         handle_range(kc, b, k);
         b.prev = k;
