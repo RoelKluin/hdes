@@ -54,6 +54,16 @@ static int dbg __attribute__((unused)) = 3;
 #define WARN(msg, ...) EPR("Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 #define QARN(d, msg, ...) EPQ(d, "Warning: " msg " at %s:%u", ##__VA_ARGS__, __FILE__, __LINE__)
 
+/* Note: The "MS" section flags are to remove duplicates.  */
+#define DEFINE_GDB_PY_SCRIPT(script_name) \
+ asm("\
+.pushsection \".debug_gdb_scripts\", \"MS\",@progbits,1\n\
+.byte 1 /* Python */\n\
+.asciz \"" script_name "\"\n\
+.popsection \n\
+");
+
+
 static void handler(int sig) {
   void *array[50];
   size_t size;
@@ -255,39 +265,29 @@ static unsigned next_pow2(unsigned x)
     return x + 1;
 }
 
-static int
-print_dna(seq_t dna, bool d = true, const char sep = '\n', unsigned len = KEY_WIDTH)
+static void
+print_dna(seq_t dna, const char sep = '\n', unsigned len = KEY_WIDTH)
 {
-    if (d) {
-        for (unsigned t = len; t--; dna >>= 2)
-            fputc(b6((dna & 3) << 1), stderr);
-        fputc(sep, stderr);
-    }
-    return -1;
+    for (unsigned t = len; t--; dna >>= 2)
+        fputc(b6((dna & 3) << 1), stderr);
+    fputc(sep, stderr);
 }
-static int
-print_2dna(seq_t dna, seq_t dna2, bool d = true, unsigned len = KEY_WIDTH)
+static void
+print_2dna(seq_t dna, seq_t dna2, unsigned len = KEY_WIDTH)
 {
-    if (d) {
-        print_dna(dna, true, '|', len);
-        print_dna(dna2, true, '\n', len);
-    }
-    return -1;
+    print_dna(dna, '|', len);
+    print_dna(dna2, '\n', len);
 }
-static int
-print_seq(keyseq_t* seq, bool d = true, unsigned len = KEY_WIDTH)
+static void
+print_seq(keyseq_t* seq, unsigned len = KEY_WIDTH)
 {
-    if (d) {
-        print_dna(seq->dna, true, '|', len);
-        print_dna(seq->rc, true, '\n', len);
-    }
-    return -1;
+    print_dna(seq->dna, '|', len);
+    print_dna(seq->rc, '\n', len);
 }
 
-static int
-print_ndx(seq_t dna, bool d = true)
+static void
+print_ndx(seq_t dna)
 {
-    if (d == false) return -1;
     seq_t rc = dna & KEYNT_TRUNC_UPPER;
     dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
     rc = revcmp(dna);
@@ -297,7 +297,6 @@ print_ndx(seq_t dna, bool d = true)
     for (unsigned t = KEY_WIDTH; t--; rc >>= 2)
         fputc(b6((rc & 3) << 1), stderr);
     fputc('\n', stderr);
-    return -1;
 }
 
 
