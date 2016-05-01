@@ -42,3 +42,4 @@ bwatest/snaps/
 *.uq
 *.fa.*
 *~
+cmocka-1.0.1*

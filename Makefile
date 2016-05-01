@@ -62,6 +62,12 @@ cleartest:
 clean:
 	rm -f $(PREPROCESSED) $(ASSEMBLIES) $(OBJECTS) $(PROG) core vgcore.*
 
+cscope:
+	cscope -Rb
+
+tags:
+	tags -R *.cpp *.h
+
 distclean: clean
 	rm -rf $(ARCHIVE).tar.gz
 

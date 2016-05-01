@@ -32,7 +32,8 @@ while read BASE KW RL; do
     LASTKW="$KW"
   fi
   if [ "$mode" = "gdb" ];then
-    xterm -geometry 120x99-0+0 -b 0 -e \
+    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
+    xterm -geometry 119x99-0+0 -b 0 -e \
         "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
 #    xterm -e "gdb --args uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
   else
