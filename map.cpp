@@ -61,8 +61,9 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
 
     // FIXME: no looping here, store ref to header in boundary?.
     std::list<Mantra>::iterator bd;
-    Hdr* h;
+    Hdr* h = kc->h;
 
+    /* FIXME:
     for (h = kc->h; h != kc->h + kc->h_l; ++h) {
         bd = h->bnd->end();
         --bd;
@@ -77,7 +78,7 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
         }
         ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
-    }
+    }*/
     ASSERT (h != kc->h + kc->h_l, return -EFAULT);
 
     ASSERT(*pos + (*bd).corr > h->s_s + bufi, return -EFAULT,
@@ -92,10 +93,12 @@ static void
 print_hdr(kct_t *C kc, char C*C commandline)
 {
     std::list<Hdr*>::iterator h;
+
+    /* FIXME:
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
         OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
         EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
-    }
+    }*/
     OPR("@PG\tID:" PROGRAM_NAME "\tPN:" PROGRAM_NAME "\tVN:" PROGRAM_VERSION "\tCL:%s",
             commandline);
 }

@@ -94,7 +94,10 @@ int main(int argc, char* const* argv)
 //    seq.fh[0].fp = seq.fh[2].fp = stdin; // default to stdin
     seq.fh[fhsz - 1].fp = stdout;
     seq.fh[fhsz - 1].write = &b2_write;
+
+#ifndef NDEBUG
     signal(SIGSEGV, handler);   // needed for trace, gdb record complains here
+#endif
 
 
     /* parse cmdline args */

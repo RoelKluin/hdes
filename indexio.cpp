@@ -12,7 +12,7 @@
 #include "gz.h"
 
 // XXX: these need to be updated
-// read write of 64 bits may require some more work.
+
 
 #define __WRITE_VAL(x) \
     ASSERT(fhout->fp != NULL, return -EFAULT);\
@@ -51,7 +51,7 @@ int
 save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
-    uint32_t val, len;
+    uint32_t val, len = kc->bnd->size();
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
@@ -59,24 +59,24 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     // 1: buffer sizes
     __WRITE_VAL(kc->h_l)
     __WRITE_VAL(kc->id_l)
+    __WRITE_VAL(len)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
 
+    for(std::list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
+        val = (*b).corr;
+        __WRITE_VAL(val)
+        val = (*b).s;
+        __WRITE_VAL(val)
+        val = (*b).e;
+        __WRITE_VAL(val)
+    }
+
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
         __WRITE_VAL(h->end_pos)
-        len = h->bnd->size();
-        __WRITE_VAL(len)
         __WRITE_VAL(h->s_s)
-        for(std::list<Mantra>::iterator b = h->bnd->begin(); b != h->bnd->end(); ++b) {
-            val = (*b).corr;
-            __WRITE_VAL(val)
-            val = (*b).s;
-            __WRITE_VAL(val)
-            val = (*b).e;
-            __WRITE_VAL(val)
-        }
         __WRITE_VAL(h->p_l)
         // sequence, if read, is not stored.
         __WRITE_PTR(h->part, h->p_l)
@@ -98,23 +98,24 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
     // 1: buffer sizes
     __READ_VAL(kc->h_l) // header size: how many contigs (and uniq regions)
     __READ_VAL(kc->id_l)
+    __READ_VAL(blen)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
-    kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
 
+    for (uint32_t j=0; j != blen; ++j) {
+        Mantra contig = {0};
+        __READ_VAL(contig.corr)
+        __READ_VAL(contig.s)
+        __READ_VAL(contig.e)
+        kc->bnd = new std::list<Mantra>();
+        kc->bnd->push_back(contig);
+    }
+
+    kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
         __READ_VAL(h->end_pos)
-        __READ_VAL(blen)
         __READ_VAL(h->s_s)
-        for (uint32_t j=0; j != blen; ++j) {
-            Mantra contig = {0};
-            __READ_VAL(contig.corr)
-            __READ_VAL(contig.s)
-            __READ_VAL(contig.e)
-            h->bnd = new std::list<Mantra>();
-            h->bnd->push_back(contig);
-        }
         __READ_VAL(h->p_l)
         __READ_PTR(h->part, h->p_l)
     }
@@ -192,6 +193,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->ndxkct[i] = kc->kct_l;
     for (unsigned i=0u; i != kc->kct_l; ++i) {
+        NB(b2pos_of(kc->kct[i]) > KEY_WIDTH - 1);
         //ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %lu > KEYNT_BUFSZ(%lu)",
         //        i, kc->kct_l, kc->kct[i], KEYNT_BUFSZ);
         kc->ndxkct[kc->kct[i]] = i;

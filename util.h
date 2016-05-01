@@ -37,8 +37,8 @@ static int dbg __attribute__((unused)) = 3;
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define STR(s) #s
 
-#define EPQ(d, msg, ...) if (d) { fprintf (stderr, msg "\n", ##__VA_ARGS__); fflush(NULL); }
-#define EPQ0(d, ...) if (d) { fprintf (stderr, __VA_ARGS__); fflush(NULL); }
+#define EPQ(d, msg, ...) if (d) { fprintf (stderr, msg "\n", ##__VA_ARGS__); }
+#define EPQ0(d, ...) if (d) { fprintf (stderr, __VA_ARGS__); }
 #define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
 #define EPR0(...) fprintf (stderr, __VA_ARGS__)
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
@@ -59,7 +59,7 @@ static int dbg __attribute__((unused)) = 3;
  asm("\
 .pushsection \".debug_gdb_scripts\", \"MS\",@progbits,1\n\
 .byte 1 /* Python */\n\
-.asciz \"" script_name "\"\n\
+.asciz \"" gdb_py/frame_filter.py "\"\n\
 .popsection \n\
 ");
 

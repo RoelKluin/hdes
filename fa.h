@@ -93,20 +93,26 @@ seq_next(struct keyseq_t &seq)
 
 #define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
 
-#define in_scope(kc, fst, nxt) ((nxt) - (fst) - 1u < (kc)->ext)
+#define in_scope(kc, fst, nxt) ({\
+    pos_t __f = fst, __n = nxt;\
+    NB(__f < __n);\
+    (nxt) - (fst) - 1u < (kc)->ext;\
+})
 
+// ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
-    uint64_t s_s;
-    uint32_t *part; //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-    std::list<Mantra> *bnd; // XXX: waarom van header? Mantra *end in plaats, list in kct_t?
-    Mantra* mend;
-    uint32_t end_pos; // mapable is only used in fa.cpp
-    uint8_t p_l;
+    uint64_t s_s;     // 2bit offset of this contig
+    uint32_t *part;   // part[0] contains offset to kc->id character for the header ID.
+    uint32_t end_pos; // last 2bit position on this contig
+    uint8_t p_l;      // How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
+/*
+ * the kc->kct keys are ordered. Initially upon occurance on the genome
+ */
 // to look up key offset to 1) respective header and 2) for what extension the keys became uniq
 struct HK {
     uint32_t hoffs;
@@ -116,23 +122,24 @@ struct HK {
 
 struct Bnd {
     pos_t *sk;
-    Hdr *h;
+    uint8_t* s;
     pos_t *prev;
     std::list<Mantra>::iterator it;
 };
 
 struct kct_t {
-    char* id;
-    uint8_t* s; // all needed 2bit sequences in order (excluding Ns or first ones).
+    char* id;      // characters of headers
+    uint8_t* s;    // all needed 2bit sequences in order (excluding Ns or first ones).
     seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
     pos_t* kct;
+    uint64_t* ext;
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, ext, last_uqct;
-    unsigned readlength, iter;
+    uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, last_uqct;
+    unsigned readlength, iter, ext_l, ext_m;
     uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;
-    std::list<Mantra> bnd;
+    std::list<Mantra>* bnd;
     // could be possible to move bnd here.
 };
 
@@ -143,7 +150,7 @@ b2pos_of(kct_t C*C kc, pos_t C*C k)
     NB(k - kc->kct < kc->kct_l);
     NB(k - kc->kct >= 0);
     NB(*k != NO_KCT);
-    
+
     return (*k & B2POS_MASK) >> 1;
 }
 

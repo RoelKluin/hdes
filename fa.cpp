@@ -18,6 +18,8 @@
 #include <math.h>
 #include <set>
 #include <algorithm> // swap
+#include <setjmp.h>
+#include <cmocka.h> // TODO: unit testing
 //#include <stack>
 //#include <glib.h>
 //#include <pcre.h>
@@ -27,10 +29,10 @@
 void
 free_kc(kct_t *kc)
 {
-    for (Hdr *h = kc->h; h != kc->h + kc->h_l; ++h) {
+    for (Hdr *h = kc->h; h != kc->h + kc->h_l; ++h)
         free(h->part);
-        delete h->bnd;
-    }
+
+    delete kc->bnd;
     _buf_free(kc->id);
     _buf_free(kc->s);
     _buf_free(kc->kct);
@@ -58,22 +60,26 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *ndxkct2, uint8_t C*C s)
  * Initially there are one or more dependent on the presence and number of N-stretches;
  * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
  * shrinks (here).
+ *
+ * mantras start at the chr start, the position after a N-stretch or after a region scoped
+ * by uniques, the first non-unique after. The mantra ends at chr end, stretch or first non
+ * unique before a region scoped by uniques.
  */
 static void
-unique_covered(Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
+unique_covered(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 {
     if (b.prev) {                          // if not at boundary start
         C pos_t end = (*b.it).e;           // store original end
         (*b.it).e = prev;                  // shift end
         if (thisk) {                       // if not at boundary end either
-            b.h->bnd->insert(b.it, *b.it); // insert a copy of the current
-            (*b.it).s = p;                 // mantra became divided in two smaller ranges.
+            kc->bnd->insert(b.it, *b.it); // insert a copy of the current
+            (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
             (*b.it).e = end;               // reinstate original end
         }                                  // (otherwise the last boundary just got smaller)
     } else if (thisk) {     // if at chr start, but not at chr end
-        (*b.it).s = p;      // shift start
+        (*b.it).s = p + 1;  // shift start
     } else {                              // entire region became mapable
-        b.it = b.h->bnd->erase(b.it);     // this returns the next element
+        b.it = kc->bnd->erase(b.it);     // this returns the next element
         b.prev = NULL;
     }
 }
@@ -98,7 +104,7 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, pos_t C*C sk)
     keyseq_t seq = {.p = p + 1};
     seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
 
-    for(;;) {
+    while(1) {
         pos_t *k = kc->kct + *ndxkct;
 
         // stored first occurance matches current position and contig
@@ -123,9 +129,9 @@ reached_boundary(kct_t *kc, Bnd &b)
         if (b.prev) {
             ++b.it;
         } else {
-            b.it = b.h->bnd->erase(b.it);
+            b.it = kc->bnd->erase(b.it);
         }
-        extd_uq_by_p(kc, (*b.it).s, prev, kc->s + b.h->s_s, b.sk);
+        extd_uq_by_p(kc, (*b.it).s, prev, b.s, b.sk);
     }
 }
 
@@ -134,22 +140,19 @@ reached_boundary(kct_t *kc, Bnd &b)
 static void
 handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
-    uint8_t C*C s = kc->s + b.h->s_s;
     pos_t prev = _prev_or_bnd_start(b);
-    C pos_t pend = thisk ? b2pos_of(*thisk) : (*b.it).e;
-    NB(prev < pend);
+    C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
 
-    if (pend - prev <= kc->ext + 1) { // a 2nd uniq in scope
+    if (in_scope(kc, prev, pend)) { // a 2nd uniq
 
-        unique_covered(b, thisk, prev, pend);
-        extd_uq_by_p(kc, prev, pend, s, b.sk);
+        unique_covered(kc, b, thisk, prev, pend);
+        extd_uq_by_p(kc, prev, pend, b.s, b.sk);
         return;
 
     }
-
     // first uniq in scope. from prev to p, add position if pending and reevaluate dupbit
     keyseq_t seq = { .p = prev + 1};
-    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
+    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, b.s);
 
     for(;;) {
         pos_t *k = kc->kct + *ndxkct;
@@ -176,12 +179,12 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
 
-            swap_kct(kc->ndxkct, b.sk++, k, ndxkct, s);
+            swap_kct(kc->ndxkct, b.sk++, k, ndxkct, b.s);
         }
         if (++seq.p == pend)
             break;
 
-        get_next_nt_seq(s, seq);
+        get_next_nt_seq(b.s, seq);
         ndxkct = get_kct(kc, seq);
     }
 }
@@ -189,12 +192,14 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
 static void
 update_header(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
 {
+    Hdr* h;
     while (k >= kc->kct + hk->koffs) {
         handle_range(kc, b, NULL);
         reached_boundary(kc, b);
         NB(hk < kc->hk + kc->hk_l);
-        b.h = kc->h + (++hk)->hoffs;
-        b.it = b.h->bnd->begin();
+        h = kc->h + (++hk)->hoffs;
+        b.s = kc->s + h->s_s;
+        ++b.it;
         b.prev = NULL;
     }
 }
@@ -206,7 +211,7 @@ update_boundary(kct_t *kc, pos_t *k, Bnd &b)
         handle_range(kc, b, NULL);
         reached_boundary(kc, b);
         ++b.it;
-        NB(b.it != b.h->bnd->end());
+        NB(b.it != kc->bnd->end());
         b.prev = NULL;
     }
 }
@@ -220,7 +225,7 @@ update_boundary(kct_t *kc, pos_t *k, Bnd &b)
  *
  * keys are kept ordered. Ambiguous keys are kept ordered upon first occurance. unique keys are
  * isolated and ordered on extension, contig and position.
- * 
+ *
  */
 static void
 ext_uq_iter(kct_t *kc)
@@ -230,9 +235,9 @@ ext_uq_iter(kct_t *kc)
     HK *hk = kc->hk;
     Bnd b = {
         .sk = k,
-        .h = kc->h + hk->hoffs,
+        .s = kc->s,
         .prev = NULL,
-        .it = kc->h->bnd->begin()
+        .it = kc->bnd->begin()
     };
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
@@ -249,33 +254,30 @@ ext_uq_iter(kct_t *kc)
     handle_range(kc, b, NULL);
     reached_boundary(kc, b);
 
-    //NB(0, "(NOT!;) end of loop reached! (TODO: swapping..)");
+    NB(0, "(NOT!;) end of loop reached! (TODO: swapping..)");
     // FIXME: iteration over swapped instead of uniques
     //
 
     // TODO: some uniques no longer occur: all are excised.
     kc->last_uqct = kc->uqct;
-
-    EPQ(dbg > 0, "observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",
-            kc->uqct, ++kc->iter, kc->ext, kc->reeval);
 }
 
 static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
-    int res;
     kc->uqct = kc->reeval = 0;
 
-    for (kc->ext = res = 1; res > 0 && kc->ext != kc->readlength - KEY_WIDTH + 1;++kc->ext) {
+    for (unsigned ext 1; ext != kc->readlength - KEY_WIDTH + 1; ++ext) {
         kc->iter = 0;
         do { // until no no more new uniques
             ext_uq_iter(kc);
+            EPQ(dbg > 0, "observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",
+                kc->uqct, ++kc->iter, ext, kc->reeval);
         } while (kc->reeval > 0);
     }
-    if (res == 0) {
-        _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
-        _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
-    }
+    int res;
+    _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
+    _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
 err:
     return res;
 }

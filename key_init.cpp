@@ -12,6 +12,8 @@
 #include <ctype.h> // isspace()
 #include <unordered_map>
 #include <string>
+#include <setjmp.h>
+#include <cmocka.h> // TODO: unit testing
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 
@@ -19,9 +21,9 @@ static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
     if (!h) return;
-    h->end_pos =  h->bnd->back().e = kc->s_l - h->s_s;
-    kc->totNts += h->end_pos + h->bnd->back().corr;
-    EPR("processed %u(%lu) Nts for %s", h->end_pos + h->bnd->back().corr, kc->totNts,
+    h->end_pos =  kc->bnd->back().e = kc->s_l - h->s_s;
+    kc->totNts += h->end_pos + kc->bnd->back().corr;
+    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
             kc->id + h->part[0]);
 
     if (dbg > 3)
@@ -46,9 +48,9 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
         switch (c) {
-            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err); break;
+            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL); break;
             case ' ':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
                 if (p == IDTYPE) {
                     char* q = kc->id + part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -63,7 +65,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     part[p] = kc->id_l;
                 continue;
             case ':':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', h = NULL; goto err);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
@@ -89,7 +91,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     c = '\0';
                     p = UNKNOWN_HDR;
                 }
-                _buf_grow_add_err(kc->id, 1ul, 0, c, h = NULL; goto err);
+                _buf_grow_add_err(kc->id, 1ul, 0, c, return NULL);
                 continue;
         }
         break;
@@ -109,11 +111,10 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         NB(h->part != NULL);
         memcpy(h->part, part, p * sizeof(*part));
 
-        h->bnd = new std::list<Mantra>();
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
         h->s_s = kc->s_l;
-        h->bnd->push_back({0});
+        kc->bnd->push_back({0});
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -123,7 +124,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had any sequence
-        if (h->bnd->back().e != h->bnd->back().s) {
+        if (kc->bnd->back().e != kc->bnd->back().s) {
             if (p != NR && p != META) {
                 h->p_l = UNKNOWN_HDR;
                 h->end_pos = ~0u;
@@ -132,26 +133,23 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
             }
 
             // correction propagation Not thoroughly checked yet...
-            pos_t corr = h->bnd->back().corr - h->bnd->back().e; // start of current is added later.
-            h->bnd->push_back({.s=0, .e=0, .corr=corr });
+            pos_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
+            kc->bnd->push_back({.s=0, .e=0, .corr=corr });
         }
     }
 
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        h->bnd->back().corr += atoi(kc->id + h->part[START]) - 1;
+        kc->bnd->back().corr += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
-        h->bnd->back().e = h->end_pos - KEY_WIDTH;
+        kc->bnd->back().e = h->end_pos;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
-        h->bnd->back().corr = 0;
-        h->bnd->back().e = h->end_pos = ~0u;
+        kc->bnd->back().corr = 0;
+        kc->bnd->back().e = h->end_pos = ~0u;
         EPQ(dbg > 3, "\nWARNING: non-ensembl reference.");
     }
-err:
-    if (h == NULL)
-        delete h->bnd;
     return h;
 }
 
@@ -171,8 +169,9 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     kc->s_l = 0;
     kc->uqct = 0;
     kc->totNts = 0;
+    kc->bnd = new std::list<Mantra>();
     Hdr_umap lookup;
-    HK hk = { .hoffs = kc->h_l, .ext = 0};
+    HK hk = {.hoffs = kc->h_l};
     set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -181,7 +180,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
         switch((seq.t | i) & ~0x20) {
 case 'U':   seq.t ^= 0x2;
 case 'A':   seq.t ^= 0x3;
-case 'T': 
+case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
@@ -214,19 +213,19 @@ default:    if (isspace(seq.t))
             switch (seq.t & ~0x20) {
     case 'U':   seq.t ^= 0x2;
     case 'A':   seq.t ^= 0x3;
-    case 'T': 
+    case 'T':
     case 'C':   seq.t ^= 0x2;
     case 'G':   seq.t &= 0x3;
                 if (i == ((KEY_WIDTH - 1) << 8)) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
-                        corr += h->bnd->back().corr;
+                        corr += kc->bnd->back().corr;
                         NB(h->s_s > kc->s_l);
-                        NB(kc->s_l - h->s_s <= 0xffffffff);
-                        h->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s), .e = 0, .corr = 0});
+                        NB(kc->s_l - h->s_s <= 0x3fffffff,"TODO: split seq for huge contigs");
+                        kc->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s)});
                     }
-                    h->bnd->back().corr += corr;
+                    kc->bnd->back().corr += corr;
                     corr = 0;
                 }
                 i -= 0x100;
@@ -283,4 +282,7 @@ err:
     //fclose occurs in main()
     return res;
 }
+
+
+
 
