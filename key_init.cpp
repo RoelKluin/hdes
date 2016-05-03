@@ -184,7 +184,7 @@ case 'G':   seq.t &= 0x3;
             seq_next(seq);
             //print_dna(seq.dna);
             _addtoseq(kc->s, seq.t); // kc->s_l grows here.
-            seq_t* n = kc->ndxkct + get_kct0(kc, seq, ndx);
+            seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 2, 0);
                 *n = kc->kct_l++;
@@ -264,7 +264,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->hk = _buf_init_err(kc->hk, 1, goto err);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-        kc->ndxkct[i] = NO_KCT;
+        kc->contxt_idx[i] = NO_KCT;
 
     /* TODO: load dbSNP and known sites, and mark them. */
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");

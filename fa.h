@@ -70,8 +70,8 @@ seq_next(struct keyseq_t &seq)
 #define get_kct(kc, seq) ({\
     seq_t __ndx;\
     __ndx = get_kct0(kc, seq, __ndx);\
-    NB(kc->ndxkct[__ndx] < kc->kct_l);\
-    kc->ndxkct + __ndx;\
+    NB(kc->contxt_idx[__ndx] < kc->kct_l);\
+    kc->contxt_idx + __ndx;\
 })
 
 #define _addtoseq(buf, b)\
@@ -125,7 +125,7 @@ struct Bnd {
 struct kct_t {
     char* id;      // characters of headers
     uint8_t* s;    // all needed 2bit sequences in order (excluding Ns or first ones).
-    seq_t* ndxkct; // sparse array, complement independent index (ndx) => kct
+    seq_t* contxt_idx; // sparse array, complement independent index (ndx) => kct
                    // Later we may want to point to a combination in the non-observed for edits to
                    // this ndx or surroundings that does result in an ndx that does occur.
 
@@ -140,7 +140,7 @@ struct kct_t {
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, last_uqct;
     unsigned readlength, iter, ext_l, ext_m, extension;
-    uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;
     std::list<Mantra>* bnd;

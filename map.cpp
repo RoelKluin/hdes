@@ -164,7 +164,7 @@ default:            seq_next(seq);
 		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
 		    // seq.t only has strand at offset KEY_WIDTH.
                     ndx = get_ndx(seq);
-                    uint32_t k = kc->ndxkct[ndx];
+                    uint32_t k = kc->contxt_idx[ndx];
  EPR("%u:%lx\t%x", i, (uint64_t)ndx, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
@@ -190,7 +190,7 @@ default:            seq_next(seq);
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         if (kc->kct[k] > kc->kct[t]) {
-                            buf[i - KEY_WIDTH] = kc->ndxkct[ndx];
+                            buf[i - KEY_WIDTH] = kc->contxt_idx[ndx];
 		            bufi[i - KEY_WIDTH] = i ^ seq.t;
 			} else {
 			    // lowest inferiority
@@ -320,7 +320,7 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     }
     ASSERT(fhio[0]->fp && fhio[1]->fp && fhio[2]->fp, return -EFAULT,
             "need seqb2, keycount and unique boundary files");
-    kc.ndxkct = _buf_init_arr_err(kc.ndxkct, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.contxt_idx = _buf_init_arr_err(kc.contxt_idx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
     _ACTION(load_kc(fhio[0], &kc), "loading keycounts file");

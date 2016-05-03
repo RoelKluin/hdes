@@ -72,7 +72,7 @@ typedef uint64_t seq_t;
 // KEYNT: 2bits, therefore multiplied by 2.
 #define KEYNT_BUFSZ_SHFT ((KEY_LENGTH * 2) - 1)
 #define KEYNT_BUFSZ (1ul << KEYNT_BUFSZ_SHFT)
-#define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1ul) // also kctndx max.
+#define KEYNT_TRUNC_MASK (KEYNT_BUFSZ - 1ul) // also contxt_idx max.
 
 #define KEYNT_STRAND (1ul << KEY_WIDTH)
 #define KEYNT_AC (1ul << (KEY_WIDTH - 1))

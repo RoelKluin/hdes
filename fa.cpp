@@ -38,11 +38,11 @@ free_kc(kct_t *kc)
     _buf_free(kc->kct);
     _buf_free(kc->h);
     _buf_free(kc->hk);
-    _buf_free(kc->ndxkct);
+    _buf_free(kc->contxt_idx);
 }
 
 static void
-swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *ndxkct2, uint8_t C*C s)
+swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s)
 {
     if (k1 == k2)
         return;
@@ -50,8 +50,8 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *ndxkct2, uint8_t C*C s)
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
     keyseq_t seq = {.p = b2pos_of(*k1)};
-    seq_t *ndxkct1 = kcnxk + build_ndx_kct(seq, s);
-    std::swap(*ndxkct1, *ndxkct2); // ndxkct points to reordered kcts
+    seq_t *contxt_idx1 = kcnxk + build_ndx_kct(seq, s);
+    std::swap(*contxt_idx1, *contxt_idx2); // contxt_idx points to reordered kcts
     std::swap(*k1, *k2);           // and swap info at kcts
 }
 
@@ -102,10 +102,10 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, pos_t C*C sk)
         return;                  // then nothing to do here.
 
     keyseq_t seq = {.p = p + 1};
-    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, s);
+    seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, s);
 
     while(1) {
-        pos_t *k = kc->kct + *ndxkct;
+        pos_t *k = kc->kct + *contxt_idx;
 
         // stored first occurance matches current position and contig
         if (b2pos_of(kc, k) == seq.p && k >= sk) {
@@ -117,7 +117,7 @@ extd_uq_by_p(kct_t *kc, pos_t p, pos_t pend, uint8_t C*C s, pos_t C*C sk)
             break;
 
         get_next_nt_seq(s, seq);
-        ndxkct = get_kct(kc, seq);
+        contxt_idx = get_kct(kc, seq);
     }
 }
 
@@ -152,10 +152,10 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
     }
     // first uniq in scope. from prev to p, add position if pending and reevaluate dupbit
     keyseq_t seq = { .p = prev + 1};
-    seq_t *ndxkct = kc->ndxkct + build_ndx_kct(seq, b.s);
+    seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
 
     for(;;) {
-        pos_t *k = kc->kct + *ndxkct;
+        pos_t *k = kc->kct + *contxt_idx;
 
         if (k < b.sk) {
             // second occurance
@@ -179,13 +179,13 @@ handle_range(kct_t *kc, Bnd &b, pos_t C*C thisk)
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
 
-            swap_kct(kc->ndxkct, b.sk++, k, ndxkct, b.s);
+            swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
         }
         if (++seq.p == pend)
             break;
 
         get_next_nt_seq(b.s, seq);
-        ndxkct = get_kct(kc, seq);
+        contxt_idx = get_kct(kc, seq);
     }
 }
 
@@ -314,7 +314,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 
     strncpy(fh[3].name, fh[0].name, len);
 
-    kc.ndxkct = _buf_init_arr_err(kc.ndxkct, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.contxt_idx = _buf_init_arr_err(kc.contxt_idx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // first check whether unique boundary is ok.
     if (fh[0].fp) {
         mode = 2;
