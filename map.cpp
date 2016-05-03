@@ -110,7 +110,6 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     void* g;
     int (*gc) (void*);
     struct gzfh_t* fhin = sb2->fh;
-//dbg = 7;
     uint64_t l = sb2->s_l;//, m = sb2->s_m;
     uint8_t *s = sb2->s + l;
     //const unsigned phred_offset = sb2->phred_offset;
@@ -140,11 +139,6 @@ fq_read(kct_t* kc, seqb2_t *sb2)
         while (c != '\n' && (c >= 0)) c = gc(g);          /* comment - ignored. */
         if (c == -1) break;
         *s++ = '\0';
-        if (strcmp((const char*)h, dbgrn)) {
-            dbg &= ~8;
-        } else {
-            dbg |= 8;
-        }
 
         //char* seqstart = (char*)s;
         i = 0;
@@ -182,16 +176,6 @@ default:            seq_next(seq);
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
                         bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
-                    }
-                    if (dbg > 6) {
-                        uint64_t pos = b2pos_of(kc->kct[k]);
-                        c = get_tid_and_pos(kc, &pos, i);
-			if (c < 0) {
-                            buf[i - KEY_WIDTH] = ~0ul;
-                            bufi[i - KEY_WIDTH] = i ^ seq.t;
-                            continue;
-                        }
-                        print_ndx(ndx);
                     }
 		    if (i == KEY_WIDTH) {
 	                    buf[0] = k;

@@ -17,11 +17,9 @@
 #define __WRITE_VAL(x) \
     ASSERT(fhout->fp != NULL, return -EFAULT);\
     ASSERT(fhout->write != NULL, return -EFAULT);\
-    EPQ(dbg > 5, "writing value for " #x ":0x%lx", (uint64_t)(x));\
     if (fhout->write(fhout, (const char*)&(x), sizeof(x)) < 0)\
         goto err;
 #define __WRITE_PTR(x, l) \
-    EPQ(dbg > 5, "writing poiner " #x "");\
     if (fhout->write(fhout, (const char*)(x), (l) * sizeof(*(x))) < 0)\
         goto err;
 #define __WRITE_LMPTR(buf)\

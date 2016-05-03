@@ -267,12 +267,12 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     kc->uqct = kc->reeval = 0;
 
-    for (unsigned ext 1; ext != kc->readlength - KEY_WIDTH + 1; ++ext) {
+    for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques
             ext_uq_iter(kc);
-            EPQ(dbg > 0, "observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",
-                kc->uqct, ++kc->iter, ext, kc->reeval);
+            EPR("observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",
+                kc->uqct, ++kc->iter, kc->extension, kc->reeval);
         } while (kc->reeval > 0);
     }
     int res;

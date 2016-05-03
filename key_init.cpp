@@ -25,9 +25,6 @@ end_pos(kct_t*C kc, Hdr* h)
     kc->totNts += h->end_pos + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
             kc->id + h->part[0]);
-
-    if (dbg > 3)
-        show_mantras(kc, h);
 }
 
 #define ENS_HDR_PARTCT 10
@@ -148,7 +145,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         h->p_l = UNKNOWN_HDR;
         kc->bnd->back().corr = 0;
         kc->bnd->back().e = h->end_pos = ~0u;
-        EPQ(dbg > 3, "\nWARNING: non-ensembl reference.");
+        EPR("\nWARNING: non-ensembl reference.");
     }
     return h;
 }
@@ -176,7 +173,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while ((seq.t = gc(g)) <= 0xff) {
-        //EPR("%seq.t," Pfmt,seq.t, corr);
         switch((seq.t | i) & ~0x20) {
 case 'U':   seq.t ^= 0x2;
 case 'A':   seq.t ^= 0x3;
@@ -221,7 +217,7 @@ default:    if (isspace(seq.t))
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
                         corr += kc->bnd->back().corr;
-                        NB(h->s_s > kc->s_l);
+                        NB(h->s_s < kc->s_l);
                         NB(kc->s_l - h->s_s <= 0x3fffffff,"TODO: split seq for huge contigs");
                         kc->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s)});
                     }

@@ -20,14 +20,6 @@
 
 #define DEBUG 1
 
-static unsigned long dbgndx __attribute__((unused)) = ~0ul;// 0x1d03c;//0x1c27012;
-static unsigned dbgk __attribute__((unused)) = -3u;
-static seq_t dbgndxkct __attribute__((unused)) = -3u; //1099511627775; //0x2028;
-static const char* dbgrn __attribute__((unused)) = "HWI-ST745_0097:7:1101:7550:1094#0/1";
-static const char* dbgchr __attribute__((unused)) = "1";//GL000229.1";//GL000226.1";//GL000207.1T";//GL000197.1";//GL000239.1";//GL000231.1";
-static pos_t dbgpos __attribute__((unused)) = 0; //1099511627775; //0x2028;
-static int dbg __attribute__((unused)) = 3;
-
 #define C const
 
 #ifndef kroundup32
@@ -130,7 +122,6 @@ do {\
 #define _buf_init_err(buf, sz, error_action) ({\
     buf##_m = sz;\
     buf##_l = 0;\
-    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
     if_ever (__t == NULL) {\
         error_action;\
@@ -139,7 +130,6 @@ do {\
 })
 #define _buf_init_err_m(buf, m, error_action) ({\
     buf##_l = 0;\
-    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
     if_ever (__t == NULL) {\
         error_action;\
@@ -150,7 +140,6 @@ do {\
 
 #define _buf_init_arr_err(buf, sz, error_action) ({\
     buf##_m = sz;\
-    /*fprintf(stderr, #buf " malloc, %lu\n", sizeof(*(buf)) << buf##_m);fflush(NULL);*/\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
     if_ever (__t == NULL) {\
         error_action;\
@@ -161,7 +150,6 @@ do {\
 #define _buf_grow_err_m(buf, step, m, shft, error_action) \
 do {\
 if (((buf##_l + step) >> shft) >= (1ul << m)) {\
-    EPQ(dbg < 0, #buf " realloc, %lu", sizeof(*(buf)) << (buf##_m + 1));\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
     if_ever (__t == NULL) {\
         error_action;\

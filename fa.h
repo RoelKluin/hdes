@@ -40,15 +40,10 @@
 
 #define IS_DUP(k) ({\
     decltype(*(k)) __t = *(k);\
-    NB(b2pos_of(__t) > KEY_WIDTH - 1 && __t != NO_KCT);\
+    NB(b2pos_of(__t) > (KEY_WIDTH - 1) && __t != NO_KCT);\
     __t & DUP_BIT;\
 })
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
-
-#define IS_DBG_K(kc, k) (*k == dbgk || K_OFFS(kc, k) == dbgndxkct)
-
-#define DESCRIBE_KEY(kc, k, c) \
-  EPR("[k:%lx, dbgk: %lx] %c\t%s", *k, K_OFFS(kc, k), c, IS_UQ(k) ? "UQ\t" : "")
 
 packed_struct Mantra { // not yet covered by unique keys
     pos_t s, e; // start and end of mantra, position where we jump to.
@@ -96,7 +91,7 @@ seq_next(struct keyseq_t &seq)
 #define in_scope(kc, fst, nxt) ({\
     pos_t __f = fst, __n = nxt;\
     NB(__f < __n);\
-    (nxt) - (fst) - 1u < (kc)->ext;\
+    (nxt) - (fst) - 1u < (kc)->extension;\
 })
 
 // ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
@@ -130,12 +125,21 @@ struct Bnd {
 struct kct_t {
     char* id;      // characters of headers
     uint8_t* s;    // all needed 2bit sequences in order (excluding Ns or first ones).
-    seq_t* ndxkct; // somewhat sparse array, complement independent index (ndx) => kct
-    pos_t* kct;
-    uint64_t* ext;
+    seq_t* ndxkct; // sparse array, complement independent index (ndx) => kct
+                   // Later we may want to point to a combination in the non-observed for edits to
+                   // this ndx or surroundings that does result in an ndx that does occur.
+
+    pos_t* kct;    // dupbit : 2bit_contig position : strand; Extension + contig in order
+                   // non occurant are initally set to NO_KCT. see Extension below.
+
+    uint64_t* ext; // ndx offset for key extensions. If a position is after this u64 of the nth
+                   // extension n u64 (but before the next, or NO_KCT) then the key became unique
+                   // with this extension. If a key is found to be incorrect, One or more
+                   // mismatches must have occurred within this key, + extension n.
+                   // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, last_uqct;
-    unsigned readlength, iter, ext_l, ext_m;
+    unsigned readlength, iter, ext_l, ext_m, extension;
     uint8_t id_m, s_m, ndxkct_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;

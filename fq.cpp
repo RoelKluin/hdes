@@ -82,7 +82,6 @@ fq_print(seqb2_t *fq)
 {
     assert(fq->lookup != NULL);
     const unsigned readlength = fq->readlength;
-    EPQ(dbg > 7, "%u", readlength);
     const unsigned phred_offset = fq->phred_offset;
     uint8_t seqrc[(KEY_LENGTH+1)<<1];
     uint8_t *const s = fq->s + SEQ_OFFSET_BYTES + BUF_OFFSET_BYTES;
@@ -219,9 +218,6 @@ fq_b2(seqb2_t *fq)
         while ((c = gc(g)) != '\n') // skip 2nd header
             if (c < 0) goto out;
 
-        EPQ(dbg > 7, "'%s'", b);
-
-        EPQ(dbg > 7, "%u, %u", i, KEY_WIDTH);
         if (i < KEY_WIDTH) { // sequence too short. skipped and qual as well
             b = o;
             while ((c = gc(g)) != '\n' && c != -1) --i;
@@ -239,10 +235,8 @@ fq_b2(seqb2_t *fq)
         c = gc(g);
 
         do {
-            EPQ(dbg > 7, "q:'%c'", c);
             if_ever ((c -= phred_offset) > 50) goto out;
             c = seqphred(b, c);
-            EPQ(dbg > 7, "s:'%c'", b6(c<<1));
 
             dna = (dna << 2) | c;
             rev = ((uint64_t)c << KEYNT_TOP) | (rev >> 2); // Note: xor 0x2 after loop
@@ -258,10 +252,8 @@ fq_b2(seqb2_t *fq)
         unsigned maxi = i = 0;
 
         for (; *b != '\0'; ++i, ++b) {
-            EPQ(dbg > 7, "2q:'%c'", c);
             if_ever ((c -= phred_offset) > 50) goto out;
             c = seqphred(b, c);
-            EPQ(dbg > 7, "2s:'%c'", b6(c<<1));
 
             // update window for both strands
             dna = ((dna << 2) & KEYNT_MASK & ~0ul) | c;
@@ -285,7 +277,6 @@ fq_b2(seqb2_t *fq)
                 goto out; // get next phred score
             }
         }
-        EPQ(dbg > 7, "2q:'%c'", c);
         if_ever ((c -= phred_offset) > 50) goto out;
         i = seqphred(b, c);
         *b = 0xff;

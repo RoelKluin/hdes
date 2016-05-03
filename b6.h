@@ -170,10 +170,7 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
     t &= dna;/* was devbit set? */\
     seq_t __x = t ? dna : rc;\
     seq_t __m = __x & ((seq_t)1 << KEYNT_BUFSZ_SHFT);\
-    __x ^= __m ^ (__m - !!__m);\
-    EPQ(__x == dbgndx, "dna\t" Sfmt "\nrc\t" Sfmt "\ndev\t" Sfmt "\nt\t" Sfmt\
-            "\nm\t" Sfmt "\nx\t" Sfmt, dna, rc, dna ^ rc, t, __m, __x);\
-    __x;\
+    __x ^ __m ^ (__m - !!__m);\
 })
 #define get_ndx(seq) _get_ndx(seq.t, seq.dna, seq.rc)
 

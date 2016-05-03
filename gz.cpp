@@ -24,7 +24,6 @@ b2gz_write(const gzfh_t* fh, const char* s, size_t l)
             fprintf(stderr, "%d\n", i);
             return c;
         }
-        //EPQ(dbg > 5, "==%d bytes written", c);
         l -= c, s += c;
     }
 
@@ -44,7 +43,6 @@ b2gz_read(const gzfh_t* fh, char* s, size_t l)
 
             return c;
         }
-        //fprintf(stderr, "==%d bytes read\n", c);
         l -= c, s += c;
     }
 
@@ -60,7 +58,6 @@ b2_write(const gzfh_t *fh, const char *s, uint64_t l)
             EPR("error while writing");
             return c;
         }
-        //EPR("==%d bytes written", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
@@ -75,7 +72,6 @@ b2_read(const gzfh_t *fh, char *s, uint64_t l)
             EPR("error while reading");
             return c;
         }
-        //EPR("==%d bytes read", c);
         l -= c, s += c;
     }
     return ferror(fh->fp) ? -3 : 0;
@@ -168,8 +164,6 @@ rclose(gzfh_t* fh)
             EPR("closing fh->fp");
             fclose(fh->fp);
         }
-    } else {
-        EPQ(dbg > 6, "already seems closed: %s", fh->name ? fh->name : "<unknown>");
     }
     fh->fp = NULL;
     return ret;
