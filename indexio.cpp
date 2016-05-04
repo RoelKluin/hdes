@@ -49,7 +49,7 @@ int
 save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
-    uint32_t val, len = kc->bnd->size();
+    uint32_t val;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
@@ -57,12 +57,11 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     // 1: buffer sizes
     __WRITE_VAL(kc->h_l)
     __WRITE_VAL(kc->id_l)
-    __WRITE_VAL(len)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
 
-    for(std::list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
+    for(std::forward_list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
         val = (*b).corr;
         __WRITE_VAL(val)
         val = (*b).s;
@@ -70,6 +69,9 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         val = (*b).e;
         __WRITE_VAL(val)
     }
+    // mark end of Mantra
+    val = 0xffffffff;
+    __WRITE_VAL(val)
 
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
@@ -100,14 +102,18 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
+    kc->bnd = new std::forward_list<Mantra>();
 
-    for (uint32_t j=0; j != blen; ++j) {
+    while (1) {
+        uint32_t j;
+        __READ_VAL(j)
+        if (j == 0xffffffff)
+            break;
         Mantra contig = {0};
-        __READ_VAL(contig.corr)
+        contig.corr = j;
         __READ_VAL(contig.s)
         __READ_VAL(contig.e)
-        kc->bnd = new std::list<Mantra>();
-        kc->bnd->push_back(contig);
+        kc->bnd->push_front(contig);
     }
 
     kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));

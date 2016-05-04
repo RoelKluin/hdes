@@ -72,14 +72,14 @@ unique_covered(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
         C pos_t end = (*b.it).e;           // store original end
         (*b.it).e = prev;                  // shift end
         if (thisk) {                       // if not at boundary end either
-            kc->bnd->insert(b.it, *b.it); // insert a copy of the current
+            kc->bnd->insert_after(b.it, *b.it); // insert a copy of the current
             (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
             (*b.it).e = end;               // reinstate original end
         }                                  // (otherwise the last boundary just got smaller)
     } else if (thisk) {     // if at chr start, but not at chr end
         (*b.it).s = p + 1;  // shift start
     } else {                              // entire region became mapable
-        b.it = kc->bnd->erase(b.it);     // this returns the next element
+        b.it = kc->bnd->erase_after(b.it);     // this returns the next element
         b.prev = NULL;
     }
 }
@@ -129,7 +129,7 @@ reached_boundary(kct_t *kc, Bnd &b)
         if (b.prev) {
             ++b.it;
         } else {
-            b.it = kc->bnd->erase(b.it);
+            b.it = kc->bnd->erase_after(b.it);
         }
         extd_uq_by_p(kc, (*b.it).s, prev, b.s, b.sk);
     }

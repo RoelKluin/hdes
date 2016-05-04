@@ -13,6 +13,7 @@
 #define RK_FA_H
 #include <errno.h> // ENOMEM
 #include <list>
+#include <forward_list>
 #include <queue>
 #include "seq.h"
 #include "klib/khash.h"
@@ -44,11 +45,6 @@
     __t & DUP_BIT;\
 })
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
-
-packed_struct Mantra { // not yet covered by unique keys
-    pos_t s, e; // start and end of mantra, position where we jump to.
-    pos_t corr; // 'real' position correction
-};
 
 // While some movement of next-NTs per key takes place - upwards movement
 // of next-NTs within range of unique indices and can therefore be skipped
@@ -94,6 +90,24 @@ seq_next(struct keyseq_t &seq)
     (nxt) - (fst) - 1u < (kc)->extension;\
 })
 
+packed_struct Mantra { // not yet covered by unique keys
+    pos_t s, e; // start and end of mantra, position where we jump to.
+    pos_t corr; // 'real' position correction
+};
+
+/* TODO:
+// a region of sequence, not yet covered by unique keys
+packed_struct Mantra {
+    uint64_t s, e;  // 2bit start and end positions of a mantra.
+};
+
+// section of sequence without ambiguous nucleotides
+struct Assembly
+{
+    std::forward_list<Mantra> mantra;
+    uint64_t corr;  // correction needed to get from 2bit position to 'real' position.
+};*/
+
 // ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 enum ensembl_parts {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
@@ -119,7 +133,7 @@ struct Bnd {
     pos_t *sk;
     uint8_t* s;
     pos_t *prev;
-    std::list<Mantra>::iterator it;
+    std::forward_list<Mantra>::iterator it;
 };
 
 struct kct_t {
@@ -143,7 +157,7 @@ struct kct_t {
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;
-    std::list<Mantra>* bnd;
+    std::forward_list<Mantra>* bnd;
     // could be possible to move bnd here.
 };
 

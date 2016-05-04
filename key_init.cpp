@@ -21,9 +21,9 @@ static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
     if (!h) return;
-    h->end_pos =  kc->bnd->back().e = kc->s_l - h->s_s;
-    kc->totNts += h->end_pos + kc->bnd->back().corr;
-    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
+    h->end_pos =  kc->bnd->front().e = kc->s_l - h->s_s;
+    kc->totNts += h->end_pos + kc->bnd->front().corr;
+    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->front().corr, kc->totNts,
             kc->id + h->part[0]);
 }
 
@@ -111,7 +111,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
         h->s_s = kc->s_l;
-        kc->bnd->push_back({0});
+        kc->bnd->push_front({0});
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -121,7 +121,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had any sequence
-        if (kc->bnd->back().e != kc->bnd->back().s) {
+        if (kc->bnd->front().e != kc->bnd->front().s) {
             if (p != NR && p != META) {
                 h->p_l = UNKNOWN_HDR;
                 h->end_pos = ~0u;
@@ -130,21 +130,21 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
             }
 
             // correction propagation Not thoroughly checked yet...
-            pos_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
-            kc->bnd->push_back({.s=0, .e=0, .corr=corr });
+            pos_t corr = kc->bnd->front().corr - kc->bnd->front().e; // start of current is added later.
+            kc->bnd->push_front({.s=0, .e=0, .corr=corr });
         }
     }
 
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bnd->back().corr += atoi(kc->id + h->part[START]) - 1;
+        kc->bnd->front().corr += atoi(kc->id + h->part[START]) - 1;
         h->end_pos = atoi(kc->id + h->part[END]);
-        kc->bnd->back().e = h->end_pos;
+        kc->bnd->front().e = h->end_pos;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
-        kc->bnd->back().corr = 0;
-        kc->bnd->back().e = h->end_pos = ~0u;
+        kc->bnd->front().corr = 0;
+        kc->bnd->front().e = h->end_pos = ~0u;
         EPR("\nWARNING: non-ensembl reference.");
     }
     return h;
@@ -162,11 +162,11 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     pos_t corr = 0;
     unsigned i = ~0u; // skip until '>'
     Hdr* h = NULL;
-    keyseq_t seq = {0};
+    keyseq_t seq = {.p = 0, .dna = 0x000000ff, .rc = 0x000000ff, .t = 0x0000ffff};
     kc->s_l = 0;
     kc->uqct = 0;
     kc->totNts = 0;
-    kc->bnd = new std::list<Mantra>();
+    kc->bnd = new std::forward_list<Mantra>();
     Hdr_umap lookup;
     HK hk = {.hoffs = kc->h_l};
     set_readfunc(fhin, &g, &gc);
@@ -180,9 +180,8 @@ case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
-            seq_t ndx;
             seq_next(seq);
-            //print_dna(seq.dna);
+            seq_t ndx;
             _addtoseq(kc->s, seq.t); // kc->s_l grows here.
             seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
@@ -212,16 +211,17 @@ default:    if (isspace(seq.t))
     case 'T':
     case 'C':   seq.t ^= 0x2;
     case 'G':   seq.t &= 0x3;
+                EPR0(".");
                 if (i == ((KEY_WIDTH - 1) << 8)) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
-                        corr += kc->bnd->back().corr;
+                        corr += kc->bnd->front().corr;
                         NB(h->s_s < kc->s_l);
                         NB(kc->s_l - h->s_s <= 0x3fffffff,"TODO: split seq for huge contigs");
-                        kc->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s)});
+                        kc->bnd->push_front({.s = (pos_t)(kc->s_l - h->s_s)});
                     }
-                    kc->bnd->back().corr += corr;
+                    kc->bnd->front().corr += corr;
                     corr = 0;
                 }
                 i -= 0x100;
