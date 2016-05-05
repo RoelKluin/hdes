@@ -13,28 +13,23 @@
 #include "fa.h"
 
 int
-show_mantras(kct_t C*C kc, Hdr *C h)
+show_mantras(kct_t C*C kc)
 {
     unsigned j = 0;
-    return -1;
+    //HK *hk = kc->hk;
 
-/*    std::list<Mantra>::iterator it = h->bnd->begin();
-    if (it != h->bnd->end()) {
+    //h = kc->h + (hk++)->hoffs;
+    EPR("-- Mantras --");
+    std::list<Mantra>::iterator it = kc->bnd->begin();
+    if (it != kc->bnd->end()) {
         do {
-            keyseq_t seq = {0};
             pos_t p = (*it).s;
-            seq.p = p - KEY_WIDTH;
-            build_key(kc->s + ho, seq, p);
 
-            seq.p = h->s_s + p;
-            _build_key(kc, seq, h->s_s + p + KEY_WIDTH);
-            EPR0("[%s%u]:\t(" Pfmt "+) %lu - %lu\t", it != kc->bdit ? "" : "* ",
-                    j++, (*it).corr, h->s_s + (*it).s, h->s_s + (*it).e);
-            print_dna(seq.dna);
-        } while (++it != h->bnd->end());
+            EPR("[%u]:\t(" Pfmt "+) %u - %u", j++, (*it).corr, (*it).s, (*it).e);
+        } while (++it != kc->bnd->end());
     } else {
         EPR("[ entirely mapable ]");
     }
-    return -1;*/
+    return -1;
 }
 

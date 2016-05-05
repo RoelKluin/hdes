@@ -61,7 +61,7 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, kc->id_l)
 
-    for(std::forward_list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
+    for(std::list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
         val = (*b).corr;
         __WRITE_VAL(val)
         val = (*b).s;
@@ -102,7 +102,7 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, kc->id_l)
-    kc->bnd = new std::forward_list<Mantra>();
+    kc->bnd = new std::list<Mantra>();
 
     while (1) {
         uint32_t j;

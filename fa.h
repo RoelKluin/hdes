@@ -13,7 +13,6 @@
 #define RK_FA_H
 #include <errno.h> // ENOMEM
 #include <list>
-#include <forward_list>
 #include <queue>
 #include "seq.h"
 #include "klib/khash.h"
@@ -35,13 +34,14 @@
 #define B2POS_MASK 0x7FFFFFFF // position, once unique
 
 // stored position is one-based to ensure a bit is set
-#define NO_KCT -2u
+// this is the kct offset: can be 0.
+#define NO_KCT -1u
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 
 #define IS_DUP(k) ({\
     decltype(*(k)) __t = *(k);\
-    NB(b2pos_of(__t) > (KEY_WIDTH - 1) && __t != NO_KCT);\
+    NB(b2pos_of(__t) >= (KEY_WIDTH - 1) && __t != NO_KCT);\
     __t & DUP_BIT;\
 })
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
@@ -104,7 +104,7 @@ packed_struct Mantra {
 // section of sequence without ambiguous nucleotides
 struct Assembly
 {
-    std::forward_list<Mantra> mantra;
+    std::list<Mantra> mantra;
     uint64_t corr;  // correction needed to get from 2bit position to 'real' position.
 };*/
 
@@ -133,7 +133,7 @@ struct Bnd {
     pos_t *sk;
     uint8_t* s;
     pos_t *prev;
-    std::forward_list<Mantra>::iterator it;
+    std::list<Mantra>::iterator it;
 };
 
 struct kct_t {
@@ -157,7 +157,7 @@ struct kct_t {
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hk_m;
     Hdr* h;
     HK* hk;
-    std::forward_list<Mantra>* bnd;
+    std::list<Mantra>* bnd;
     // could be possible to move bnd here.
 };
 

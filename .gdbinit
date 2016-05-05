@@ -28,81 +28,71 @@ end
 
 
 define pseq
-    if $argc == 0 || $argc > 2
-        help pdna
+    if $argc != 0
+        help pseq
     else
-        #echo \033[01;31
-        #echo hoi
-        #resets the color
-        #echo \033[0m
-        if $argc == 1
-            printf "[\t+%u]:\t", seq.p >> 1
-        else
-            printf "[\t%u]:\t", (seq.p >> 1) + $arg1
-        end
-        call print_seq(&$arg0, KEY_WIDTH)
+        printf "[\t+%u]:\t", seq.p
+        call print_seq(&seq, KEY_WIDTH)
     end
 end
 
-
 document pseq
 	Prints seq.
-	Syntax: pseq <seq>
+	Syntax: pseq
 end
 
-define hook-quit
-    set confirm off
-end
+#define hook-quit
+#    set confirm off
+#end
 
 define hook-run
     shell make cleartest
 end
 
 #set prompt \033[01;31mgdb$ \033[0m
-# Preventing GDB from Pausing during Long Output
-set height 0
-set width 0
-
-set disassembly-flavor intel
 
 define break_re
-    if $argc != 3
-        help ngrep
+    if $argc != 3 && $argc != 4
+        help break_re
     else
-        python break_re_py($arg0, $arg1, $arg2)
+        if $argc == 3
+            python break_re_py($arg0, $arg1, $arg2)
+        else
+            python break_re_py($arg0, $arg1, $arg2, $arg3)
+        end
     end
 end
 
 document break_re
-	Prints line in file where match occurs [must be only one].
-	Syntax: ngrep <match> <file>
+	Insert specified break in file where match occurs [must be only one].
+	Syntax: break_re <match> <file> <break|tbreak> [command]
 end
 
 
 
 # leave this: is for buffers.
 #tb key_init.cpp:190
-break_re 'seq_t ndx;' 'key_init.cpp' 'tbreak'
-commands
-    silent
-    call print_seq(&seq, KEY_WIDTH)
-    call print_seq(&seq, KEY_WIDTH)
-    call print_seq(&seq, KEY_WIDTH)
-    call print_seq(&seq, KEY_WIDTH)
-    call print_seq(&seq, KEY_WIDTH)
-    call print_seq(&seq, KEY_WIDTH)
-    printf "----------[ start debugging ]------------\n"
-    continue
-end
-
+#break_re '_addtoseq(kc->s, seq.t); // kc->s_l grows here' 'key_init.cpp' 'tbreak'
+#commands
+#    silent
+#    call print_seq(&seq, KEY_WIDTH)
+#    call print_seq(&seq, KEY_WIDTH)
+#    call print_seq(&seq, KEY_WIDTH)
+#    call print_seq(&seq, KEY_WIDTH)
+#    call print_seq(&seq, KEY_WIDTH)
+#    call print_seq(&seq, KEY_WIDTH)
+#    printf "----------[ start debugging ]------------\n"
+#    continue
+#end
+#
 #################################################################
 # key_init.cpp
 
 #b key_init.cpp:190
-break_re 'seq_t ndx;' 'key_init.cpp' 'break'
+break_re '_addtoseq(kc->s, seq.t); // kc->s_l grows here' 'key_init.cpp' 'break'
 commands
     silent
-    pseq seq h->s_s
+    pseq
     c
 end
 
@@ -128,32 +118,49 @@ commands
     c
 end
 
+break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
+commands
+    silent
+    print show_mantras(kc)
+    c
+end
+
+
 #################################################################
 # fa.cpp
 
 
-#b fa.cpp:155
-break_re 'for(;;) {' 'fa.cpp' 'break'
+define handle_non_uniques
+    #bt 2
+    #printf "prev:%u\tseq.p:%u\tpend:%u\text-1:%u\t", prev, seq.p, pend, kc->ext + 1
+    pseq
+end
+
+#b fa.cpp:157
+break_re 'for (;;) {' 'fa.cpp' 'tbreak'
 commands
     silent
-    # display caller
-    bt 2
-    pseq seq b.h->s_s
-    printf "prev:%u\tpend:%u\text-1:%u\n", prev, pend, kc->ext + 1
+    handle_non_uniques
     wa seq.dna
     commands
         silent
-        pseq seq
-        c
+        pseq
+        #c
     end
-    c
+    break_re 'for(;;) {' 'fa.cpp' 'break'
+    commands
+        silent
+        handle_non_uniques
+        #c
+    end
 end
 
-#b fa.cpp:245
+#b fa.cpp:251
 break_re 'update_header(kc, k, hk, b);' 'fa.cpp' 'break'
 commands
-    printf "uniq at\t%u", *k >> 1
-    c
+    silent
+    printf "uniq at\t%u\n", *k >> 1
+    #c
 end
 
 #b fa.cpp:201
@@ -165,7 +172,44 @@ end
 #p seq.p + (s - kc->s)
 #end
 
+#b fa.cpp:200
+break_re '// next contig' 'fa.cpp' 'break'
+commands
+    silent
+    printf "header update (can be late?):\t"
+    #c
+end
+
+#b fa.cpp:216
+break_re '// next boundary' 'fa.cpp' 'break'
+commands
+    silent
+    printf "boundary update:\t"
+    #c
+end
+
+break_re '// stored first occurance matches current position and contig' 'fa.cpp' 'break'
+commands
+    silent
+    printf "excised:\t"
+    pseq
+    #c
+end
 
 
+define bt_p_locals
+    bt 1
+    info locals
+end
+break_re '// GDB$' 'fa.cpp' 'break' 'bt_p_locals'
+
+
+
+
+
+
+
+
+#leave:
 r
 
