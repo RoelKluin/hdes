@@ -66,13 +66,13 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s
  * unique before a region scoped by uniques.
  */
 static void
-unique_covered(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
+shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 {
     if (b.prev) {                          // if not at boundary start
         C pos_t end = (*b.it).e;           // store original end
         (*b.it).e = prev;                  // shift end
         if (thisk) {                       // if not at boundary end either
-            kc->bnd->insert(b.it, *b.it); // insert a copy of the current
+            kc->bnd->insert(b.it, *b.it);  // insert a copy of the current
             (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
             (*b.it).e = end;               // reinstate original end
         }                                  // (otherwise the last boundary just got smaller)
@@ -84,59 +84,6 @@ unique_covered(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
     }
 }
 
-/*
- * If two unique keys occur within scope, all reads (i.e. KEY_WIDTH + current extension)
- * within these are mapable due to the two. This site no longer needs to be considered
- * for the inbetween - these keys may henceforth become secondary uniques elsewhere.
- *
- * Of unique keys the stored position is guaranteed correct. (of non-uniques there is only
- * the garuantee that the stored position results in the key that corresponds).
- *
- */
-static inline void
-extd_uq_by_p(kct_t *kc, pos_t prev, pos_t pend, uint8_t C*C s, pos_t C*C sk)
-{
-    NB(pend < (kc->s_l << 2) && prev < pend);
-
-    if (!in_scope(kc, prev, pend))  // no keys between uniques?
-        return;                  // then nothing to do here.
-
-    keyseq_t seq = {.p = prev + 1};
-    seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, s);
-
-    while(1) {
-        pos_t *k = kc->kct + *contxt_idx;
-
-        // stored first occurance matches current position and contig
-        if (b2pos_of(kc, k) == seq.p && k >= sk) {
-
-            NB(*k & DUP_BIT);    // the first occurance of the key is excised.
-            ++kc->reeval;        // leave dup bit set to mark a position is pending
-        }
-        if (++seq.p == pend)
-            break;
-
-        get_next_nt_seq(s, seq);
-        contxt_idx = get_kct(kc, seq);
-    }
-}
-
-static void
-reached_boundary(kct_t *kc, Bnd &b)
-{
-    C pos_t prev = _prev_or_bnd_start(b);
-    if (in_scope(kc, prev, (*b.it).e)) {
-        if (b.prev) {
-            ++b.it;// GDB
-        } else {
-            b.it = kc->bnd->erase(b.it);// GDB
-        }
-        extd_uq_by_p(kc, (*b.it).s, prev, b.s, b.sk);
-    }
-}
-
-
-
 static void
 process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
@@ -145,10 +92,8 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
 
-        unique_covered(kc, b, thisk, prev, pend);
-        extd_uq_by_p(kc, prev, pend, b.s, b.sk);
+        shrink_mantra(kc, b, thisk, prev, pend);
         return;
-
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
@@ -169,55 +114,67 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
                 --kc->reeval;
             }
         } else {
-            // 1st occurance, place it now.
+            // 1st occurance
+            ++kc->reeval;    // unique or decremented later.
             if (b2pos_of(kc, k) == seq.p) {
 
-                ++kc->reeval;   // may yet be unique or we decrement this later.
                 *k &= ~DUP_BIT;
 
             } else {
-                // a position is pending, first was excised, see extd_uq_by_p()
+                // a position is pending, first was excised
 
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
-
             swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
+            //gdb:swap
         }
         if (seq.p == pend)
             break;
 
         get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq); // XXX Conditional jump or move depends on uninitialised value(s)
+        contxt_idx = get_kct(kc, seq);
         ++seq.p;
     }
 }
 
 static void
-update_header(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
+reached_boundary(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
-    while (k >= kc->kct + hk->koffs) {
-        // next contig
-        process_mantra(kc, b, NULL);
-        reached_boundary(kc, b);
-        NB(hk < kc->hk + kc->hk_l);
-        Hdr* h = kc->h + (++hk)->hoffs;
-        b.s = kc->s + h->s_s;
-        ++b.it;
-        b.prev = NULL;
+    process_mantra(kc, b, NULL);
+    C pos_t prev = _prev_or_bnd_start(b);
+    if (in_scope(kc, prev, (*b.it).e)) {
+        if (b.prev) { // was not start of contig
+            ++b.it;// GDB
+        } else { //entirely mapable
+            b.it = kc->bnd->erase(b.it);// GDB
+        }
     }
-}
-
-static void
-update_boundary(kct_t *kc, pos_t *k, Bnd &b)
-{
-    while (b2pos_of(*k) >= (*b.it).e) {
-        // next boundary
-        process_mantra(kc, b, NULL);
-        reached_boundary(kc, b);
+    if (thisk != get_kend(kc)) {
         ++b.it;
         NB(b.it != kc->bnd->end());
         b.prev = NULL;
     }
+}
+
+/*
+ * If required the contig and assembly are updated to the current, of k.
+ */
+static void
+proceed_mantra(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
+{
+    while (k >= kc->kct + hk->koffs) {
+        // update contig, if beyond
+        reached_boundary(kc, b, k);
+        NB(hk < kc->hk + kc->hk_l);
+        hk->koffs = k - b.sk; // update k offset of header, just finished, for next iteration
+        Hdr* h = kc->h + (++hk)->hoffs;
+        b.s = kc->s + (h->s_s >> 2) + !!(h->s_s & 3);
+    }
+    while (b2pos_of(*k) >= (*b.it).e) // update assembly
+        reached_boundary(kc, b, k);
+
+    process_mantra(kc, b, k);
+    b.prev = k;
 }
 
 /*
@@ -235,7 +192,7 @@ static void
 ext_uq_iter(kct_t *kc)
 {
     pos_t *k = kc->kct;
-    pos_t *kend = k + kc->kct_l - 1 - kc->last_uqct; // location after uniques, from last time
+    pos_t *kend = get_kend(kc); // location after uniques, from last time
     HK *hk = kc->hk;
     Bnd b = {
         .sk = kc->kct,
@@ -250,13 +207,11 @@ ext_uq_iter(kct_t *kc)
         if (IS_DUP(k)) // they are handled during excision (or postponed) - process_mantra()
             continue;
 
-        update_header(kc, k, hk, b);
-        update_boundary(kc, k, b);
-        process_mantra(kc, b, k);
-        b.prev = k;
+        proceed_mantra(kc, k, hk, b);
     }
-    process_mantra(kc, b, NULL);
-    reached_boundary(kc, b);
+    reached_boundary(kc, b, kend);
+    EPR("entirely excised: %u", b.sk - kend);
+    kc->reeval += b.sk - kend;
 
     NB(0, "(NOT!;) end of loop reached! (TODO: swapping..)");
     // FIXME: iteration over swapped instead of uniques

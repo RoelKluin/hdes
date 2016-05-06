@@ -20,7 +20,6 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 static inline void
 end_pos(kct_t*C kc, Hdr* h)
 {
-    if (!h) return;
     h->end_pos =  kc->bnd->back().e = kc->s_l - h->s_s;
     kc->totNts += h->end_pos + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
@@ -39,8 +38,6 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     const char* hdr;
     Hdr_umap::const_iterator got;
     part[p] = kc->id_l;
-
-    end_pos(kc, h);
 
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
@@ -198,7 +195,6 @@ case 'G':   seq.t &= 0x3;
             break;
         }
 case 'N':   i = (KEY_WIDTH - 1) << 8;
-case 'N' | ((KEY_WIDTH - 1) << 8):
             ++corr;
             break;
 default:    if (isspace(seq.t))
@@ -229,6 +225,13 @@ default:    if (isspace(seq.t))
                     hk.koffs = kc->kct_l;
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                     hk.hoffs = kc->h_l;
+                    end_pos(kc, h);
+                    if (kc->s_l & 3) {
+                        // the 2bit buffer per contig starts at the first nt 0 of 4.
+                        kc->s_l += -kc->s_l & 3;
+                        _buf_grow_err(kc->s, 1ul, 2, return -ENOMEM);
+                        kc->s[kc->s_l>>2] = '\0';
+                    }
                 }
                 h = new_header(kc, h, g, gc, lookup);
                 NB(h != NULL);

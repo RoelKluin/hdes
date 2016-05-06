@@ -84,9 +84,12 @@ seq_next(struct keyseq_t &seq)
 
 #define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
 
+#define get_kend(kc) (kc->kct + kc->kct_l - 1 - kc->last_uqct)
+
 #define in_scope(kc, fst, nxt) ({\
     pos_t __f = fst, __n = nxt;\
     NB(__f < __n);\
+    NB(__n <= kc->s_l);\
     (nxt) - (fst) - 1u < (kc)->extension;\
 })
 
