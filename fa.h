@@ -84,7 +84,7 @@ seq_next(struct keyseq_t &seq)
 
 #define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
 
-#define get_kend(kc) (kc->kct + kc->kct_l - 1 - kc->last_uqct)
+#define get_kend(kc) (kc->kct + kc->kct_l - kc->last_uqct)
 
 #define in_scope(kc, fst, nxt) ({\
     pos_t __f = fst, __n = nxt;\
@@ -155,7 +155,7 @@ struct kct_t {
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hk_l, h_l, uqct, reeval, last_uqct;
+    uint32_t id_l, kct_l, hk_l, h_l, uqct, last_uqct;
     unsigned readlength, iter, ext_l, ext_m, extension;
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hk_m;
     Hdr* h;

@@ -75,7 +75,10 @@ shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
             kc->bnd->insert(b.it, *b.it);  // insert a copy of the current
             (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
             (*b.it).e = end;               // reinstate original end
-        }                                  // (otherwise the last boundary just got smaller)
+        } else if ((*b.it).s == (*b.it).e) { // (otherwise the last boundary just got smaller)
+            b.it = kc->bnd->erase(b.it);     // this returns the next element
+            b.prev = NULL;
+        }
     } else if (thisk) {     // if at chr start, but not at chr end
         (*b.it).s = p + 1;  // shift start
     } else {                              // entire region became mapable
@@ -87,7 +90,7 @@ shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 static void
 process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
-    pos_t prev = _prev_or_bnd_start(b);
+    C pos_t prev = _prev_or_bnd_start(b);
     C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
@@ -111,11 +114,11 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
                 //no dup after all
 
                 *k |= DUP_BIT;
-                --kc->reeval;
+                --kc->uqct;
             }
         } else {
             // 1st occurance
-            ++kc->reeval;    // unique or decremented later.
+            ++kc->uqct;    // unique or decremented later.
             if (b2pos_of(kc, k) == seq.p) {
 
                 *k &= ~DUP_BIT;
@@ -140,7 +143,6 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 static void
 reached_boundary(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
-    process_mantra(kc, b, NULL);
     C pos_t prev = _prev_or_bnd_start(b);
     if (in_scope(kc, prev, (*b.it).e)) {
         if (b.prev) { // was not start of contig
@@ -149,32 +151,16 @@ reached_boundary(kct_t *kc, Bnd &b, pos_t C*C thisk)
             b.it = kc->bnd->erase(b.it);// GDB
         }
     }
-    if (thisk != get_kend(kc)) {
-        ++b.it;
-        NB(b.it != kc->bnd->end());
-        b.prev = NULL;
-    }
 }
 
-/*
- * If required the contig and assembly are updated to the current, of k.
- */
-static void
-proceed_mantra(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
+static inline void
+proceed_mantra(kct_t *kc, Bnd &b, pos_t *k)
 {
-    while (k >= kc->kct + hk->koffs) {
-        // update contig, if beyond
-        reached_boundary(kc, b, k);
-        NB(hk < kc->hk + kc->hk_l);
-        hk->koffs = k - b.sk; // update k offset of header, just finished, for next iteration
-        Hdr* h = kc->h + (++hk)->hoffs;
-        b.s = kc->s + (h->s_s >> 2) + !!(h->s_s & 3);
-    }
-    while (b2pos_of(*k) >= (*b.it).e)
-        reached_boundary(kc, b, k); // update assembly
-
-    process_mantra(kc, b, k);
-    b.prev = k;
+    process_mantra(kc, b, NULL);
+    reached_boundary(kc, b, k);
+    ++b.it;
+    NB(b.it != kc->bnd->end());
+    b.prev = NULL;
 }
 
 /*
@@ -207,32 +193,41 @@ ext_uq_iter(kct_t *kc)
         if (IS_DUP(k)) // they are handled during excision (or postponed) - process_mantra()
             continue;
 
-        proceed_mantra(kc, k, hk, b);
+        // If required the contig and assembly are updated to the current, of k.
+        while (k >= kc->kct + hk->koffs) {
+            // update contig, if beyond
+            proceed_mantra(kc, b, k);
+            NB(hk < kc->hk + kc->hk_l);
+            hk->koffs = k - b.sk; // update k offset of header, just finished, for next iteration
+            Hdr* h = kc->h + (++hk)->hoffs;
+            b.s = kc->s + (h->s_s >> 2) + !!(h->s_s & 3);
+        }
+        while (b2pos_of(*k) >= (*b.it).e)
+            proceed_mantra(kc, b, k);
+
+        process_mantra(kc, b, k);
+        b.prev = k;
     }
-    reached_boundary(kc, b, kend);
-    EPR("entirely excised: %u", b.sk - kend);
-    kc->reeval += b.sk - kend;
+    process_mantra(kc, b, NULL);
+    if (b.it != kc->bnd->end()) // or last boundary was erased
+        reached_boundary(kc, b, kend);
 
-    NB(0, "(NOT!;) end of loop reached! (TODO: swapping..)");
-    // FIXME: iteration over swapped instead of uniques
-    //
-
-    // TODO: some uniques no longer occur: all are excised.
+    kc->uqct += kend - b.sk;
     kc->last_uqct = kc->uqct;
 }
 
 static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
-    kc->uqct = kc->reeval = 0;
 
     for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques
+            kc->uqct = 0;
             ext_uq_iter(kc);
-            EPR("observed %u uniques in iteration %u, extension %u, %u to be reevaluated\n",
-                kc->uqct, ++kc->iter, kc->extension, kc->reeval);
-        } while (kc->reeval > 0);
+            EPR("observed %u uniques in iteration %u, extension %u\n",
+                kc->uqct, ++kc->iter, kc->extension);
+        } while (kc->uqct > 0);
     }
     int res;
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");

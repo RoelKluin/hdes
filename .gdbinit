@@ -123,7 +123,7 @@ end
 #cscope -L -0 main main.cpp
 
 #b key_init.cpp:223
-break_re 'if (kc->s_l != h->s_s) {' 'key_init.cpp' 'break'
+break_re '// key after header/stretch to be rebuilt' 'key_init.cpp' 'break'
 commands
     silent
     if corr == 0
@@ -138,7 +138,7 @@ commands
             printf "N stretch at start of contig (not inserted)\n"
         end
     end
-    c
+    #c
 end
 
 break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
@@ -179,7 +179,7 @@ commands
 end
 
 #b fa.cpp:251
-break_re 'update_header(kc, k, hk, b);' 'fa.cpp' 'break'
+break_re '// update contig' 'fa.cpp' 'break'
 commands
     silent
     printf "uniq at\t%u\n", *k >> 1
@@ -196,7 +196,7 @@ end
 #end
 
 #b fa.cpp:200
-break_re '// update contig, if beyond' 'fa.cpp' 'break'
+break_re '// update contig' 'fa.cpp' 'break'
 commands
     silent
     printf "header update (can be late?):\t"
@@ -234,7 +234,7 @@ end
 break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 
-
+break_re 'kc->last_uqct = kc->uqct;' 'fa.cpp' 'break'
 
 
 

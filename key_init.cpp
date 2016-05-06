@@ -205,7 +205,7 @@ default:    if (isspace(seq.t))
     case 'T':
     case 'C':   seq.t ^= 0x2;
     case 'G':   seq.t &= 0x3;
-                if (i == ((KEY_WIDTH - 1) << 8)) { // key after header/stretch to be rebuilt
+                if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h);
@@ -221,7 +221,8 @@ default:    if (isspace(seq.t))
                 seq_next(seq);
                 _addtoseq(kc->s, seq.t);
                 break;
-    case 0x1e:{ if (h) {
+    case 0x1e:{ // new contig
+                  if (h) {
                     hk.koffs = kc->kct_l;
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                     hk.hoffs = kc->h_l;
