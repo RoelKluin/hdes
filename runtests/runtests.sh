@@ -7,6 +7,7 @@ cd $hdesdir
 
 mode=valgrind
 [ "$1" = "-g" ] && mode=gdb
+[ "$1" = "-g2" ] && mode=gdb2
 
 FASTAS=($(ls -1 runtests/*.fa))
 for i in $(seq 0 $((${#FASTAS[@]}-1))); do
@@ -28,7 +29,7 @@ while read BASE KW RL; do
   echo "--------------------------[ $BASE $KW $RL ]--------------------------";
   if [ "$KW" != "$LASTKW" ]; then
     make clean
-    [ "$mode" = "gdb" ] && DEFINES="-DKEY_LENGTH=${KW}" OPT="$GDB_OPT -ggdb3" make || DEFINES="-DKEY_LENGTH=${KW}" make;
+    [ "$mode" = "gdb" -o "$mode" = "gdb2" ] && DEFINES="-DKEY_LENGTH=${KW}" OPT="$GDB_OPT -ggdb3" make || DEFINES="-DKEY_LENGTH=${KW}" make;
     LASTKW="$KW"
   fi
   if [ "$mode" = "gdb" ];then
@@ -36,6 +37,11 @@ while read BASE KW RL; do
     xterm -geometry 119x99-0+0 -b 0 -e \
         "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
 #    xterm -e "gdb --args uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
+  elif [ "$mode" = "gdb2" ];then
+    valgrind --leak-check=full ./uqct ${BASE}.fa -l ${RL}
+    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
+    xterm -geometry 119x99-0+0 -b 0 -e \
+        "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct ${BASE}.fq ${BASE}.2b -l ${RL}"
   else
     valgrind --leak-check=full ./uqct ${BASE}.fa -l ${RL}
     valgrind --leak-check=full ./uqct ${BASE}.fq ${BASE}.2b -l ${RL} |

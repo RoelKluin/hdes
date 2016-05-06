@@ -64,13 +64,14 @@ document pseq
 	Syntax: pseq
 end
 
+#define hook-run
+#    shell make cleartest
+#end
+
+
 #define hook-quit
 #    set confirm off
 #end
-
-define hook-run
-    shell make cleartest
-end
 
 #set prompt \033[01;31mgdb$ \033[0m
 
@@ -236,8 +237,12 @@ break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 break_re 'kc->last_uqct = kc->uqct;' 'fa.cpp' 'break'
 
+#########################################################################################
+# mapping
 
+b load_kc
 
+#b map_fq_se
 
 
 #leave:
