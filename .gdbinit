@@ -13,6 +13,29 @@ source gdb_py/frame_filter.py
 #ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
 #break -source fa.cpp -function
 
+define pbuf
+    if $argc != 2
+        help pbuf
+    else
+        set $i = $arg0[$arg1]
+        printf "%c%c%c%c\n", b6(($i&3)<<1), b6(($i&0xc)>>1), b6(($i&0x30)>>3), b6(($i&0xc0)>>5)
+    end
+end
+
+document pbuf
+	Prints buf as dna quad.
+	Syntax: pbuf <buffer> <offset>
+end
+
+define pkct
+   set $i = 0
+   while($i < kc->kct_l)
+      printf "%u:\t", $i
+      p/x kc->kct[$i] >> 1
+      set $i = $i + 1
+    end
+end
+
 define pdna
     if $argc != 1
         help pdna
@@ -122,7 +145,6 @@ break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
 commands
     silent
     print show_mantras(kc)
-    c
 end
 
 
@@ -140,6 +162,7 @@ end
 break_re 'for (;;) {' 'fa.cpp' 'tbreak'
 commands
     silent
+    pkct
     handle_non_uniques
     wa seq.dna
     commands
@@ -173,7 +196,7 @@ end
 #end
 
 #b fa.cpp:200
-break_re '// next contig' 'fa.cpp' 'break'
+break_re '// update contig, if beyond' 'fa.cpp' 'break'
 commands
     silent
     printf "header update (can be late?):\t"
@@ -181,7 +204,7 @@ commands
 end
 
 #b fa.cpp:216
-break_re '// next boundary' 'fa.cpp' 'break'
+break_re '// update assembly' 'fa.cpp' 'break'
 commands
     silent
     printf "boundary update:\t"
@@ -196,12 +219,19 @@ commands
     #c
 end
 
+break_re '//gdb:swap' 'fa.cpp' 'break'
+commands
+    silent
+    pkct
+    #c
+end
 
-define bt_p_locals
+
+define reached_boundary
     bt 1
     info locals
 end
-break_re '// GDB$' 'fa.cpp' 'break' 'bt_p_locals'
+break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 
 

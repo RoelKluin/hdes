@@ -170,8 +170,8 @@ proceed_mantra(kct_t *kc, pos_t *k, HK* &hk, Bnd &b)
         Hdr* h = kc->h + (++hk)->hoffs;
         b.s = kc->s + (h->s_s >> 2) + !!(h->s_s & 3);
     }
-    while (b2pos_of(*k) >= (*b.it).e) // update assembly
-        reached_boundary(kc, b, k);
+    while (b2pos_of(*k) >= (*b.it).e)
+        reached_boundary(kc, b, k); // update assembly
 
     process_mantra(kc, b, k);
     b.prev = k;
