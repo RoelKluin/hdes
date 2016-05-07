@@ -199,8 +199,9 @@ ext_uq_iter(kct_t *kc)
             proceed_mantra(kc, b, k);
             NB(hk < kc->hk + kc->hk_l);
             hk->koffs = k - b.sk; // update k offset of header, just finished, for next iteration
-            Hdr* h = kc->h + (++hk)->hoffs;
-            b.s = kc->s + (h->s_s >> 2) + !!(h->s_s & 3);
+            b.s += (hk->len >> 2) + !!(hk->len & 3);
+            NB(b.s < kc->s + kc->s_l);
+            ++hk;
         }
         while (b2pos_of(*k) >= (*b.it).e)
             proceed_mantra(kc, b, k);

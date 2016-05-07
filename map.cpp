@@ -69,22 +69,22 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
         --bd;
 
         //position beyond end of last boundary of this contig must be on a later one.
-        if ((h->s_s + (*bd).e + bufi) < *pos)
+        if ((hk.s_s + (*bd).e + bufi) < *pos)
             continue;
 
-        while (((h->s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
+        while (((hk.s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
 
             --bd;
         }
-        ASSERT ((h->s_s + (*bd).s) <= *pos, return -EFAULT);
+        ASSERT ((hk.s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
     }*/
     ASSERT (h != kc->h + kc->h_l, return -EFAULT);
 
-    ASSERT(*pos + (*bd).corr > h->s_s + bufi, return -EFAULT,
-            "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, h->s_s + bufi
-            /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/);
-    *pos += (*bd).corr - h->s_s + KEY_WIDTH - bufi - 1;
+    //ASSERT(*pos + (*bd).corr > hk.s_s + bufi, return -EFAULT,
+    //        "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, hk.s_s + bufi
+    //        /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/);
+    //*pos += (*bd).corr - hk.s_s + KEY_WIDTH - bufi - 1;
 
     return h->part[0];
 }
@@ -120,7 +120,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
     keyseq_t seq = {0};
     Hdr* lh = kc->h + kc->h_l - 1;
-    const uint64_t end_pos = lh->s_s + lh->end_pos;
+    const uint64_t end_pos = /*FIXME: hk.s_s, prev: lh->s_s + */lh->end_pos;
     //struct mapstat_t ms = {0};
 
     set_readfunc(fhin, &g, &gc);
@@ -323,8 +323,8 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     kc.contxt_idx = _buf_init_arr_err(kc.contxt_idx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
-    _ACTION(load_kc(fhio[0], &kc), "loading keycounts file");
     _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file");
+    _ACTION(load_kc(fhio[0], &kc), "loading keycounts file");
     _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file");
 
     _ACTION(reopen(fhio[0], ext[0], ext[3]), "");

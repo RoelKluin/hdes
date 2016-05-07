@@ -18,9 +18,9 @@
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 
 static inline void
-end_pos(kct_t*C kc, Hdr* h)
+end_pos(kct_t*C kc, Hdr* h, pos_t len)
 {
-    h->end_pos =  kc->bnd->back().e = kc->s_l - h->s_s;
+    h->end_pos =  kc->bnd->back().e = len;
     kc->totNts += h->end_pos + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
             kc->id + h->part[0]);
@@ -209,11 +209,9 @@ default:    if (isspace(seq.t))
                 if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
-                        end_pos(kc, h);
+                        end_pos(kc, h, seq.p >> 1);
                         corr += kc->bnd->back().corr;
-                        NB(h->s_s < kc->s_l);
-                        NB(kc->s_l - h->s_s <= 0x3fffffff,"TODO: split seq for huge contigs");
-                        kc->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s)});
+                        kc->bnd->push_back({.s = seq.p >> 1});
                         seq.p = 0;
                     }
                     kc->bnd->back().corr += corr;
@@ -228,10 +226,10 @@ default:    if (isspace(seq.t))
                 if (h) {
                     // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
                     hk.koffs = kc->kct_l;
-                    hk.len = kc->s_l - h->s_s;
+                    hk.len = seq.p >> 1;
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                     hk.hoffs = kc->h_l;
-                    end_pos(kc, h);
+                    end_pos(kc, h, seq.p >> 1);
                     if (kc->s_l & 3) {
                         // the 2bit buffer per contig starts at the first nt 0 of 4.
                         kc->s_l += -kc->s_l & 3;
@@ -252,9 +250,9 @@ default:    if (isspace(seq.t))
     }
     NB(h != NULL);
     hk.koffs = kc->kct_l;
-    hk.len = kc->s_l - h->s_s;
+    hk.len = seq.p >> 1;
     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
-    end_pos(kc, h);
+    end_pos(kc, h, seq.p >> 1);
     kc->uqct += kc->kct_l;
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;

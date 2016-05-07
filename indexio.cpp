@@ -57,6 +57,8 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     // 1: buffer sizes
     __WRITE_VAL(kc->h_l, fhout)
     __WRITE_VAL(kc->id_l, fhout)
+    val = kc->bnd->size();
+    __WRITE_VAL(val, fhout)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, fhout, kc->id_l)
@@ -69,9 +71,6 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         val = (*b).e;
         __WRITE_VAL(val, fhout)
     }
-    // mark end of Mantra
-    val = 0xffffffff;
-    __WRITE_VAL(val, fhout)
 
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
@@ -104,13 +103,9 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
     __READ_PTR(kc->id, fhin, kc->id_l)
     kc->bnd = new std::list<Mantra>();
 
-    while (1) {
-        uint32_t j;
-        __READ_VAL(j, fhin)
-        if (j == 0xffffffff)
-            break;
+    while (blen--) {
         Mantra contig = {0};
-        contig.corr = j;
+        __READ_VAL(contig.corr, fhin)
         __READ_VAL(contig.s, fhin)
         __READ_VAL(contig.e, fhin)
         kc->bnd->push_front(contig);
@@ -196,11 +191,28 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = kc->kct_l;
-    for (unsigned i=0u; i != kc->kct_l; ++i) {
-        NB(b2pos_of(kc->kct[i]) > KEY_WIDTH - 1);
-        //ASSERT(kc->kct[i] < KEYNT_BUFSZ, return -EFAULT, "%u/%u: %lu > KEYNT_BUFSZ(%lu)",
-        //        i, kc->kct_l, kc->kct[i], KEYNT_BUFSZ);
-        kc->contxt_idx[kc->kct[i]] = i;
+
+    HK *hk = kc->hk;
+    uint8_t *s = kc->s;
+
+    for (uint64_t i=0ul; i != kc->kct_l; ++i) {
+
+        pos_t *k = kc->kct + i;
+
+        // XXX: ensure the k's contigs are sorted or this won't be efficient.
+        while (k >= kc->kct + hk->koffs) {
+            s += (hk->len >> 2) + !!(hk->len & 3);
+            NB(hk != kc->hk + kc->hk_l);
+            ++hk;
+        }
+        // construct index from sequence
+        keyseq_t seq = {.p = b2pos_of(kc, k)};
+        NB(seq.p > KEY_WIDTH - 1);
+
+        seq_t ndx = build_ndx_kct(seq, s);
+        NB(ndx < KEYNT_BUFSZ);
+
+        kc->contxt_idx[ndx] = i;
     }
     res = 0;
 err:
