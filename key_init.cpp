@@ -176,6 +176,7 @@ case 'G':   seq.t &= 0x3;
         {
             _addtoseq(kc->s, seq);
             if (i == 0) {
+                next_seqpos(kc->s, seq);
                 seq_t ndx;
                 seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
                 if (*n == NO_KCT) {
@@ -190,7 +191,6 @@ case 'G':   seq.t &= 0x3;
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
                     --kc->uqct;
                 }
-                next_seqpos(kc->s, seq);
             } else {
                 if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
