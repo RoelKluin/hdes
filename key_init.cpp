@@ -204,11 +204,10 @@ default:    if (isspace(seq.t))
     case 'G':   seq.t &= 0x3;
                 if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
-                    if (kc->s_l != h->s_s) { // N-stretch, unless at start, needs insertion
+                    if (seq.p) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h, seq.p >> 1);
                         corr += kc->bnd->back().corr;
                         kc->bnd->push_back({.s = seq.p >> 1});
-                        seq.p = 0;
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;
