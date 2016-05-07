@@ -68,14 +68,14 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s
 static void
 shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 {
-    if (b.prev) {                          // if not at boundary start
+    if (b.prev) {                          // if not at mantra start
         C pos_t end = (*b.it).e;           // store original end
         (*b.it).e = prev;                  // shift end
-        if (thisk) {                       // if not at boundary end either
+        if (thisk) {                       // if not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // insert a copy of the current
             (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
             (*b.it).e = end;               // reinstate original end
-        } else if ((*b.it).s == (*b.it).e) { // (otherwise the last boundary just got smaller)
+        } else if ((*b.it).s == (*b.it).e) { // (otherwise the last mantra just got smaller)
             b.it = kc->bnd->erase(b.it);     // this returns the next element
             b.prev = NULL;
         }
@@ -210,7 +210,7 @@ ext_uq_iter(kct_t *kc)
         b.prev = k;
     }
     process_mantra(kc, b, NULL);
-    if (b.it != kc->bnd->end()) // or last boundary was erased
+    if (b.it != kc->bnd->end()) // or last mantra was erased
         reached_boundary(kc, b);
 
     kc->uqct += kend - b.sk;
