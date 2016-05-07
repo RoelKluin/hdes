@@ -174,7 +174,7 @@ case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
-            _addtoseq(kc->s, seq); // kc->s_l grows here.
+            _addtoseq(kc->s, seq);
             if (i == 0) {
                 seq_t ndx;
                 seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);

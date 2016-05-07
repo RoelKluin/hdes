@@ -114,7 +114,7 @@ end
 b fa_read
 
 #b key_init.cpp:190
-break_re '_addtoseq(kc->s, seq); // kc->s_l grows here' 'key_init.cpp' 'break'
+break_re 'seq_t ndx;' 'key_init.cpp' 'break'
 commands
     silent
     pseq
