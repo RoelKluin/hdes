@@ -129,6 +129,7 @@ struct Hdr {
 struct HK {
     uint32_t hoffs;
     uint32_t ext;
+    pos_t len; // 2bit offset for this contig
     uint32_t koffs;
 };
 
