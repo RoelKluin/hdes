@@ -160,9 +160,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     unsigned i = ~0u; // skip until '>'
     Hdr* h = NULL;
     keyseq_t seq = {0};
-    kc->s_l = 0;
-    kc->uqct = 0;
-    kc->totNts = 0;
     kc->bnd = new std::list<Mantra>();
     Hdr_umap lookup;
     HK hk = {.hoffs = kc->h_l};
@@ -177,21 +174,20 @@ case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
-            seq_next(seq);
+            _addtoseq(kc->s, seq); // kc->s_l grows here.
             seq_t ndx;
-            _addtoseq(kc->s, seq.t); // kc->s_l grows here.
-            seq.p += 2;
             seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
+
                 _buf_grow(kc->kct, 1, 0);
                 *n = kc->kct_l++;
                 // set first pos + orient
                 kc->kct[*n] = seq.p | (seq.t != 0);
-            } else {
-                if (!(kc->kct[*n] & DUP_BIT)) {
-                    kc->kct[*n] |= DUP_BIT;   // mark it as dup
-                    --kc->uqct;
-                }
+
+            } else if (!(kc->kct[*n] & DUP_BIT)) {
+
+                kc->kct[*n] |= DUP_BIT;   // mark it as dup
+                --kc->uqct;
             }
             break;
         }
@@ -218,9 +214,7 @@ default:    if (isspace(seq.t))
                     corr = 0;
                 }
                 i -= 0x100;
-                seq_next(seq);
-                _addtoseq(kc->s, seq.t);
-                seq.p += 2;
+                _addtoseq(kc->s, seq);
                 break;
     case 0x1e:{ // new contig
                 if (h) {

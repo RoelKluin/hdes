@@ -70,13 +70,15 @@ seq_next(struct keyseq_t &seq)
     kc->contxt_idx + __ndx;\
 })
 
-#define _addtoseq(buf, b)\
+#define _addtoseq(buf, seq)\
     do {\
+        seq_next(seq);\
         if ((buf ## _l & 3) == 0) {\
             _buf_grow_err(buf, 1ul, 2, return -ENOMEM);\
             buf[buf ## _l>>2] = '\0';\
         }\
-        buf[buf ## _l>>2] |= b << ((buf ## _l & 3) << 1);\
+        buf[buf ## _l>>2] |= seq.t << ((buf ## _l & 3) << 1);\
+        seq.p += 2;\
         ++(buf ## _l);\
     } while(0)
 

@@ -141,7 +141,7 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 }
 
 static void
-reached_boundary(kct_t *kc, Bnd &b, pos_t C*C thisk)
+reached_boundary(kct_t *kc, Bnd &b)
 {
     C pos_t prev = _prev_or_bnd_start(b);
     if (in_scope(kc, prev, (*b.it).e)) {
@@ -157,7 +157,7 @@ static inline void
 proceed_mantra(kct_t *kc, Bnd &b, pos_t *k)
 {
     process_mantra(kc, b, NULL);
-    reached_boundary(kc, b, k);
+    reached_boundary(kc, b);
     ++b.it;
     NB(b.it != kc->bnd->end());
     b.prev = NULL;
@@ -211,7 +211,7 @@ ext_uq_iter(kct_t *kc)
     }
     process_mantra(kc, b, NULL);
     if (b.it != kc->bnd->end()) // or last boundary was erased
-        reached_boundary(kc, b, kend);
+        reached_boundary(kc, b);
 
     kc->uqct += kend - b.sk;
     kc->last_uqct = kc->uqct;
