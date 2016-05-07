@@ -175,6 +175,7 @@ case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
             _addtoseq(kc->s, seq); // kc->s_l grows here.
+            next_seqpos(kc->s, seq);
             seq_t ndx;
             seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
@@ -202,6 +203,7 @@ default:    if (isspace(seq.t))
     case 'T':
     case 'C':   seq.t ^= 0x2;
     case 'G':   seq.t &= 0x3;
+                _addtoseq(kc->s, seq);
                 if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (seq.p) { // N-stretch, unless at start, needs insertion
@@ -213,7 +215,7 @@ default:    if (isspace(seq.t))
                     corr = 0;
                 }
                 i -= 0x100;
-                _addtoseq(kc->s, seq);
+                next_seqpos(kc->s, seq);
                 break;
     case 0x1e:{ // new contig
                 if (h) {

@@ -78,6 +78,10 @@ seq_next(struct keyseq_t &seq)
             buf[buf ## _l>>2] = '\0';\
         }\
         buf[buf ## _l>>2] |= seq.t << ((buf ## _l & 3) << 1);\
+    } while(0)
+
+#define next_seqpos(buf, seq)\
+    do {\
         seq.p += 2;\
         ++(buf ## _l);\
     } while(0)
