@@ -167,7 +167,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
 
     // TODO: realpos based dbsnp or known site boundary insertion.
     while ((seq.t = gc(g)) <= 0xff) {
-        switch((seq.t | i) & ~0x20) {
+        switch(seq.t & ~0x20) {
 case 'U':   seq.t ^= 0x2;
 case 'A':   seq.t ^= 0x3;
 case 'T':
@@ -175,35 +175,23 @@ case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
         {
             _addtoseq(kc->s, seq); // kc->s_l grows here.
-            next_seqpos(kc->s, seq);
-            seq_t ndx;
-            seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
-            if (*n == NO_KCT) {
+            if (i == 0) {
+                seq_t ndx;
+                seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
+                if (*n == NO_KCT) {
 
-                _buf_grow(kc->kct, 1, 0);
-                *n = kc->kct_l++;
-                // set first pos + orient
-                kc->kct[*n] = seq.p | (seq.t != 0);
+                    _buf_grow(kc->kct, 1, 0);
+                    *n = kc->kct_l++;
+                    // set first pos + orient
+                    kc->kct[*n] = seq.p | (seq.t != 0);
 
-            } else if (!(kc->kct[*n] & DUP_BIT)) {
+                } else if (!(kc->kct[*n] & DUP_BIT)) {
 
-                kc->kct[*n] |= DUP_BIT;   // mark it as dup
-                --kc->uqct;
-            }
-            break;
-        }
-case 'N':   i = (KEY_WIDTH - 1) << 8;
-            ++corr;
-            break;
-default:    if (isspace(seq.t))
-                continue;
-            switch (seq.t & ~0x20) {
-    case 'U':   seq.t ^= 0x2;
-    case 'A':   seq.t ^= 0x3;
-    case 'T':
-    case 'C':   seq.t ^= 0x2;
-    case 'G':   seq.t &= 0x3;
-                _addtoseq(kc->s, seq);
+                    kc->kct[*n] |= DUP_BIT;   // mark it as dup
+                    --kc->uqct;
+                }
+                next_seqpos(kc->s, seq);
+            } else {
                 if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (seq.p) { // N-stretch, unless at start, needs insertion
@@ -216,8 +204,10 @@ default:    if (isspace(seq.t))
                 }
                 i -= 0x100;
                 next_seqpos(kc->s, seq);
-                break;
-    case 0x1e:{ // new contig
+            }
+            break;
+        }
+case 0x1e:{ // new contig
                 if (h) {
                     // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
                     hk.koffs = kc->kct_l;
@@ -235,12 +225,14 @@ default:    if (isspace(seq.t))
                 }
                 h = new_header(kc, h, g, gc, lookup);
                 NB(h != NULL);
-
                 i = (KEY_WIDTH - 1) << 8;
-                corr = -1u;
+                corr = 0;
+                break;
             }
-    default:    ++corr;
-            }
+default:    if (isspace(seq.t))
+                break;
+            i = (KEY_WIDTH - 1) << 8;
+            ++corr;
         }
     }
     NB(h != NULL);
