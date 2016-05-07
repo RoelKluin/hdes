@@ -17,15 +17,6 @@
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 
-static inline void
-end_pos(kct_t*C kc, Hdr* h, pos_t len)
-{
-    h->end_pos =  kc->bnd->back().e = len;
-    kc->totNts += h->end_pos + kc->bnd->back().corr;
-    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
-            kc->id + h->part[0]);
-}
-
 #define ENS_HDR_PARTCT 10
 //enum ensembl_parts {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
@@ -147,6 +138,26 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     return h;
 }
 
+static inline void
+end_pos(kct_t*C kc, Hdr* h, pos_t len)
+{
+    h->end_pos =  kc->bnd->back().e = len;
+    kc->totNts += h->end_pos + kc->bnd->back().corr;
+    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
+            kc->id + h->part[0]);
+}
+
+static inline int
+finish_contig(kct_t*C kc, Hdr* h, HK &hk, keyseq_t &seq)
+{
+    hk.koffs = kc->kct_l;
+    hk.len = seq.p >> 1;
+    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
+    hk.hoffs = kc->h_l;
+    end_pos(kc, h, seq.p >> 1);
+    return 0;
+}
+
 /*
  * process fasta, store 2bit string and count occurances and locations of keys.
  * store per key whether it occurred multiple times the last position.
@@ -158,6 +169,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     int (*gc) (void*);
     pos_t corr = 0;
     unsigned i = ~0u; // skip until '>'
+    int res;
     Hdr* h = NULL;
     keyseq_t seq = {0};
     kc->bnd = new std::list<Mantra>();
@@ -173,7 +185,6 @@ case 'A':   seq.t ^= 0x3;
 case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
-        {
             _addtoseq(kc->s, seq);
             if (i == 0) {
                 next_seqpos(kc->s, seq);
@@ -206,43 +217,35 @@ case 'G':   seq.t &= 0x3;
                 next_seqpos(kc->s, seq);
             }
             break;
-        }
-case 0x1e:{ // new contig
-                if (h) {
-                    // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
-                    hk.koffs = kc->kct_l;
-                    hk.len = seq.p >> 1;
-                    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
-                    hk.hoffs = kc->h_l;
-                    end_pos(kc, h, seq.p >> 1);
-                    if (kc->s_l & 3) {
-                        // the 2bit buffer per contig starts at the first nt 0 of 4.
-                        kc->s_l += -kc->s_l & 3;
-                        _buf_grow_err(kc->s, 1ul, 2, return -ENOMEM);
-                        kc->s[kc->s_l>>2] = '\0';
-                    }
-                    seq.p = 0;
+case 0x1e: // new contig
+            NB(seq.t == '>');
+            if (h) {
+                // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
+                _EVAL(finish_contig(kc, h, hk, seq));
+                if (kc->s_l & 3) {
+                    // the 2bit buffer per contig starts at the first nt 0 of 4.
+                    kc->s_l += -kc->s_l & 3;
+                    _buf_grow_err(kc->s, 1ul, 2, return -ENOMEM);
+                    kc->s[kc->s_l>>2] = '\0';
                 }
-                h = new_header(kc, h, g, gc, lookup);
-                NB(h != NULL);
-                i = (KEY_WIDTH - 1) << 8;
-                corr = 0;
-                break;
+                seq.p = 0;
             }
+            h = new_header(kc, h, g, gc, lookup);
+            NB(h != NULL);
+            i = (KEY_WIDTH - 1) << 8;
+            corr = 0;
+            break;
 default:    if (isspace(seq.t))
                 break;
             i = (KEY_WIDTH - 1) << 8;
             ++corr;
         }
     }
-    NB(h != NULL);
-    hk.koffs = kc->kct_l;
-    hk.len = seq.p >> 1;
-    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
-    end_pos(kc, h, seq.p >> 1);
+    res = finish_contig(kc, h, hk, seq);
     kc->uqct += kc->kct_l;
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
-    return 0;
+err:
+    return res;
 }
 
 int
