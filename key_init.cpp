@@ -112,7 +112,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     } else {
 
         EPR("contig occurred twice: %s", hdr);
-        // To fix order reversal would need kc->s movement and adaptations including h->s_s.
+        // To fix order reversal would need kc->s movement and adaptations including hk.s_s.
         NB(h->part[START] > got->second->part[END], "Duplicate entries in reversed order");
         h = got->second;
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
@@ -180,12 +180,13 @@ case 'G':   seq.t &= 0x3;
             seq_next(seq);
             seq_t ndx;
             _addtoseq(kc->s, seq.t); // kc->s_l grows here.
+            seq.p += 2;
             seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
             if (*n == NO_KCT) {
                 _buf_grow(kc->kct, 1, 0);
                 *n = kc->kct_l++;
                 // set first pos + orient
-                kc->kct[*n] = (kc->s_l - h->s_s) << 1 | (seq.t != 0);
+                kc->kct[*n] = seq.p | (seq.t != 0);
             } else {
                 if (!(kc->kct[*n] & DUP_BIT)) {
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
@@ -213,6 +214,7 @@ default:    if (isspace(seq.t))
                         NB(h->s_s < kc->s_l);
                         NB(kc->s_l - h->s_s <= 0x3fffffff,"TODO: split seq for huge contigs");
                         kc->bnd->push_back({.s = (pos_t)(kc->s_l - h->s_s)});
+                        seq.p = 0;
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;
@@ -220,10 +222,13 @@ default:    if (isspace(seq.t))
                 i -= 0x100;
                 seq_next(seq);
                 _addtoseq(kc->s, seq.t);
+                seq.p += 2;
                 break;
     case 0x1e:{ // new contig
-                  if (h) {
+                if (h) {
+                    // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
                     hk.koffs = kc->kct_l;
+                    hk.len = kc->s_l - h->s_s;
                     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
                     hk.hoffs = kc->h_l;
                     end_pos(kc, h);
@@ -233,6 +238,7 @@ default:    if (isspace(seq.t))
                         _buf_grow_err(kc->s, 1ul, 2, return -ENOMEM);
                         kc->s[kc->s_l>>2] = '\0';
                     }
+                    seq.p = 0;
                 }
                 h = new_header(kc, h, g, gc, lookup);
                 NB(h != NULL);
@@ -244,11 +250,12 @@ default:    if (isspace(seq.t))
             }
         }
     }
-    kc->uqct += kc->kct_l;
     NB(h != NULL);
     hk.koffs = kc->kct_l;
+    hk.len = kc->s_l - h->s_s;
     _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
     end_pos(kc, h);
+    kc->uqct += kc->kct_l;
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
     return 0;
 }
