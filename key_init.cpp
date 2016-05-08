@@ -104,7 +104,9 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         EPR("contig occurred twice: %s", hdr);
         // To fix order reversal would need kc->s movement and adaptations including hk.s_s.
-        NB(h->part[START] > got->second->part[END], "Duplicate entries in reversed order");
+        NB(h->p_l == UNKNOWN_HDR || got->second->p_l == UNKNOWN_HDR ||
+                atoi(kc->id + h->part[START]) > atoi(kc->id + got->second->part[END]),
+                "Duplicate entries in reversed order");
         h = got->second;
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
