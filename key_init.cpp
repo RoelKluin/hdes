@@ -34,7 +34,7 @@ static Hdr*
 new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 {
     int c;
-    uint32_t p = ID, part[ENS_HDR_PARTCT];
+    uint32_t p = ID, part[ENS_HDR_PARTCT] = {0};
     const char* hdr;
     Hdr_umap::const_iterator got;
     part[p] = kc->id_l;
