@@ -118,7 +118,7 @@ struct Assembly
 };*/
 
 // ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-enum ensembl_parts {ID, SEQTYPE, IDTYPE,
+enum ensembl_part {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {

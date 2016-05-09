@@ -16,7 +16,7 @@
 #include <cmocka.h> // TODO: unit testing
 
 char*
-get_header_part(char *s, ensembl_parts tgt)
+get_header_part(char *s, ensembl_part tgt)
 {
     NB(tgt != ID);
     for (unsigned i = ID; *s != '\0' || ++i != tgt; ++s)
@@ -24,27 +24,19 @@ get_header_part(char *s, ensembl_parts tgt)
     return s;
 }
 
-typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
-
 #define ENS_HDR_PARTCT 10
-//enum ensembl_parts {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
-//ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
-// fai does not handle chromosomes with offset.
-static Hdr*
-new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
+static int
+parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
 {
-    int c;
-    uint32_t p = ID, part[ENS_HDR_PARTCT] = {0};
-    const char* hdr;
-    Hdr_umap::const_iterator got;
+    int p = ID;
     part[p] = kc->id_l;
-
+    int c;
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
         switch (c) {
-            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL); break;
+            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM); break;
             case ' ':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM);
                 if (p == IDTYPE) {
                     char* q = kc->id + part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -59,7 +51,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     part[p] = kc->id_l;
                 continue;
             case ':':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM);
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
@@ -85,15 +77,37 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
                     c = '\0';
                     p = UNKNOWN_HDR;
                 }
-                _buf_grow_add_err(kc->id, 1ul, 0, c, return NULL);
+                _buf_grow_add_err(kc->id, 1ul, 0, c, return -ENOMEM);
                 continue;
         }
         break;
     }
-    if (c == -1)
+    return p;
+}
+
+static inline void
+set_header_type(kct_t*C kc, Hdr* h, int type, pos_t corr, pos_t endpos)
+{
+    h->p_l = type;
+    kc->bnd->back().corr = corr;
+    kc->bnd->back().e = h->end_pos = endpos;
+}
+
+typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
+
+//enum ensembl_part {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
+//ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
+// fai does not handle chromosomes with offset.
+static Hdr*
+new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
+{
+    uint32_t part[ENS_HDR_PARTCT] = {0};
+    int res = parse_header_parts(kc, g, gc, part);
+    if (res < 0)
         return NULL;
-    hdr = kc->id + part[ID];
-    got = lookup.find(hdr);
+
+    const char* hdr = kc->id + part[ID];
+    Hdr_umap::const_iterator got = lookup.find(hdr);
 
     if (got == lookup.end()) {
 
@@ -120,9 +134,8 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         // only insert when last contig had any sequence
         if (kc->bnd->back().e != kc->bnd->back().s) {
-            if (p != NR && p != META) {
-                h->p_l = UNKNOWN_HDR;
-                h->end_pos = ~0u;
+            if (res != NR && res != META) {
+                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd->back().corr, ~0u);
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
                 return h;
             }
@@ -133,17 +146,12 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         }
     }
 
-    if (p == NR || p == META) {
-        h->p_l = p;
+    if (res == NR || res == META) {
         // ensembl coords are 1-based, we use 0-based.
-        kc->bnd->back().corr += atoi(kc->id + part[START]) - 1;
-        h->end_pos = atoi(kc->id + part[END]);
-        kc->bnd->back().e = h->end_pos;
+        set_header_type(kc, h, res, atoi(kc->id + part[START]) - 1, atoi(kc->id + part[END]));
     } else { //TODO: hash lookup from fai
-        h->p_l = UNKNOWN_HDR;
-        kc->bnd->back().corr = 0;
-        kc->bnd->back().e = h->end_pos = ~0u;
         EPR("\nWARNING: non-ensembl reference.");
+        set_header_type(kc, h, UNKNOWN_HDR, 0, ~0u);
     }
     return h;
 }
