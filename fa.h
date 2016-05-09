@@ -123,7 +123,7 @@ enum ensembl_parts {ID, SEQTYPE, IDTYPE,
 
 struct Hdr {
     uint64_t s_s;     // 2bit offset for this contig
-    uint32_t *part;   // part[0] contains offset to kc->id character for the header ID.
+    uint32_t ido;     // id contains offset to kc->id character for the header ID.
     uint32_t end_pos; // last 2bit position on this contig
     uint8_t p_l;      // How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };

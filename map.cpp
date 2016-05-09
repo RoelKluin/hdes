@@ -82,11 +82,11 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
     ASSERT (h != kc->h + kc->h_l, return -EFAULT);
 
     //ASSERT(*pos + (*bd).corr > hk.s_s + bufi, return -EFAULT,
-    //        "%s\t%lu\t%lu", kc->id + h->part[0], *pos + (*bd).corr, hk.s_s + bufi
+    //        "%s\t%lu\t%lu", kc->id + h->ido, *pos + (*bd).corr, hk.s_s + bufi
     //        /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/);
     //*pos += (*bd).corr - hk.s_s + KEY_WIDTH - bufi - 1;
 
-    return h->part[0];
+    return h->ido;
 }
 
 static void
@@ -96,8 +96,8 @@ print_hdr(kct_t *C kc, char C*C commandline)
 
     /* FIXME:
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
-        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
-        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->part[0], h->end_pos + h->bnd->back().corr);
+        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->end_pos + h->bnd->back().corr);
+        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->end_pos + h->bnd->back().corr);
     }*/
     OPR("@PG\tID:" PROGRAM_NAME "\tPN:" PROGRAM_NAME "\tVN:" PROGRAM_VERSION "\tCL:%s",
             commandline);

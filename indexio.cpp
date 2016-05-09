@@ -78,7 +78,7 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         __WRITE_VAL(h->s_s, fhout)
         __WRITE_VAL(h->p_l, fhout)
         // sequence, if read, is not stored.
-        __WRITE_PTR(h->part, fhout, h->p_l)
+        __WRITE_VAL(h->ido, fhout)
     }
     res = 0;
 err:
@@ -116,7 +116,7 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
         __READ_VAL(h->end_pos, fhin)
         __READ_VAL(h->s_s, fhin)
         __READ_VAL(h->p_l, fhin)
-        __READ_PTR(h->part, fhin, h->p_l)
+        __READ_VAL(h->ido, fhin)
     }
     res = 0;
 err:

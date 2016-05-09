@@ -15,6 +15,15 @@
 #include <setjmp.h>
 #include <cmocka.h> // TODO: unit testing
 
+char*
+get_header_part(char *s, ensembl_parts tgt)
+{
+    NB(tgt != ID);
+    for (unsigned i = ID; *s != '\0' || ++i != tgt; ++s)
+        {}
+    return s;
+}
+
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 
 #define ENS_HDR_PARTCT 10
@@ -91,10 +100,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         //    new Hdr;
         _buf_grow_err(kc->h, 1ul, 0, return NULL);
         h = kc->h + kc->h_l++;
-
-        h->part = (uint32_t*)malloc(++p * sizeof(uint32_t));
-        NB(h->part != NULL);
-        memcpy(h->part, part, p * sizeof(*part));
+        h->ido = part[ID];
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
@@ -104,9 +110,11 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         EPR("contig occurred twice: %s", hdr);
         // To fix order reversal would need kc->s movement and adaptations including hk.s_s.
-        NB(h->p_l == UNKNOWN_HDR || got->second->p_l == UNKNOWN_HDR ||
-                atoi(kc->id + h->part[START]) > atoi(kc->id + got->second->part[END]),
-                "Duplicate entries in reversed order");
+        if (h->p_l != UNKNOWN_HDR && got->second->p_l != UNKNOWN_HDR) {
+
+            NB(atoi(kc->id + part[START]) > atoi(get_header_part(kc->id + got->second->ido, END)),
+                    "Duplicate entries in reversed order");
+        }
         h = got->second;
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
@@ -128,8 +136,8 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     if (p == NR || p == META) {
         h->p_l = p;
         // ensembl coords are 1-based, we use 0-based.
-        kc->bnd->back().corr += atoi(kc->id + h->part[START]) - 1;
-        h->end_pos = atoi(kc->id + h->part[END]);
+        kc->bnd->back().corr += atoi(kc->id + part[START]) - 1;
+        h->end_pos = atoi(kc->id + part[END]);
         kc->bnd->back().e = h->end_pos;
     } else { //TODO: hash lookup from fai
         h->p_l = UNKNOWN_HDR;
@@ -146,7 +154,7 @@ end_pos(kct_t*C kc, Hdr* h, pos_t len)
     h->end_pos =  kc->bnd->back().e = len;
     kc->totNts += h->end_pos + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
-            kc->id + h->part[0]);
+            kc->id + h->ido);
 }
 
 static inline int

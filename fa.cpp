@@ -29,15 +29,13 @@
 void
 free_kc(kct_t *kc)
 {
-    for (Hdr *h = kc->h; h != kc->h + kc->h_l; ++h)
-        free(h->part);
-
     delete kc->bnd;
     _buf_free(kc->id);
     _buf_free(kc->s);
     _buf_free(kc->kct);
     _buf_free(kc->h);
     _buf_free(kc->hk);
+    _buf_free(kc->ext);
     _buf_free(kc->contxt_idx);
 }
 
