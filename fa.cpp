@@ -66,21 +66,21 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s
 static void
 shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 {
-    if (b.prev) {                          // if not at mantra start
-        C pos_t end = (*b.it).e;           // store original end
-        (*b.it).e = prev;                  // shift end
-        if (thisk) {                       // if not at mantra end either
-            kc->bnd->insert(b.it, *b.it);  // insert a copy of the current
-            (*b.it).s = p + 1;             // mantra became divided in two smaller ranges.
-            (*b.it).e = end;               // reinstate original end
-        } else if ((*b.it).s == (*b.it).e) { // (otherwise the last mantra just got smaller)
-            b.it = kc->bnd->erase(b.it);     // this returns the next element
-            b.prev = NULL;
-        }
-    } else if (thisk) {     // if at chr start, but not at chr end
-        (*b.it).s = p + 1;  // shift start
-    } else {                              // entire region became mapable
-        b.it = kc->bnd->erase(b.it);     // this returns the next element
+    if (b.prev) {                          // not at mantra start
+        C pos_t end = (*b.it).e;
+        (*b.it).e = prev;
+        if (thisk) {                       // not at mantra end either
+            kc->bnd->insert(b.it, *b.it);  // copy of current
+            (*b.it).s = p;                 // mantra became two smaller ranges.
+            (*b.it).e = end;
+        } // or end got shifted
+    } else {
+        // shift start or if at end, force erase (entirely mapable).
+        (*b.it).s = thisk ? p : (*b.it).e; // or entire region became mapable, force erase.
+    }
+    NB((*b.it).s <= (*b.it).e);
+    if ((*b.it).s == (*b.it).e) {
+        b.it = kc->bnd->erase(b.it);   // nothing left
         b.prev = NULL;
     }
 }
@@ -90,10 +90,15 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
     C pos_t prev = _prev_or_bnd_start(b);
     C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
+    /*if (prev == pend) {
+        //NB(prev != pend);
+        EPR("process_mantra(): prev == pend");
+        return;
+    }*/
 
-    if (in_scope(kc, prev, pend)) { // a 2nd uniq
-
-        shrink_mantra(kc, b, thisk, prev, pend);
+    if (in_scope(kc, prev, pend + 1)) { // a 2nd uniq
+EPR("excision");
+        shrink_mantra(kc, b, thisk, prev, pend + 1);
         return;
     }
     // prev to pend are uniques, not in scope. between uniqs are
@@ -101,6 +106,7 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
     keyseq_t seq = { .p = prev + 1};
     seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_KCT);
+EPR("kept %u-%u", prev, pend);
 
     for (;;) {
         pos_t *k = kc->kct + *contxt_idx;
@@ -152,12 +158,12 @@ reached_boundary(kct_t *kc, Bnd &b)
 }
 
 static inline void
-proceed_mantra(kct_t *kc, Bnd &b, pos_t *k)
+skip_mantra(kct_t *kc, Bnd &b, pos_t *k)
 {
     process_mantra(kc, b, NULL);
     reached_boundary(kc, b);
+EPR("next bnd");
     ++b.it;
-    NB(b.it != kc->bnd->end());
     b.prev = NULL;
 }
 
@@ -175,43 +181,42 @@ proceed_mantra(kct_t *kc, Bnd &b, pos_t *k)
 static void
 ext_uq_iter(kct_t *kc)
 {
-    pos_t *k = kc->kct;
-    pos_t *kend = get_kend(kc); // location after uniques, from last time
-    HK *hk = kc->hk;
+    pos_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
-        .sk = kc->kct,
+        .sk = k,
         .s = kc->s,
         .prev = NULL,
         .it = kc->bnd->begin()
     };
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    for (; k != kend; ++k) {
+    for (HK *hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+        for (; k < kc->kct + hk->koffs; ++k) {
+EPR("%u", k - kc->kct);
 
-        if (IS_DUP(k)) // they are handled during excision (or postponed) - process_mantra()
-            continue;
+            while (b.it != kc->bnd->end() && b2pos_of(*k) >= (*b.it).e)
+                skip_mantra(kc, b, k);
 
-        // If required the contig and assembly are updated to the current, of k.
-        while (k >= kc->kct + hk->koffs) {
-            // update contig, if beyond
-            proceed_mantra(kc, b, k);
-            NB(hk < kc->hk + kc->hk_l);
-            hk->koffs = k - b.sk; // update k offset of header, just finished, for next iteration
-            b.s += (hk->len >> 2) + !!(hk->len & 3);
-            NB(b.s < kc->s + kc->s_l);
-            ++hk;
+            if (b.it == kc->bnd->end()) {
+EPR("left2");
+                break;
+            }
+            if (IS_UQ(k)) { // they are handled during excision (or postponed) - process_mantra()
+
+                process_mantra(kc, b, k); //
+                b.prev = k;
+            }
         }
-        while (b2pos_of(*k) >= (*b.it).e)
-            proceed_mantra(kc, b, k);
-
-        process_mantra(kc, b, k);
-        b.prev = k;
+        skip_mantra(kc, b, k);
+        if (b.it == kc->bnd->end()) {
+EPR("left0");
+            break;
+        }
+        hk->koffs -= k - b.sk; // update k offset of header, just finished, for next iteration
+        b.s += (hk->len >> 2) + !!(hk->len & 3);
     }
-    process_mantra(kc, b, NULL);
-    if (b.it != kc->bnd->end()) // or last mantra was erased
-        reached_boundary(kc, b);
 
-    kc->uqct += kend - b.sk;
+    kc->uqct += k - b.sk;
     kc->last_uqct = kc->uqct;
 }
 
