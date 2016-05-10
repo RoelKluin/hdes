@@ -60,6 +60,8 @@ vs indexio.cpp
 "vs 
 "winc r
 "44sp documentation.txt
+tabnew .gdbinit
+vs fa.cpp
 tabnew dodev
 vs dodev.vim
 tabnew runtests/KW3_RL5_no2.fa

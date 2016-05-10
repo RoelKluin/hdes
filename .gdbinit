@@ -131,7 +131,7 @@ commands
     if corr == 0
         printf "Header "
         # because printf states: Cannot access memory at address ...
-        output  kc->id[h->part[0]]
+        output  kc->id[h->ido]
         printf "\n"
     else
         if kc->s_l != h->s_s
@@ -140,7 +140,7 @@ commands
             printf "N stretch at start of contig (not inserted)\n"
         end
     end
-    #c
+    c
 end
 
 break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
@@ -213,19 +213,12 @@ commands
     #c
 end
 
-break_re '// stored first occurance matches current position and contig' 'fa.cpp' 'break'
-commands
-    silent
-    printf "excised:\t"
-    pseq
-    #c
-end
-
 break_re '//gdb:swap' 'fa.cpp' 'break'
 commands
     silent
+    printf "\n"
     pkct
-    #c
+    c
 end
 
 

@@ -16,15 +16,11 @@ int
 show_mantras(kct_t C*C kc)
 {
     unsigned j = 0;
-    //HK *hk = kc->hk;
 
-    //h = kc->h + (hk++)->hoffs;
     EPR("-- Mantras --");
     std::list<Mantra>::iterator it = kc->bnd->begin();
     if (it != kc->bnd->end()) {
         do {
-            pos_t p = (*it).s;
-
             EPR("[%u]:\t(" Pfmt "+) %u - %u", j++, (*it).corr, (*it).s, (*it).e);
         } while (++it != kc->bnd->end());
     } else {
