@@ -90,15 +90,10 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
 {
     C pos_t prev = _prev_or_bnd_start(b);
     C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
-    /*if (prev == pend) {
-        //NB(prev != pend);
-        EPR("process_mantra(): prev == pend");
-        return;
-    }*/
 
-    if (in_scope(kc, prev, pend + 1)) { // a 2nd uniq
+    if (in_scope(kc, prev, pend)) { // a 2nd uniq
 EPR("excision");
-        shrink_mantra(kc, b, thisk, prev, pend + 1);
+        shrink_mantra(kc, b, thisk, prev, pend);
         return;
     }
     // prev to pend are uniques, not in scope. between uniqs are
@@ -115,7 +110,7 @@ EPR("kept %u-%u", prev, pend);
             // second occurance
 
             if (~*k & DUP_BIT) {
-                //no dup after all
+                //no dup afterr all
 
                 *k |= DUP_BIT;
                 --kc->uqct;
@@ -128,7 +123,7 @@ EPR("kept %u-%u", prev, pend);
                 *k &= ~DUP_BIT;
 
             } else {
-                // a position is pending, first was excised
+                EPR("// a position is pending for %u'th, first was excised", seq.p);
 
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
@@ -148,12 +143,15 @@ static void
 reached_boundary(kct_t *kc, Bnd &b)
 {
     C pos_t prev = _prev_or_bnd_start(b);
-    if (in_scope(kc, prev, (*b.it).e)) {
-        if (b.prev) { // was not start of contig
-            ++b.it;// GDB
-        } else { //entirely mapable
-            b.it = kc->bnd->erase(b.it);// GDB
-        }
+
+    // if at start and entirely mapable: remove mantra.
+    if (b.prev == NULL && in_scope(kc, prev, (*b.it).e)) {
+EPR("mantra removed");
+        b.it = kc->bnd->erase(b.it);
+    } else {
+EPR("next bnd");
+        (*b.it).ke = b.sk - kc->kct;
+        ++b.it;
     }
 }
 
@@ -162,8 +160,6 @@ skip_mantra(kct_t *kc, Bnd &b, pos_t *k)
 {
     process_mantra(kc, b, NULL);
     reached_boundary(kc, b);
-EPR("next bnd");
-    ++b.it;
     b.prev = NULL;
 }
 
@@ -178,12 +174,13 @@ EPR("next bnd");
  * isolated and ordered on extension, contig and position.
  *
  */
-static void
+static int
 ext_uq_iter(kct_t *kc)
 {
     pos_t *k = kc->kct; // location after uniques, from last time
+    pos_t *sk = k;
     Bnd b = {
-        .sk = k,
+        .sk = sk,
         .s = kc->s,
         .prev = NULL,
         .it = kc->bnd->begin()
@@ -191,49 +188,59 @@ ext_uq_iter(kct_t *kc)
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
     for (HK *hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
-        for (; k < kc->kct + hk->koffs; ++k) {
+
+        if (k < kc->kct + hk->koffs) {
+
+            while (k < kc->kct + hk->koffs) {
+
+                while (k - kc->kct < (*b.it).ke) {
 EPR("%u", k - kc->kct);
 
-            while (b.it != kc->bnd->end() && b2pos_of(*k) >= (*b.it).e)
+                    if (IS_UQ(k)) { // they are handled during excision (or postponed) - process_mantra()
+EPR("uniq");
+print_posseq(b.s, b2pos_of(*k));
+                        process_mantra(kc, b, k); //
+                        b.prev = k;
+                    }
+                    ++k;
+                }
+                if (b.it == kc->bnd->end())
+                    goto out;
+
                 skip_mantra(kc, b, k);
-
-            if (b.it == kc->bnd->end()) {
-EPR("left2");
-                break;
             }
-            if (IS_UQ(k)) { // they are handled during excision (or postponed) - process_mantra()
-
-                process_mantra(kc, b, k); //
-                b.prev = k;
-            }
+        } else {
+            if (b.it == kc->bnd->end())
+                goto out;
+            skip_mantra(kc, b, k);
         }
-        skip_mantra(kc, b, k);
-        if (b.it == kc->bnd->end()) {
-EPR("left0");
-            break;
-        }
-        hk->koffs -= k - b.sk; // update k offset of header, just finished, for next iteration
+EPR("next hdr");
+        _buf_grow_add_err(kc->ext, 1ul, 0, sk - kc->kct, return -ENOMEM);
+        sk += hk->koffs;
+        b.sk = sk;
         b.s += (hk->len >> 2) + !!(hk->len & 3);
     }
-
-    kc->uqct += k - b.sk;
+out:
+    NB(kc->uqct == k - b.sk, "%u != %u",  kc->uqct, k - b.sk);
+    kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
+    return 0;
 }
 
 static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
-
+    int res = -ENOMEM;
+    kc->ext = _buf_init_err(kc->ext, 1, goto err);
     for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques
             kc->uqct = 0;
-            ext_uq_iter(kc);
+            _EVAL(ext_uq_iter(kc));
             EPR("observed %u uniques in iteration %u, extension %u\n",
                 kc->uqct, ++kc->iter, kc->extension);
         } while (kc->uqct > 0);
     }
-    int res;
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
 err:

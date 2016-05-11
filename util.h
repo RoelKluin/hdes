@@ -274,6 +274,16 @@ print_seq(keyseq_t* seq, unsigned len = KEY_WIDTH)
 }
 
 static void
+print_posseq(uint8_t const*const s, pos_t p, unsigned len = KEY_WIDTH)
+{
+    keyseq_t seq {.p = p};
+    seq.p -= KEY_WIDTH;
+    build_key(s, seq, p);
+    EPR0("%u\t", p);
+    print_dna(seq.dna, '\n', len);
+}
+
+static void
 print_ndx(seq_t dna)
 {
     seq_t rc = dna & KEYNT_TRUNC_UPPER;

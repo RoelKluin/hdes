@@ -29,11 +29,21 @@ end
 
 define pkct
    set $i = 0
+   set $j = 0
+   set $offs = 0
+   frame 1
    while($i < kc->kct_l)
-      printf "%u:\t", $i
-      p/x kc->kct[$i] >> 1
-      set $i = $i + 1
+      while ($i < kc->hk[$j].koffs)
+          printf "%u:\t0x%x\t", $i, kc->kct[$i]
+          call print_posseq(kc->s + $offs, b2pos_of(kc->kct[$i]), 3)
+          set $i = $i + 1
+      end
+      if $j < kc->hk_l
+          set $offs = $offs + (kc->hk[$j].len >> 2) + !!(kc->hk[$j].len & 3)
+          set $j = $j + 1
+      end
     end
+    frame 0
 end
 
 define pdna
@@ -218,7 +228,7 @@ commands
     silent
     printf "\n"
     pkct
-    c
+    #c
 end
 
 

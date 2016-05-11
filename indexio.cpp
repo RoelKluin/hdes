@@ -70,12 +70,12 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         __WRITE_VAL(val, fhout)
         val = (*b).e;
         __WRITE_VAL(val, fhout)
+        val = (*b).ke;
+        __WRITE_VAL(val, fhout)
     }
 
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
-        __WRITE_VAL(h->end_pos, fhout)
-        __WRITE_VAL(h->s_s, fhout)
         __WRITE_VAL(h->p_l, fhout)
         // sequence, if read, is not stored.
         __WRITE_VAL(h->ido, fhout)
@@ -104,17 +104,16 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
     kc->bnd = new std::list<Mantra>();
 
     while (blen--) {
-        Mantra contig = {0};
-        __READ_VAL(contig.corr, fhin)
-        __READ_VAL(contig.s, fhin)
-        __READ_VAL(contig.e, fhin)
-        kc->bnd->push_front(contig);
+        Mantra m = {0};
+        __READ_VAL(m.corr, fhin)
+        __READ_VAL(m.s, fhin)
+        __READ_VAL(m.e, fhin)
+        __READ_VAL(m.ke, fhin)
+        kc->bnd->push_front(m);
     }
 
     kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
-        __READ_VAL(h->end_pos, fhin)
-        __READ_VAL(h->s_s, fhin)
         __READ_VAL(h->p_l, fhin)
         __READ_VAL(h->ido, fhin)
     }

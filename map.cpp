@@ -120,7 +120,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
     keyseq_t seq = {0};
     Hdr* lh = kc->h + kc->h_l - 1;
-    const uint64_t end_pos = /*FIXME: hk.s_s, prev: lh->s_s + */lh->end_pos;
+    const uint64_t end_pos = /*FIXME: hk.s_s, prev: lh->s_s + lh->end_pos*/ 0;
     //struct mapstat_t ms = {0};
 
     set_readfunc(fhin, &g, &gc);

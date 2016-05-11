@@ -90,7 +90,7 @@ set_header_type(kct_t*C kc, Hdr* h, int type, pos_t corr, pos_t endpos)
 {
     h->p_l = type;
     kc->bnd->back().corr = corr;
-    kc->bnd->back().e = h->end_pos = endpos;
+    kc->bnd->back().e = endpos;
 }
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
@@ -118,7 +118,6 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
-        h->s_s = kc->s_l;
         kc->bnd->push_back({0});
     } else {
 
@@ -142,7 +141,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
             // correction propagation Not thoroughly checked yet...
             pos_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
-            kc->bnd->push_back({.s=0, .e=0, .corr=corr });
+            kc->bnd->push_back({.s=0, .corr=corr});
         }
     }
 
@@ -159,10 +158,10 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 static inline void
 end_pos(kct_t*C kc, Hdr* h, pos_t len)
 {
-    h->end_pos =  kc->bnd->back().e = len;
-    kc->totNts += h->end_pos + kc->bnd->back().corr;
-    EPR("processed %u(%lu) Nts for %s", h->end_pos + kc->bnd->back().corr, kc->totNts,
-            kc->id + h->ido);
+    kc->bnd->back().e = len;
+    kc->bnd->back().ke = kc->kct_l;
+    kc->totNts += len + kc->bnd->back().corr;
+    EPR("processed %u(%lu) Nts for %s", len, kc->totNts, kc->id + h->ido);
 }
 
 static inline int
