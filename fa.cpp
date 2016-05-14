@@ -90,7 +90,7 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
 void swap(uint32_t *a, uint32_t *b, uint32_t C*C c)
 {
     while (a != c) {
-        unsigned temp = *a;
+        uint32_t temp = *a;
         *a++ = *b;
         *b++ = temp;
     }
@@ -120,8 +120,9 @@ void leftRotate(uint32_t *a, unsigned C d, unsigned n)
     swap(a, b, b);
 }
 
+
 static void
-process_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk)
+process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
     C uint32_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
@@ -139,8 +140,7 @@ EPR("excision");
 EPR("kept %u-%u", prev, pend);
 
     // rotation must be undone before we add to b.sk.
-    // (it may be possible to store rotations and undo at the end, but that requires
-    // an algorithm).
+    // this should also fix the ndx => wrong kct_i that occurs after swaps.
     leftRotate(thisk, b.rot, b.sk - thisk);
     b.rot = 0;
     for (;;) {
@@ -220,7 +220,7 @@ ext_uq_iter(kct_t *kc)
 {
     uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
-        .sk = sk,
+        .sk = k,
         .s = kc->s,
         .prev = NULL,
         .rot = 0,
