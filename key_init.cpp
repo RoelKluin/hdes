@@ -220,7 +220,7 @@ case 'G':   seq.t &= 0x3;
                     --kc->uqct;
                 }
             } else {
-                if (i == (KEY_WIDTH - 1) << 8) { // key after header/stretch to be rebuilt
+                if (i == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (seq.p) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h, seq.p >> 1);
@@ -230,7 +230,7 @@ case 'G':   seq.t &= 0x3;
                     kc->bnd->back().corr += corr;
                     corr = 0;
                 }
-                i -= 0x100;
+                --i;
                 next_seqpos(kc->s, seq);
             }
             break;
@@ -249,12 +249,10 @@ case 0x1e: // new contig
             }
             h = new_header(kc, h, g, gc, lookup);
             NB(h != NULL);
-            i = (KEY_WIDTH - 1) << 8;
-            corr = 0;
-            break;
+            --corr;
 default:    if (isspace(seq.t))
                 break;
-            i = (KEY_WIDTH - 1) << 8;
+            i = KEY_WIDTH - 1;
             ++corr;
         }
     }

@@ -17,7 +17,7 @@ AR=		ar
 VERSION=	0.018
 LOBJS=
 PROG=		uqct
-INCLUDES=	
+INCLUDES=
 SUBDIRS=	.
 OBJS=		b6.o
 EXTERNAL_ZLIB=zlib-1.2.8/
@@ -72,7 +72,9 @@ distclean: clean
 	rm -rf $(ARCHIVE).tar.gz
 
 dist:
-	tar -czf $(ARCHIVE).tar.gz $(SOURCES) f[aq]less *.{c{,pp},h,pl,sh,vim} .git Makefile doc/{algo3,hdes}.odt runtests/{,pool/}*.f[qa] documentation.txt PLAN IDEE BUGS dodev runtests/*.{f[aq],vim,sh}
+	tar -czf $(ARCHIVE).tar.gz $(SOURCES) f[aq]less *.{c{,pp},h,pl,sh,vim} .git Makefile \
+	    doc/{algo3,hdes}.odt runtests/{,pool/}*.f[qa] documentation.txt PLAN IDEE BUGS \
+	    dodev{,.vim} runtests/*.{f[aq],vim,sh} .gdbinit
 
 depend:
 	( LC_ALL=C ; export LC_ALL; makedepend -Y -- $(CFLAGS) $(DFLAGS) $(DEF) -- *.cpp )

@@ -106,7 +106,7 @@ EPR("kept %u-%u", prev, pend);
     for (;;) {
         pos_t *k = kc->kct + *contxt_idx;
 
-        if (k < b.sk) {
+        if (k < b.sk) { // XXX requires multi-contig uniqs and excised in b.sk .. k
             // second occurance
 
             if (~*k & DUP_BIT) {
@@ -178,7 +178,6 @@ static int
 ext_uq_iter(kct_t *kc)
 {
     pos_t *k = kc->kct; // location after uniques, from last time
-    pos_t *sk = k;
     Bnd b = {
         .sk = sk,
         .s = kc->s,
@@ -214,11 +213,17 @@ print_posseq(b.s, b2pos_of(*k));
                 goto out;
             skip_mantra(kc, b, k);
         }
-EPR("next hdr");
-        _buf_grow_add_err(kc->ext, 1ul, 0, sk - kc->kct, return -ENOMEM);
-        sk += hk->koffs;
-        b.sk = sk;
+EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
+        NB(hk->koffs <= kc->kct_l);
+        NB(hk->koffs >= b.sk - kc->kct);
         b.s += (hk->len >> 2) + !!(hk->len & 3);
+
+        //XXX: this is cumulative for contigs for this extension and iteration.
+        pos_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
+
+        _buf_grow_add_err(kc->ext, 1ul, 0, uq_and_1stexcised, return -ENOMEM);
+        EPQ(uq_and_1stexcised, "added %u uniq", uq_and_1stexcised);
+        kc->uqct += uq_and_1stexcised;
     }
 out:
     NB(kc->uqct == k - b.sk, "%u != %u",  kc->uqct, k - b.sk);
