@@ -85,14 +85,46 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     }
 }
 
+/*This function swaps d elements starting at index fi
+  with d elements starting at index si */
+void swap(uint32_t *a, uint32_t *b, uint32_t C*C c)
+{
+    while (a != c) {
+        unsigned temp = *a;
+        *a++ = *b;
+        *b++ = temp;
+    }
+}
+
+/*Function to left rotate s[] of siz n by d
+ * Time complexity: O(n)
+ */
+void leftRotate(uint32_t *a, unsigned C d, unsigned n)
+{
+    if(d == 0 || d == n)
+        return;
+    uint32_t *C b = a + d;
+    uint32_t *c = a + n - d;
+    while (c != b) {
+
+        if(c >= b) {
+            swap(a, c, b);
+            c -= b - a;
+        } else {
+            swap(a, b, c);
+            n = c - a;
+            a = c;
+            c += n;
+        }
+    }
+    swap(a, b, b);
+}
+
 static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
     C uint32_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
-
-
-
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
 EPR("excision");
@@ -109,6 +141,8 @@ EPR("kept %u-%u", prev, pend);
     // rotation must be undone before we add to b.sk.
     // (it may be possible to store rotations and undo at the end, but that requires
     // an algorithm).
+    leftRotate(thisk, b.rot, b.sk - thisk);
+    b.rot = 0;
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
 
