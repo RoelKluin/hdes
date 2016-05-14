@@ -143,6 +143,7 @@ struct Bnd {
     pos_t *sk;
     uint8_t* s;
     pos_t *prev;
+    pos_t rot;
     std::list<Mantra>::iterator it;
 };
 

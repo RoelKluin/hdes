@@ -91,6 +91,35 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
     C pos_t prev = _prev_or_bnd_start(b);
     C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
 
+    // TODO: make sure the keys between b.sk and k are sorted.
+    // needed is to know rotation
+    /*if (thisk - b.sk > 1) {
+        pos_t *sk = b.sk;
+        while (sk != thisk - 2) {
+            pos_t *k = b.sk + b.rot % (thisk - b.sk);
+            while (k != thisk) {
+                 // FIXME: werkt alleen bij huidige contig:
+                 seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
+                 // Alt: sla bij uniek of tot excised tijdelijk ndx op in kct, pos op in kct.
+                 // dan gaat swappen eenvoudiger.
+            }
+
+        b.rot % (thisk - b.sk);
+        keyseq_t seq = {0};
+        for (k = thisk - 1; b2pos_of(*k) < b2pos_of(*b.sk); --k)
+            NB(k != kc->kct || k == b.sk);
+        while (k++ != b.sk) {
+            seq.p
+            seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
+            swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
+            pos_t *sk = b.sk;
+
+                        sk = b.sk;
+            do {
+            } while(sk != );
+        }
+    }*/
+
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
 EPR("excision");
         shrink_mantra(kc, b, thisk, prev, pend);
@@ -127,6 +156,7 @@ EPR("kept %u-%u", prev, pend);
 
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
+            ++b.rot;
             swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
             //gdb:swap
         }
@@ -182,6 +212,7 @@ ext_uq_iter(kct_t *kc)
         .sk = sk,
         .s = kc->s,
         .prev = NULL,
+        .rot = 0,
         .it = kc->bnd->begin()
     };
 
