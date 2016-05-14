@@ -91,34 +91,8 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk)
     C uint32_t prev = _prev_or_bnd_start(b);
     C uint32_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
 
-    // TODO: make sure the keys between b.sk and k are sorted.
-    // needed is to know rotation
-    /*if (thisk - b.sk > 1) {
-        uint32_t *sk = b.sk;
-        while (sk != thisk - 2) {
-            uint32_t *k = b.sk + b.rot % (thisk - b.sk);
-            while (k != thisk) {
-                 // FIXME: werkt alleen bij huidige contig:
-                 uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
-                 // Alt: sla bij uniek of tot excised tijdelijk ndx op in kct, pos op in kct.
-                 // dan gaat swappen eenvoudiger.
-            }
 
-        b.rot % (thisk - b.sk);
-        keyseq_t seq = {0};
-        for (k = thisk - 1; b2pos_of(*k) < b2pos_of(*b.sk); --k)
-            NB(k != kc->kct || k == b.sk);
-        while (k++ != b.sk) {
-            seq.p
-            uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
-            swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
-            uint32_t *sk = b.sk;
 
-                        sk = b.sk;
-            do {
-            } while(sk != );
-        }
-    }*/
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
 EPR("excision");
@@ -132,6 +106,9 @@ EPR("excision");
     NB(*contxt_idx != NO_KCT);
 EPR("kept %u-%u", prev, pend);
 
+    // rotation must be undone before we add to b.sk.
+    // (it may be possible to store rotations and undo at the end, but that requires
+    // an algorithm).
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
 
