@@ -36,32 +36,16 @@
 # define KEY_LENGTH 15                      // <= this many Nts are used as key
 #endif
 
-#ifndef GENOME_BITS
-# define GENOME_BITS 16
-#endif
-#if GENOME_BITS <= 16
-typedef uint32_t pos_t;
-#define Pfmt "%u"
-#else
-typedef uint64_t pos_t;
-#define Pfmt "%lu"
+#if KEY_LENGTH > 16
+#error "KEY_LENGTH > 16 not supported"
 #endif
 
-#if KEY_LENGTH <= 16
-typedef uint32_t seq_t;
-#define Sfmt "0x%x"
+typedef uint32_t uint32_t;
 #define DEVIANT_BIT_MASK 0xaaaaaaaaU
 #define ODD_BYTE_MASK 0x00ff00ffU
 #define ODD_NIBBLE_MASK 0x0f0f0f0fU
 #define ODD_TWOBIT_MASK 0x33333333U
-#else
-typedef uint64_t seq_t;
-#define Sfmt "0x%lx"
-#define DEVIANT_BIT_MASK 0xaaaaaaaaaaaaaaaaUL
-#define ODD_BYTE_MASK 0x00ff00ff00ff00ffUL
-#define ODD_NIBBLE_MASK 0x0f0f0f0f0f0f0f0fUL
-#define ODD_TWOBIT_MASK 0x3333333333333333UL
-#endif
+
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
 #define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
@@ -114,12 +98,12 @@ typedef uint64_t seq_t;
         t ^= (((c ^ 'U') & ~B6_ALT_CASE) != 0);\
         t = -((t | B6_MASK) == B6_MASK) & (t >> 1);\
         dna = dna << 2 | t;\
-        rev = (seq_t)t << KEYNT_TOP | rev >> 2;\
+        rev = (uint32_t)t << KEYNT_TOP | rev >> 2;\
 })
 
 #define add_b(t, dna, rev) ({\
         dna = dna << 2 | t;\
-        rev = (seq_t)t << KEYNT_TOP | rev >> 2;\
+        rev = (uint32_t)t << KEYNT_TOP | rev >> 2;\
 })
 
 # define ischar_ignore_cs(c, c2) (((c ^ c2) & ~B6_ALT_CASE) == 0)
@@ -134,16 +118,16 @@ typedef uint64_t seq_t;
     dna >> ((sizeof(dna) << 3) - (KEY_WIDTH << 1));\
 })
 
-inline seq_t revcmp(seq_t dna) /* Reverse Complement, is ok. */
+inline uint32_t revcmp(uint32_t dna) /* Reverse Complement, is ok. */
 {
-    seq_t m;
+    uint32_t m;
     dna ^= DEVIANT_BIT_MASK;
     return REVSEQ(dna, m);
 }
 
 struct __attribute__ ((__packed__)) keyseq_t {
-    pos_t p;
-    seq_t dna, rc, t;
+    uint32_t p;
+    uint32_t dna, rc, t;
 };
 
 static inline void
@@ -168,8 +152,8 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
     t &= -t;/* isolate deviant bit */\
     t |= !t;/* for palindromes: have to set one */\
     t &= dna;/* was devbit set? */\
-    seq_t __x = t ? dna : rc;\
-    seq_t __m = __x & ((seq_t)1 << KEYNT_BUFSZ_SHFT);\
+    uint32_t __x = t ? dna : rc;\
+    uint32_t __m = __x & ((uint32_t)1 << KEYNT_BUFSZ_SHFT);\
     __x ^ __m ^ (__m - !!__m);\
 })
 #define get_ndx(seq) _get_ndx(seq.t, seq.dna, seq.rc)

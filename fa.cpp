@@ -40,7 +40,7 @@ free_kc(kct_t *kc)
 }
 
 static void
-swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s)
+swap_kct(uint32_t *kcnxk,  uint32_t *k1,  uint32_t *k2, uint32_t *contxt_idx2, uint8_t C*C s)
 {
     if (k1 == k2)
         return;
@@ -48,7 +48,7 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
     keyseq_t seq = {.p = b2pos_of(*k1)};
-    seq_t *contxt_idx1 = kcnxk + build_ndx_kct(seq, s);
+    uint32_t *contxt_idx1 = kcnxk + build_ndx_kct(seq, s);
     std::swap(*contxt_idx1, *contxt_idx2); // contxt_idx points to reordered kcts
     std::swap(*k1, *k2);           // and swap info at kcts
 }
@@ -64,10 +64,10 @@ swap_kct(seq_t *kcnxk,  pos_t *k1,  pos_t *k2, seq_t *contxt_idx2, uint8_t C*C s
  * unique before a region scoped by uniques.
  */
 static void
-shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
+shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t p)
 {
     if (b.prev) {                          // not at mantra start
-        C pos_t end = (*b.it).e;
+        C uint32_t end = (*b.it).e;
         (*b.it).e = prev;
         if (thisk) {                       // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
@@ -86,20 +86,20 @@ shrink_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk, C pos_t prev, C pos_t p)
 }
 
 static void
-process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
+process_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk)
 {
-    C pos_t prev = _prev_or_bnd_start(b);
-    C pos_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
+    C uint32_t prev = _prev_or_bnd_start(b);
+    C uint32_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
 
     // TODO: make sure the keys between b.sk and k are sorted.
     // needed is to know rotation
     /*if (thisk - b.sk > 1) {
-        pos_t *sk = b.sk;
+        uint32_t *sk = b.sk;
         while (sk != thisk - 2) {
-            pos_t *k = b.sk + b.rot % (thisk - b.sk);
+            uint32_t *k = b.sk + b.rot % (thisk - b.sk);
             while (k != thisk) {
                  // FIXME: werkt alleen bij huidige contig:
-                 seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
+                 uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
                  // Alt: sla bij uniek of tot excised tijdelijk ndx op in kct, pos op in kct.
                  // dan gaat swappen eenvoudiger.
             }
@@ -110,9 +110,9 @@ process_mantra(kct_t *kc, Bnd &b, pos_t C*C thisk)
             NB(k != kc->kct || k == b.sk);
         while (k++ != b.sk) {
             seq.p
-            seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
+            uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s);
             swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
-            pos_t *sk = b.sk;
+            uint32_t *sk = b.sk;
 
                         sk = b.sk;
             do {
@@ -128,12 +128,12 @@ EPR("excision");
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
     keyseq_t seq = { .p = prev + 1};
-    seq_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s); // already increments seq.p
+    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_KCT);
 EPR("kept %u-%u", prev, pend);
 
     for (;;) {
-        pos_t *k = kc->kct + *contxt_idx;
+        uint32_t *k = kc->kct + *contxt_idx;
 
         if (k < b.sk) { // XXX requires multi-contig uniqs and excised in b.sk .. k
             // second occurance
@@ -172,7 +172,7 @@ EPR("kept %u-%u", prev, pend);
 static void
 reached_boundary(kct_t *kc, Bnd &b)
 {
-    C pos_t prev = _prev_or_bnd_start(b);
+    C uint32_t prev = _prev_or_bnd_start(b);
 
     // if at start and entirely mapable: remove mantra.
     if (b.prev == NULL && in_scope(kc, prev, (*b.it).e)) {
@@ -186,7 +186,7 @@ EPR("next bnd");
 }
 
 static inline void
-skip_mantra(kct_t *kc, Bnd &b, pos_t *k)
+skip_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 {
     process_mantra(kc, b, NULL);
     reached_boundary(kc, b);
@@ -207,7 +207,7 @@ skip_mantra(kct_t *kc, Bnd &b, pos_t *k)
 static int
 ext_uq_iter(kct_t *kc)
 {
-    pos_t *k = kc->kct; // location after uniques, from last time
+    uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
         .sk = sk,
         .s = kc->s,
@@ -250,7 +250,7 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         b.s += (hk->len >> 2) + !!(hk->len & 3);
 
         //XXX: this is cumulative for contigs for this extension and iteration.
-        pos_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
+        uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
 
         _buf_grow_add_err(kc->ext, 1ul, 0, uq_and_1stexcised, return -ENOMEM);
         EPQ(uq_and_1stexcised, "added %u uniq", uq_and_1stexcised);

@@ -64,7 +64,7 @@ seq_next(struct keyseq_t &seq)
 })
 
 #define get_kct(kc, seq) ({\
-    seq_t __ndx;\
+    uint32_t __ndx;\
     __ndx = get_kct0(kc, seq, __ndx);\
     NB(kc->contxt_idx[__ndx] < kc->kct_l);\
     kc->contxt_idx + __ndx;\
@@ -93,17 +93,17 @@ seq_next(struct keyseq_t &seq)
 #define get_kend(kc) (kc->kct + kc->kct_l - kc->last_uqct)
 
 #define in_scope(kc, fst, nxt) ({\
-    pos_t __f = fst, __n = nxt;\
+    uint32_t __f = fst, __n = nxt;\
     NB(__f < __n);\
     NB(__n <= kc->s_l);\
     (nxt) - (fst) - 1u < (kc)->extension;\
 })
 
 packed_struct Mantra { // not yet covered by unique keys
-    pos_t s; // start pos
-    pos_t corr; // 'real' position correction
-    pos_t e; // end pos
-    pos_t ke; // offset to end k of mantra
+    uint32_t s; // start pos
+    uint32_t corr; // 'real' position correction
+    uint32_t e; // end pos
+    uint32_t ke; // offset to end k of mantra
 };
 
 /* TODO:
@@ -135,26 +135,26 @@ struct Hdr {
 struct HK {
     uint32_t hoffs;
     uint32_t ext;
-    pos_t len; // 2bit offset for this contig
+    uint32_t len; // 2bit offset for this contig
     uint32_t koffs;
 };
 
 struct Bnd {
-    pos_t *sk;
+    uint32_t *sk;
     uint8_t* s;
-    pos_t *prev;
-    pos_t rot;
+    uint32_t *prev;
+    uint32_t rot;
     std::list<Mantra>::iterator it;
 };
 
 struct kct_t {
     char* id;      // characters of headers
     uint8_t* s;    // all needed 2bit sequences in order (excluding Ns or first ones).
-    seq_t* contxt_idx; // sparse array, complement independent index (ndx) => kct
+    uint32_t* contxt_idx;
                    // Later we may want to point to a combination in the non-observed for edits to
                    // this ndx or surroundings that does result in an ndx that does occur.
 
-    pos_t* kct;    // dupbit : 2bit_contig position : strand; Extension + contig in order
+    uint32_t* kct;
                    // non occurant are initally set to NO_KCT. see Extension below.
 
     uint64_t* ext; // ndx offset for key extensions. If a position is after this u64 of the nth
@@ -173,8 +173,8 @@ struct kct_t {
 };
 
 // TODO: pos rshift may not be necessary.
-static inline pos_t
-b2pos_of(kct_t C*C kc, pos_t C*C k)
+static inline uint32_t
+b2pos_of(kct_t C*C kc, uint32_t C*C k)
 {
     NB(k - kc->kct < kc->kct_l);
     NB(k - kc->kct >= 0);
@@ -183,20 +183,20 @@ b2pos_of(kct_t C*C kc, pos_t C*C k)
     return (*k & B2POS_MASK) >> 1;
 }
 
-static inline pos_t
-b2pos_of(pos_t C k)
+static inline uint32_t
+b2pos_of(uint32_t C k)
 {
     NB(k != NO_KCT);
     return (k & B2POS_MASK) >> 1;
 }
 
-static seq_t
+static uint32_t
 build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
 {
-    pos_t p = seq.p;
+    uint32_t p = seq.p;
     seq.p -= KEY_WIDTH;
     build_key(s, seq, p);
-    seq_t ndx = get_ndx(seq);
+    uint32_t ndx = get_ndx(seq);
     NB(ndx < KEYNT_BUFSZ);
     return ndx;
 }
@@ -219,7 +219,7 @@ int map_fq_se(struct seqb2_t*, char C*C);
 // mantra.cpp
 int show_mantras(kct_t C*C kc, Hdr *C h);
 int insert_mantra(kct_t *C kc, Hdr* h);
-void pot_mantra_end(kct_t *C kc, Hdr *C h, C seq_t dna, C uint32_t b2pos);
+void pot_mantra_end(kct_t *C kc, Hdr *C h, C uint32_t dna, C uint32_t b2pos);
 #endif // RK_FA_H
 
 

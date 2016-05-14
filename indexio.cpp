@@ -196,7 +196,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
 
     for (uint64_t i=0ul; i != kc->kct_l; ++i) {
 
-        pos_t *k = kc->kct + i;
+        uint32_t *k = kc->kct + i;
 
         // XXX: ensure the k's contigs are sorted or this won't be efficient.
         while (k >= kc->kct + hk->koffs) {
@@ -208,7 +208,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
         keyseq_t seq = {.p = b2pos_of(kc, k)};
         NB(seq.p > KEY_WIDTH - 1);
 
-        seq_t ndx = build_ndx_kct(seq, s);
+        uint32_t ndx = build_ndx_kct(seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
         kc->contxt_idx[ndx] = i;

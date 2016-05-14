@@ -86,7 +86,7 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
 }
 
 static inline void
-set_header_type(kct_t*C kc, Hdr* h, int type, pos_t corr, pos_t endpos)
+set_header_type(kct_t*C kc, Hdr* h, int type, uint32_t corr, uint32_t endpos)
 {
     h->p_l = type;
     kc->bnd->back().corr = corr;
@@ -140,7 +140,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
             }
 
             // correction propagation Not thoroughly checked yet...
-            pos_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
+            uint32_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
             kc->bnd->push_back({.s=0, .corr=corr});
         }
     }
@@ -156,7 +156,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 }
 
 static inline void
-end_pos(kct_t*C kc, Hdr* h, pos_t len)
+end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
     kc->bnd->back().e = len;
     kc->bnd->back().ke = kc->kct_l;
@@ -184,7 +184,7 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
 {
     void* g;
     int (*gc) (void*);
-    pos_t corr = 0;
+    uint32_t corr = 0;
     unsigned i = ~0u; // skip until '>'
     int res;
     Hdr* h = NULL;
@@ -205,8 +205,8 @@ case 'G':   seq.t &= 0x3;
             _addtoseq(kc->s, seq);
             if (i == 0) {
                 next_seqpos(kc->s, seq);
-                seq_t ndx;
-                seq_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
+                uint32_t ndx;
+                uint32_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
                 if (*n == NO_KCT) {
 
                     _buf_grow(kc->kct, 1, 0);

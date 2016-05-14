@@ -114,7 +114,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     uint8_t *s = sb2->s + l;
     //const unsigned phred_offset = sb2->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + sb2->readlength + 1;
-    seq_t ndx;
+    uint32_t ndx;
     int c = kc->readlength - KEY_WIDTH + 1;
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));

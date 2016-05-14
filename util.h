@@ -254,14 +254,14 @@ static unsigned next_pow2(unsigned x)
 }
 
 static void
-print_dna(seq_t dna, const char sep = '\n', unsigned len = KEY_WIDTH)
+print_dna(uint32_t dna, const char sep = '\n', unsigned len = KEY_WIDTH)
 {
     for (unsigned t = len; t--; dna >>= 2)
         fputc(b6((dna & 3) << 1), stderr);
     fputc(sep, stderr);
 }
 static void
-print_2dna(seq_t dna, seq_t dna2, unsigned len = KEY_WIDTH)
+print_2dna(uint32_t dna, uint32_t dna2, unsigned len = KEY_WIDTH)
 {
     print_dna(dna, '|', len);
     print_dna(dna2, '\n', len);
@@ -274,7 +274,7 @@ print_seq(keyseq_t* seq, unsigned len = KEY_WIDTH)
 }
 
 static void
-print_posseq(uint8_t const*const s, pos_t p, unsigned len = KEY_WIDTH)
+print_posseq(uint8_t const*const s, uint32_t p, unsigned len = KEY_WIDTH)
 {
     keyseq_t seq {.p = p};
     seq.p -= KEY_WIDTH;
@@ -284,9 +284,9 @@ print_posseq(uint8_t const*const s, pos_t p, unsigned len = KEY_WIDTH)
 }
 
 static void
-print_ndx(seq_t dna)
+print_ndx(uint32_t dna)
 {
-    seq_t rc = dna & KEYNT_TRUNC_UPPER;
+    uint32_t rc = dna & KEYNT_TRUNC_UPPER;
     dna ^= rc ^ (rc << 1) ^ KEYNT_STRAND;
     rc = revcmp(dna);
     for (unsigned t = KEY_WIDTH; t--; dna >>= 2)
