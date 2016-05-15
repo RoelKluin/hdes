@@ -85,41 +85,43 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     }
 }
 
-/*This function swaps d elements starting at index fi
-  with d elements starting at index si */
-void swap(uint32_t *a, uint32_t *b, uint32_t C*C c)
-{
-    while (a != c) {
-        uint32_t temp = *a;
-        *a++ = *b;
-        *b++ = temp;
-    }
-}
+
 
 /*Function to left rotate s[] of siz n by d
  * Time complexity: O(n)
  */
-void leftRotate(uint32_t *a, unsigned C d, unsigned n)
+static int
+leftRotate(uint32_t *a, int d, unsigned n)
 {
-    if(d == 0 || d == n)
-        return;
-    uint32_t *C b = a + d;
-    uint32_t *c = a + n - d;
-    while (c != b) {
+    if (n > 1) {
+        d %= n;
+        if (d) {
+            uint32_t *C b = a + d;
+            for (uint32_t *c = a + n - d; c != a; c -= d) {
 
-        if(c >= b) {
-            swap(a, c, b);
-            c -= b - a;
-        } else {
-            swap(a, b, c);
-            n = c - a;
-            a = c;
-            c += n;
+                uint32_t *x = b;
+                if(c >= x) {
+                    d = x - a;
+                    c += d;
+                    while (x != a) {
+                        uint32_t temp = *--x;
+                        *x = *--c;
+                        *c = temp;
+                    }
+                } else {
+                    d = a - c;
+                    while (a != c) {
+                        uint32_t temp = *x;
+                        *x++ = *a;
+                        *a++ = temp;
+                    }
+                }
+            }
+            d ^= d;
         }
     }
-    swap(a, b, b);
+    return d;
 }
-
 
 static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
@@ -141,29 +143,33 @@ EPR("kept %u-%u", prev, pend);
 
     // rotation must be undone before we add to b.sk.
     // this should also fix the ndx => wrong kct_i that occurs after swaps.
-    leftRotate(thisk, b.rot, b.sk - thisk);
-    b.rot = 0;
+    if (thisk)
+        b.rot = leftRotate(b.sk, b.rot, thisk - b.sk);
+
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
+print_seq(&seq);
 
         if (k < b.sk || (thisk && k > thisk)) { // XXX requires multi-contig uniqs and excised in b.sk .. k
             // second occurance
 
             if (~*k & DUP_BIT) {
-                //no dup afterr all
+                EPR("// no dup after all");
 
                 *k |= DUP_BIT;
                 --kc->uqct;
+            } else {
+                EPR("dup bit was already set");
             }
         } else {
-            // 1st occurance
+            EPR("// 1st occurance");
             ++kc->uqct;    // unique or decremented later.
             if (b2pos_of(kc, k) == seq.p) {
 
                 *k &= ~DUP_BIT;
 
             } else {
-                EPR("// a position is pending for %u'th, first was excised", seq.p);
+                EPR("// a position is pending for %u'th (!= %u), first was excised", seq.p, b2pos_of(kc, k));
 
                 *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             }
@@ -199,6 +205,8 @@ EPR("next bnd");
 static inline void
 skip_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 {
+    if (k)
+        b.rot = leftRotate(b.sk, b.rot, k - b.sk);
     process_mantra(kc, b, NULL);
     reached_boundary(kc, b);
     b.prev = NULL;
@@ -264,11 +272,10 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
 
         _buf_grow_add_err(kc->ext, 1ul, 0, uq_and_1stexcised, return -ENOMEM);
-        EPQ(uq_and_1stexcised, "added %u uniq", uq_and_1stexcised);
-        kc->uqct += uq_and_1stexcised;
+        EPQ(uq_and_1stexcised, "total %u uniq", uq_and_1stexcised);
+        //kc->uqct = uq_and_1stexcised;
     }
 out:
-    NB(kc->uqct == k - b.sk, "%u != %u",  kc->uqct, k - b.sk);
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     return 0;
