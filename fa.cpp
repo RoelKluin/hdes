@@ -146,7 +146,7 @@ EPR("kept %u-%u", prev, pend);
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
 
-        if (k < b.sk) { // XXX requires multi-contig uniqs and excised in b.sk .. k
+        if (k < b.sk || (thisk && k > thisk)) { // XXX requires multi-contig uniqs and excised in b.sk .. k
             // second occurance
 
             if (~*k & DUP_BIT) {
