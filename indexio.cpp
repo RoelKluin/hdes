@@ -208,7 +208,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
         keyseq_t seq = {.p = b2pos_of(kc, k)};
         NB(seq.p > KEY_WIDTH - 1);
 
-        uint32_t ndx = build_ndx_kct(seq, s);
+        uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
         kc->contxt_idx[ndx] = i;

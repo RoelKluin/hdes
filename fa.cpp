@@ -39,18 +39,6 @@ free_kc(kct_t *kc)
     buf_free(kc->contxt_idx);
 }
 
-static void
-swap_kct(uint32_t *kcnxk,  uint32_t *k1,  uint32_t *k2, uint32_t *contxt_idx2, uint8_t C*C s)
-{
-    // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
-
-    // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
-    keyseq_t seq = {.p = b2pos_of(*k1)};
-    uint32_t *contxt_idx1 = kcnxk + build_ndx_kct(seq, s);
-    std::swap(*contxt_idx1, *contxt_idx2); // contxt_idx points to reordered kcts
-    std::swap(*k1, *k2);           // and swap info at kcts
-}
-
 /*
  * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
@@ -64,6 +52,7 @@ swap_kct(uint32_t *kcnxk,  uint32_t *k1,  uint32_t *k2, uint32_t *contxt_idx2, u
 static void
 shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t p)
 {
+    NB(b.it != kc->bnd->end());
     if (b.prev) {                          // not at mantra start
         C uint32_t end = (*b.it).e;
         (*b.it).e = prev;
@@ -85,66 +74,42 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     }
 }
 
-
-
-/*Function to left rotate s[] of siz n by d
- * Time complexity: O(n)
- */
-static int
-leftRotate(uint32_t *a, int d, unsigned n)
-{
-    if (n > 1) {
-        d %= n;
-        if (d) {
-            uint32_t *C b = a + d;
-            for (uint32_t *c = a + n - d; c != a; c -= d) {
-
-                uint32_t *x = b;
-                if(c >= x) {
-                    d = x - a;
-                    c += d;
-                    while (x != a) {
-                        uint32_t temp = *--x;
-                        *x = *--c;
-                        *c = temp;
-                    }
-                } else {
-                    d = a - c;
-                    while (a != c) {
-                        uint32_t temp = *x;
-                        *x++ = *a;
-                        *a++ = temp;
-                    }
-                }
-            }
-            d ^= d;
-        }
-    }
-    return d;
-}
-
 static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
     C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 1 : (*b.it).e;
-    EPR("thisk - kc->kct != (*b.it).ke):%u", thisk - kc->kct != (*b.it).ke);
 
+    uint32_t *contxt_idx;
+    keyseq_t seq = {0};
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
-EPR("excision");
         shrink_mantra(kc, b, thisk, prev, pend);
+        // The distance between b.sk and k may have grown by excised 1st kcts (beside uniq).
+        if (thisk - b.sk > b.moved) {
+            EPR("%u were moved during excision", (thisk - b.sk) - b.moved + 1);
+
+            for (uint32_t *k = b.sk + b.moved; k <= thisk; ++k) {
+                NB(k < kc->kct + kc->kct_l);
+                seq.p = b2pos_of(kc, k);
+                contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
+                buf_grow(kc->kct, 1, 0);
+                kc->kct[kc->kct_l] = *k;
+                *contxt_idx = kc->kct_l++;
+            }
+            b.moved = b.sk - thisk + 1;
+            b.prev = kc->kct + *contxt_idx;
+        } else {
+            b.prev = thisk;
+        }
         return;
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
-    keyseq_t seq = { .p = prev + 1};
-    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(seq, b.s); // already increments seq.p
+    seq.p = prev + 1;
+    contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_KCT);
 EPR("kept %u-%u", prev, pend);
-
-    // rotation must be undone before we add to b.sk.
-    // this should also fix the ndx => wrong kct_i that occurs after swaps.
 
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
@@ -164,17 +129,18 @@ print_seq(&seq);
         } else {
             EPR("// 1st occurance");
             ++kc->uqct;    // unique or decremented later.
-            if (b2pos_of(kc, k) != seq.p)
+
+            if (k - kc->kct >= (*b.it).ke)
                 EPR("// a position is pending for %u'th (!= %u), first was excised", seq.p, b2pos_of(kc, k));
 
             *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             if (b.sk != k) {
-
-
-                swap_kct(kc->contxt_idx, b.sk, k, contxt_idx, b.s);
+                *b.sk = *k;
+                *k ^= *k;
+                *contxt_idx = b.sk - kc->kct;
+                EPR("moved");
             }
             ++b.sk;
-            //gdb:swap
         }
         if (seq.p == pend)
             break;
@@ -182,6 +148,19 @@ print_seq(&seq);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq);
         ++seq.p;
+    }
+    if (thisk - kc->kct != (*b.it).ke) {
+        //NB((thisk - b.sk) - b.moved == 0, "%u - %u", (b.sk - thisk), b.moved);
+        EPR("only one uniq isolated from mantra");
+        ++b.moved; //namely last uniq.
+        get_next_nt_seq(b.s, seq);
+        contxt_idx = get_kct(kc, seq);
+        buf_grow(kc->kct, 1, 0);
+        kc->kct[kc->kct_l] = *thisk;
+        *contxt_idx = kc->kct_l++;
+        b.prev = kc->kct + *contxt_idx;
+    } else {
+        b.prev = thisk;
     }
 }
 
@@ -191,6 +170,7 @@ reached_boundary(kct_t *kc, Bnd &b)
     C uint32_t prev = _prev_or_bnd_start(b);
 
     // if at start and entirely mapable: remove mantra.
+    NB(b.it != kc->bnd->end());
     if (b.prev == NULL && in_scope(kc, prev, (*b.it).e)) {
 EPR("mantra removed");
         b.it = kc->bnd->erase(b.it);
@@ -205,7 +185,8 @@ static inline void
 skip_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 {
     process_mantra(kc, b, k);
-    reached_boundary(kc, b);
+    if (b.it != kc->bnd->end())
+        reached_boundary(kc, b);
     b.prev = NULL;
 }
 
@@ -223,16 +204,18 @@ skip_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 static int
 ext_uq_iter(kct_t *kc)
 {
+    HK *hk;
     uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
         .sk = k,
         .s = kc->s,
         .prev = NULL,
+        .moved = 0,
         .it = kc->bnd->begin()
     };
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    for (HK *hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
 
         if (k < kc->kct + hk->koffs) {
 
@@ -275,6 +258,23 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
 out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
+    b.s = kc->s;
+    uint64_t* ext = kc->ext;
+    // put uniqs and 1st excised back in array (recompression)
+    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+        int j = *ext++;
+        while (j--) {
+            if (*k != 0) {
+                keyseq_t seq = {.p = b2pos_of(kc, k) };
+                uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
+                *contxt_idx = b.sk - kc->kct;
+                *b.sk++ = *k;
+            }
+            ++k;
+        }
+        b.s += (hk->len >> 2) + !!(hk->len & 3);
+    }
+    kc->kct_l -= k - b.sk;
     return 0;
 }
 

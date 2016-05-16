@@ -141,6 +141,7 @@ struct Bnd {
     uint32_t *sk;
     uint8_t* s;
     uint32_t *prev;
+    uint32_t moved;
     std::list<Mantra>::iterator it;
 };
 
@@ -188,7 +189,7 @@ b2pos_of(uint32_t C k)
 }
 
 static uint32_t
-build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
+_build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
 {
     uint32_t p = seq.p;
     seq.p -= KEY_WIDTH;
@@ -197,6 +198,10 @@ build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
     NB(ndx < KEYNT_BUFSZ);
     return ndx;
 }
+#define build_ndx_kct(kc, seq, s) ({\
+    NB((seq.p >> 2) < kc->s_l, "%u >= %u!!", (seq.p >> 2), kc->s_l);\
+    _build_ndx_kct(seq, s);\
+})
 
 void free_kc(kct_t* kc);
 int fa_read(struct gzfh_t*, kct_t*);
