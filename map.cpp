@@ -21,13 +21,13 @@ static inline int
 init_fq(seqb2_t *sb2)
 {
 
-    sb2->s = _buf_init(sb2->s, INIT_BUFSIZEBIT);
+    sb2->s = buf_init(sb2->s, INIT_BUFSIZEBIT);
     *sb2->s = '\0';
 
     size_t i, v = 1, l = sizeof(*sb2->lookup) * KEYNT_BUFSZ;
     sb2->lookup = (uint32_t*)malloc(l);
     if (sb2->lookup == NULL) {
-        _buf_free(sb2->s);
+        buf_free(sb2->s);
         return -ENOMEM;
     }
     for (i = 0; i != l; i += sizeof(*sb2->lookup))
@@ -130,7 +130,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     }
     do {
         unsigned i = 0;
-        _buf_grow0(sb2->s, fq_ent_max); // at least enough space for one read
+        buf_grow0(sb2->s, fq_ent_max); // at least enough space for one read
 
         s = sb2->s + sb2->s_l;
         uint8_t* h = s;
@@ -320,7 +320,7 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     }
     ASSERT(fhio[0]->fp && fhio[1]->fp && fhio[2]->fp, return -EFAULT,
             "need seqb2, keycount and unique boundary files");
-    kc.contxt_idx = _buf_init_arr_err(kc.contxt_idx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.contxt_idx = buf_init_arr(kc.contxt_idx, KEYNT_BUFSZ_SHFT);
     // 2) open seqb2 for verification of reads
     // 3) open original boundaries
     _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file");

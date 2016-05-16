@@ -22,13 +22,13 @@ static inline int
 init_fq(seqb2_t *fq)
 {
 
-    fq->s = _buf_init(fq->s, INIT_BUFSIZEBIT);
+    fq->s = buf_init(fq->s, INIT_BUFSIZEBIT);
     *fq->s = '\0';
 
     size_t i, v = 1, l = sizeof(*fq->lookup) * KEYNT_BUFSZ;
     fq->lookup = (uint32_t*)malloc(l);
     if (fq->lookup == NULL) {
-        _buf_free(fq->s);
+        buf_free(fq->s);
         return -ENOMEM;
     }
     for (i = 0; i != l; i += sizeof(*fq->lookup))
@@ -147,7 +147,7 @@ fq_print(seqb2_t *fq)
     if (c && fh->write(fh, buf, c) < 0) ret = -1;
 
     if (fq->lookup != NULL) { free(fq->lookup); fq->lookup = NULL; }
-    _buf_free(fq->s);
+    buf_free(fq->s);
     return ret;
 }
 
@@ -196,7 +196,7 @@ fq_b2(seqb2_t *fq)
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
             fprintf(stderr, "==realloc at %u reads to 0x%lx\n", nr, m);
-            _buf_grow(fq->s, l, 0);
+            buf_grow(fq->s, l, 0);
             b = s + l;
         }
         uint8_t* o = b;

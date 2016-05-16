@@ -30,13 +30,13 @@ void
 free_kc(kct_t *kc)
 {
     delete kc->bnd;
-    _buf_free(kc->id);
-    _buf_free(kc->s);
-    _buf_free(kc->kct);
-    _buf_free(kc->h);
-    _buf_free(kc->hk);
-    _buf_free(kc->ext);
-    _buf_free(kc->contxt_idx);
+    buf_free(kc->id);
+    buf_free(kc->s);
+    buf_free(kc->kct);
+    buf_free(kc->h);
+    buf_free(kc->hk);
+    buf_free(kc->ext);
+    buf_free(kc->contxt_idx);
 }
 
 static void
@@ -267,7 +267,7 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         //XXX: this is cumulative for contigs for this extension and iteration.
         uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
 
-        _buf_grow_add_err(kc->ext, 1ul, 0, uq_and_1stexcised, return -ENOMEM);
+        buf_grow_add(kc->ext, 1ul, 0, uq_and_1stexcised);
         EPQ(uq_and_1stexcised, "total %u uniq", uq_and_1stexcised);
         hk->koffs = b.sk - kc->kct;
         //kc->uqct = uq_and_1stexcised;
@@ -282,7 +282,7 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res = -ENOMEM;
-    kc->ext = _buf_init_err(kc->ext, 1, goto err);
+    kc->ext = buf_init(kc->ext, 1);
     for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques
@@ -330,7 +330,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 
     strncpy(fh[3].name, fh[0].name, len);
 
-    kc.contxt_idx = _buf_init_arr_err(kc.contxt_idx, KEYNT_BUFSZ_SHFT, return -ENOMEM);
+    kc.contxt_idx = buf_init_arr(kc.contxt_idx, KEYNT_BUFSZ_SHFT);
     // first check whether unique boundary is ok.
     if (fh[0].fp) {
         mode = 2;

@@ -119,70 +119,53 @@ do {\
 
 // get bit for alpha char, regardless of case [command line options]
 #define amopt(r)        (1ul << ((r+7) & 0x1f))
-#define _buf_init_err(buf, sz, error_action) ({\
+#define buf_init(buf, sz) ({\
     buf##_m = sz;\
     buf##_l = 0;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
-    if_ever (__t == NULL) {\
-        error_action;\
-    }\
+    if_ever (__t == NULL)\
+        raise(SIGTRAP);\
     __t;\
 })
-#define _buf_init_err_m(buf, m, error_action) ({\
+#define buf_init_m(buf, m) ({\
     buf##_l = 0;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
-    if_ever (__t == NULL) {\
-        error_action;\
-    }\
+    if_ever (__t == NULL)\
+        raise(SIGTRAP);\
     __t;\
 })
-#define _buf_init(buf, sz) _buf_init_err(buf, sz, return -ENOMEM)
 
-#define _buf_init_arr_err(buf, sz, error_action) ({\
+#define buf_init_arr(buf, sz) ({\
     buf##_m = sz;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
-    if_ever (__t == NULL) {\
-        error_action;\
-    }\
+    if_ever (__t == NULL)\
+        raise(SIGTRAP);\
     __t;\
 })
 
-#define _buf_grow_err_m(buf, step, m, shft, error_action) \
+#define buf_grow_m(buf, step, m, shft) \
 do {\
 if (((buf##_l + step) >> shft) >= (1ul << m)) {\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
-    if_ever (__t == NULL) {\
-        error_action;\
-    }\
+    if_ever (__t == NULL)\
+        raise(SIGTRAP);\
     buf = __t;\
 }\
 } while(0)
 
-#define _buf_grow(buf, step, shft) _buf_grow_err_m(buf, step, buf##_m, shft, return -ENOMEM)
-#define _buf_growm(buf, step, m, shft) _buf_grow_err_m(buf, step, m, shft, return -ENOMEM)
-#define _buf_grow0(buf, step) _buf_grow_err_m(buf, step, buf##_m, 0, return -ENOMEM)
-#define _buf_grow0m(buf, step, m) _buf_grow_err_m(buf, step, m, 0, return -ENOMEM)
+#define buf_grow(buf, step, shft) buf_grow_m(buf, step, buf##_m, shft)
+#define buf_growm(buf, step, m, shft) buf_grow_m(buf, step, m, shft)
+#define buf_grow0(buf, step) buf_grow_m(buf, step, buf##_m, 0)
+#define buf_grow0m(buf, step, m) buf_grow_m(buf, step, m, 0)
 
-#define _buf_grow_err(buf, step, shft, err) _buf_grow_err_m(buf, step, buf##_m, shft, err)
-#define _buf_grow_add_err(buf, step, shft, add, error_action) ({\
-    _buf_grow_err(buf, step, shft, error_action);\
+#define buf_grow_add(buf, step, shft, add) ({\
+    buf_grow(buf, step, shft);\
     buf[buf##_l++] = add;\
 })
 
 
 
-#define _buf_grow2(buf, step, s) \
-do {\
-    if (buf##_l + step >= (1ul << buf##_m)) {\
-        /*fprintf(stderr, #buf " realloc, %lu\n", sizeof((*buf)) << (buf##_m + 1));fflush(NULL);*/\
-        s = (decltype(buf))realloc(buf, sizeof((*buf)) << ++(buf##_m));\
-        if_ever (s == NULL) return -ENOMEM;\
-        buf = s;\
-        s += buf##_l;\
-    }\
-} while (0)
-
-#define _buf_free(buf) \
+#define buf_free(buf) \
 do {\
     if (buf != NULL) {\
         free(buf);\

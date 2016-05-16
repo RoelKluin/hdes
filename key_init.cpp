@@ -34,9 +34,9 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
     while ((c = gc(g)) != -1) {
         //EPR("%u\t%c", p, c);
         switch (c) {
-            case '\n': _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM); break;
+            case '\n': buf_grow_add(kc->id, 1ul, 0, '\0'); break;
             case ' ':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM);
+                buf_grow_add(kc->id, 1ul, 0, '\0');
                 if (p == IDTYPE) {
                     char* q = kc->id + part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -51,7 +51,7 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
                     part[p] = kc->id_l;
                 continue;
             case ':':
-                _buf_grow_add_err(kc->id, 1ul, 0, '\0', return -ENOMEM);
+                buf_grow_add(kc->id, 1ul, 0, '\0');
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
@@ -77,7 +77,7 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
                     c = '\0';
                     p = UNKNOWN_HDR;
                 }
-                _buf_grow_add_err(kc->id, 1ul, 0, c, return -ENOMEM);
+                buf_grow_add(kc->id, 1ul, 0, c);
                 continue;
         }
         break;
@@ -112,7 +112,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     if (got == lookup.end()) {
 
         //    new Hdr;
-        _buf_grow_err(kc->h, 1ul, 0, return NULL);
+        buf_grow(kc->h, 1ul, 0);
         h = kc->h + kc->h_l++;
         h->ido = part[ID];
 
@@ -169,7 +169,7 @@ finish_contig(kct_t*C kc, Hdr* h, HK &hk, keyseq_t &seq)
 {
     hk.koffs = kc->kct_l;
     hk.len = seq.p >> 1;
-    _buf_grow_add_err(kc->hk, 1ul, 0, hk, return -ENOMEM);
+    buf_grow_add(kc->hk, 1ul, 0, hk);
     hk.hoffs = kc->h_l;
     end_pos(kc, h, seq.p >> 1);
     return 0;
@@ -209,7 +209,7 @@ case 'G':   seq.t &= 0x3;
                 uint32_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
                 if (*n == NO_KCT) {
 
-                    _buf_grow(kc->kct, 1, 0);
+                    buf_grow(kc->kct, 1, 0);
                     *n = kc->kct_l++;
                     // set first pos + orient
                     kc->kct[*n] = seq.p | (seq.t != 0);
@@ -242,7 +242,7 @@ case 0x1e: // new contig
                 if (kc->s_l & 3) {
                     // the 2bit buffer per contig starts at the first nt 0 of 4.
                     kc->s_l += -kc->s_l & 3;
-                    _buf_grow_err(kc->s, 1ul, 2, return -ENOMEM);
+                    buf_grow(kc->s, 1ul, 2);
                     kc->s[kc->s_l>>2] = '\0';
                 }
                 seq.p = 0;
@@ -268,11 +268,11 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
 {
     int res = -ENOMEM;
 
-    kc->kct = _buf_init_err(kc->kct, 16, goto err);
-    kc->id = _buf_init_err(kc->id, 8, goto err);
-    kc->s = _buf_init_err(kc->s, 8, goto err);
-    kc->h = _buf_init_err(kc->h, 1, goto err);
-    kc->hk = _buf_init_err(kc->hk, 1, goto err);
+    kc->kct = buf_init(kc->kct, 16);
+    kc->id = buf_init(kc->id, 8);
+    kc->s = buf_init(kc->s, 8);
+    kc->h = buf_init(kc->h, 1);
+    kc->hk = buf_init(kc->hk, 1);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = NO_KCT;

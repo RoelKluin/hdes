@@ -74,7 +74,7 @@ seq_next(struct keyseq_t &seq)
     do {\
         seq_next(seq);\
         if ((buf ## _l & 3) == 0) {\
-            _buf_grow_err(buf, 1ul, 2, return -ENOMEM);\
+            buf_grow(buf, 1ul, 2);\
             buf[buf ## _l>>2] = '\0';\
         }\
         buf[buf ## _l>>2] |= seq.t << ((buf ## _l & 3) << 1);\
@@ -89,8 +89,6 @@ seq_next(struct keyseq_t &seq)
 #define DEBUG 1
 
 #define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
-
-#define get_kend(kc) (kc->kct + kc->kct_l - kc->last_uqct)
 
 #define in_scope(kc, fst, nxt) ({\
     uint32_t __f = fst, __n = nxt;\
