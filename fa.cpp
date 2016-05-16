@@ -67,14 +67,16 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     if (b.prev) {                          // not at mantra start
         C uint32_t end = (*b.it).e;
         (*b.it).e = prev;
-        if (thisk) {                       // not at mantra end either
+        (*b.it).ke = b.prev - kc->kct;
+        if (thisk - kc->kct != (*b.it).ke) {         // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*b.it).s = p;                 // mantra became two smaller ranges.
             (*b.it).e = end;
+            (*b.it).ke = thisk - kc->kct;
         } // or end got shifted
     } else {
         // shift start or if at end, force erase (entirely mapable).
-        (*b.it).s = thisk ? p : (*b.it).e; // or entire region became mapable, force erase.
+        (*b.it).s = (thisk - kc->kct != (*b.it).ke) ? p : (*b.it).e; // or entire region became mapable, force erase.
     }
     NB((*b.it).s <= (*b.it).e);
     if ((*b.it).s == (*b.it).e) {
@@ -125,7 +127,9 @@ static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
-    C uint32_t pend = thisk ? b2pos_of(*thisk) - 1 : (*b.it).e;
+    C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 1 : (*b.it).e;
+    EPR("thisk - kc->kct != (*b.it).ke):%u", thisk - kc->kct != (*b.it).ke);
+
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
 EPR("excision");
@@ -141,8 +145,6 @@ EPR("kept %u-%u", prev, pend);
 
     // rotation must be undone before we add to b.sk.
     // this should also fix the ndx => wrong kct_i that occurs after swaps.
-    if (thisk)
-        b.rot = leftRotate(b.sk, b.rot, thisk - b.sk);
 
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
@@ -202,9 +204,7 @@ EPR("next bnd");
 static inline void
 skip_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 {
-    if (k)
-        b.rot = leftRotate(b.sk, b.rot, k - b.sk);
-    process_mantra(kc, b, NULL);
+    process_mantra(kc, b, k);
     reached_boundary(kc, b);
     b.prev = NULL;
 }
@@ -228,7 +228,6 @@ ext_uq_iter(kct_t *kc)
         .sk = k,
         .s = kc->s,
         .prev = NULL,
-        .rot = 0,
         .it = kc->bnd->begin()
     };
 
@@ -270,6 +269,7 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
 
         _buf_grow_add_err(kc->ext, 1ul, 0, uq_and_1stexcised, return -ENOMEM);
         EPQ(uq_and_1stexcised, "total %u uniq", uq_and_1stexcised);
+        hk->koffs = b.sk - kc->kct;
         //kc->uqct = uq_and_1stexcised;
     }
 out:

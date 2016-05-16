@@ -94,7 +94,7 @@ seq_next(struct keyseq_t &seq)
 
 #define in_scope(kc, fst, nxt) ({\
     uint32_t __f = fst, __n = nxt;\
-    NB(__f < __n);\
+    NB(__f < __n, "%u, %u", __f, __n);\
     NB(__n <= kc->s_l);\
     (nxt) - (fst) - 1u < (kc)->extension;\
 })
@@ -143,7 +143,6 @@ struct Bnd {
     uint32_t *sk;
     uint8_t* s;
     uint32_t *prev;
-    int rot;
     std::list<Mantra>::iterator it;
 };
 
