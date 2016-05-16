@@ -42,8 +42,6 @@ free_kc(kct_t *kc)
 static void
 swap_kct(uint32_t *kcnxk,  uint32_t *k1,  uint32_t *k2, uint32_t *contxt_idx2, uint8_t C*C s)
 {
-    if (k1 == k2)
-        return;
     // calc pos (to seq guarantee) => dna + rc => ndx and also swap ndxct!
 
     // swap ndxcts: TODO: one of these may not have to be recalculated in next iter.
@@ -150,7 +148,7 @@ EPR("kept %u-%u", prev, pend);
         uint32_t *k = kc->kct + *contxt_idx;
 print_seq(&seq);
 
-        if (k < b.sk || (thisk && k > thisk)) { // XXX requires multi-contig uniqs and excised in b.sk .. k
+        if (k < b.sk) { // XXX requires multi-contig uniqs and excised in b.sk .. k
             // second occurance
 
             if (~*k & DUP_BIT) {
@@ -164,17 +162,16 @@ print_seq(&seq);
         } else {
             EPR("// 1st occurance");
             ++kc->uqct;    // unique or decremented later.
-            if (b2pos_of(kc, k) == seq.p) {
-
-                *k &= ~DUP_BIT;
-
-            } else {
+            if (b2pos_of(kc, k) != seq.p)
                 EPR("// a position is pending for %u'th (!= %u), first was excised", seq.p, b2pos_of(kc, k));
 
-                *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
+            *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
+            if (b.sk != k) {
+
+
+                swap_kct(kc->contxt_idx, b.sk, k, contxt_idx, b.s);
             }
-            ++b.rot;
-            swap_kct(kc->contxt_idx, b.sk++, k, contxt_idx, b.s);
+            ++b.sk;
             //gdb:swap
         }
         if (seq.p == pend)
