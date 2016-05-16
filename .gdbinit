@@ -41,6 +41,11 @@ define pkct
       if $j < kc->hk_l
           set $offs = $offs + (kc->hk[$j].len >> 2) + !!(kc->hk[$j].len & 3)
           set $j = $j + 1
+      else
+        while ($i < kc->kct_l)
+          printf "%u:\t0x%x\t?\n", $i, kc->kct[$i]
+          set $i = $i + 1
+        end
       end
     end
     frame 0
@@ -223,7 +228,7 @@ commands
     #c
 end
 
-break_re '//gdb:swap' 'fa.cpp' 'break'
+break_re 'contxt_idx = b.sk++ - kc->kct' 'fa.cpp' 'break'
 commands
     silent
     printf "\n"
