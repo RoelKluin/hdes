@@ -55,13 +55,14 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     NB(b.it != kc->bnd->end());
     if (b.prev) {                          // not at mantra start
         C uint32_t end = (*b.it).e;
+        C uint32_t ke = (*b.it).ke;
         (*b.it).e = prev;
         (*b.it).ke = b.prev - kc->kct;
         if (thisk - kc->kct != (*b.it).ke) {         // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*b.it).s = p;                 // mantra became two smaller ranges.
             (*b.it).e = end;
-            (*b.it).ke = thisk - kc->kct;
+            (*b.it).ke = ke;
         } // or end got shifted
     } else {
         // shift start or if at end, force erase (entirely mapable).
