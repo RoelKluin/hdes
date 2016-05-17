@@ -28,26 +28,8 @@ document pbuf
 end
 
 define pkct
-   set $i = 0
-   set $j = 0
-   set $offs = 0
-   frame 1
-   while($i < kc->kct_l)
-      while ($i < kc->hk[$j].koffs)
-          printf "%u:\t0x%x\t", $i, kc->kct[$i]
-          call print_posseq(kc->s + $offs, b2pos_of(kc->kct[$i]), 3)
-          set $i = $i + 1
-      end
-      if $j < kc->hk_l
-          set $offs = $offs + (kc->hk[$j].len >> 2) + !!(kc->hk[$j].len & 3)
-          set $j = $j + 1
-      else
-        while ($i < kc->kct_l)
-          printf "%u:\t0x%x\t?\n", $i, kc->kct[$i]
-          set $i = $i + 1
-        end
-      end
-    end
+    frame 1
+    call print_kct(kc)
     frame 0
 end
 
@@ -228,12 +210,18 @@ commands
     #c
 end
 
-break_re 'contxt_idx = b.sk++ - kc->kct' 'fa.cpp' 'break'
+break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
     silent
     printf "\n"
     pkct
-    #c
+end
+
+break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
+commands
+    silent
+    printf "\n"
+    pkct
 end
 
 

@@ -39,6 +39,45 @@ free_kc(kct_t *kc)
     buf_free(kc->contxt_idx);
 }
 
+static void
+print_kct(kct_t *kc)
+{
+    unsigned i = 0;
+    unsigned offs = 0;
+    uint8_t *s = kc->s;
+    HK *hk;
+    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+        while (i < hk->koffs) {
+            EPR0("%u:\t0x%x\t", i, kc->kct[i]);
+            if (kc->kct[i] != 0)
+                print_posseq(s, b2pos_of(kc->kct[i]));
+            else
+                EPR("(removed)");
+            ++i;
+        }
+        s += (hk->len >> 2) + !!(hk->len & 3);
+    }
+    uint64_t* ext = kc->ext;
+    while (i < kc->kct_l) {
+        s = kc->s;
+        for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+            unsigned j = ext - kc->ext < kc->ext_l ? *ext++ : ~0u;
+            while (j) {
+                EPR0("~%u:\t0x%x\t", i, kc->kct[i]);
+                if (kc->kct[i] != 0) {
+                    --j;
+                    print_posseq(s, b2pos_of(kc->kct[i]));
+                } else {
+                    EPR("(removed)");
+                }
+                if (++i == kc->kct_l)
+                    return;
+            }
+            s += (hk->len >> 2) + !!(hk->len & 3);
+        }
+    }
+}
+
 /*
  * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
@@ -138,7 +177,7 @@ print_seq(&seq);
             if (b.sk != k) {
                 *b.sk = *k;
                 *k ^= *k;
-                *contxt_idx = b.sk - kc->kct;
+                *contxt_idx = b.sk - kc->kct;//GDB:move
                 EPR("moved");
             }
             ++b.sk;
