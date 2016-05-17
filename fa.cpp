@@ -321,7 +321,7 @@ out:
         }
         b.s += (hk->len >> 2) + !!(hk->len & 3);
     }
-    kc->kct_l -= k - b.sk;
+    kc->kct_l = b.sk - kc->kct;
     return 0;
 }
 
