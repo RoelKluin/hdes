@@ -140,6 +140,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
                 contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
                 buf_grow(kc->kct, 1, 0);
                 kc->kct[kc->kct_l] = *k;
+                *k ^= *k;//
                 *contxt_idx = kc->kct_l++;//GDB:1
             }
             b.moved = b.sk - thisk + 1;
@@ -181,7 +182,7 @@ print_seq(&seq);
             *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
             if (b.sk != k) {
                 *b.sk = *k;
-                *k ^= *k;
+                *k ^= *k;//
                 *contxt_idx = b.sk - kc->kct;//GDB:move
                 EPR("moved");
             }
@@ -203,7 +204,9 @@ print_seq(&seq);
         contxt_idx = get_kct(kc, seq);
         buf_grow(kc->kct, 1, 0);
         uint32_t *k = kc->kct + kc->kct_l;
+        NB(k != thisk);
         *k = *thisk;
+        *thisk ^= *thisk;//
         *contxt_idx = kc->kct_l++;//GDB:2
         b.prev = k;
     } else {
@@ -265,6 +268,7 @@ ext_uq_iter(kct_t *kc)
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
 
         if (k < kc->kct + hk->koffs) {
+EPR("%u k's left on bnd", hk->koffs - (k - kc->kct));
 
             while (k < kc->kct + hk->koffs) {
 
@@ -315,6 +319,7 @@ out:
                 uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
                 *contxt_idx = b.sk - kc->kct;
                 *b.sk++ = *k;
+                *k ^= *k;//
             }
             ++k;
         }

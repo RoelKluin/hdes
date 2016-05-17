@@ -231,6 +231,12 @@ commands
     pkct k
 end
 
+break_re 'kc->kct_l = b.sk - kc->kct;' 'fa.cpp' 'break'
+commands
+    silent
+    pkct k
+end
+
 #break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
 #commands
 #    silent
