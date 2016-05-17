@@ -275,7 +275,6 @@ EPR("%u", k - kc->kct);
 EPR("uniq");
 print_posseq(b.s, b2pos_of(*k));
                         process_mantra(kc, b, k); //
-                        b.prev = k;
                     }
                     ++k;
                 }
