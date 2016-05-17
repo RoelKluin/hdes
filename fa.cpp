@@ -40,15 +40,18 @@ free_kc(kct_t *kc)
 }
 
 static void
-print_kct(kct_t *kc)
+print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 {
     unsigned i = 0;
     unsigned offs = 0;
     uint8_t *s = kc->s;
     HK *hk;
+    EPR("");
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
         while (i < hk->koffs) {
-            EPR0("%u:\t0x%x\t", i, kc->kct[i]);
+            uint32_t* k = kc->kct + i;
+            char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
+            EPR0("%u%c:\t0x%x\t", i, c, kc->kct[i]);
             if (kc->kct[i] != 0)
                 print_posseq(s, b2pos_of(kc->kct[i]));
             else
@@ -63,7 +66,9 @@ print_kct(kct_t *kc)
         for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
             unsigned j = ext - kc->ext < kc->ext_l ? *ext++ : ~0u;
             while (j) {
-                EPR0("~%u:\t0x%x\t", i, kc->kct[i]);
+                uint32_t* k = kc->kct + i;
+                char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
+                EPR0("~%u%c:\t0x%x\t", i, c, kc->kct[i]);
                 if (kc->kct[i] != 0) {
                     --j;
                     print_posseq(s, b2pos_of(kc->kct[i]));
@@ -135,7 +140,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
                 contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
                 buf_grow(kc->kct, 1, 0);
                 kc->kct[kc->kct_l] = *k;
-                *contxt_idx = kc->kct_l++;
+                *contxt_idx = kc->kct_l++;//GDB:1
             }
             b.moved = b.sk - thisk + 1;
             b.prev = kc->kct + *contxt_idx;
@@ -181,6 +186,7 @@ print_seq(&seq);
                 EPR("moved");
             }
             ++b.sk;
+            NB(b.sk <= kc->kct + kc->kct_l);
         }
         if (seq.p == pend)
             break;
@@ -196,9 +202,10 @@ print_seq(&seq);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq);
         buf_grow(kc->kct, 1, 0);
-        kc->kct[kc->kct_l] = *thisk;
-        *contxt_idx = kc->kct_l++;
-        b.prev = kc->kct + *contxt_idx;
+        uint32_t *k = kc->kct + kc->kct_l;
+        *k = *thisk;
+        *contxt_idx = kc->kct_l++;//GDB:2
+        b.prev = k;
     } else {
         b.prev = thisk;
     }

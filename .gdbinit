@@ -13,6 +13,7 @@ source gdb_py/frame_filter.py
 #ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
 #break -source fa.cpp -function
 
+
 define pbuf
     if $argc != 2
         help pbuf
@@ -28,9 +29,11 @@ document pbuf
 end
 
 define pkct
-    frame 1
-    call print_kct(kc)
-    frame 0
+    if $argc != 0
+        call print_kct(kc, b, $arg0)
+    else
+        call print_kct(kc, b, 0)
+    end
 end
 
 define pdna
@@ -161,7 +164,7 @@ end
 break_re 'for (;;) {' 'fa.cpp' 'tbreak'
 commands
     silent
-    pkct
+    pkct kc->kct + *contxt_idx
     handle_non_uniques
     wa seq.dna
     commands
@@ -210,19 +213,29 @@ commands
     #c
 end
 
+break_re '*contxt_idx = kc->kct_l++;//GDB:1' 'fa.cpp' 'break'
+commands
+    silent
+    pkct k
+end
+
+break_re '*contxt_idx = kc->kct_l++;//GDB:2' 'fa.cpp' 'break'
+commands
+    silent
+    pkct k
+end
+
 break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
     silent
-    printf "\n"
-    pkct
+    pkct k
 end
 
-break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
-commands
-    silent
-    printf "\n"
-    pkct
-end
+#break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
+#commands
+#    silent
+#    pkct
+#end
 
 
 define reached_boundary
