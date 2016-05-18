@@ -146,7 +146,7 @@ end
 break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
 commands
     silent
-    print show_mantras(kc)
+    print show_mantras(kc, kc->bnd->begin())
 end
 
 
@@ -165,6 +165,7 @@ break_re 'for (;;) {' 'fa.cpp' 'tbreak'
 commands
     silent
     pkct kc->kct + *contxt_idx
+    print show_mantras(kc, b.it)
     handle_non_uniques
     wa seq.dna
     commands
@@ -235,8 +236,38 @@ break_re 'kc->kct_l = b.sk - kc->kct;' 'fa.cpp' 'break'
 commands
     silent
     pkct k
+    print show_mantras(kc, b.it)
 end
 
+break shrink_mantra
+
+break_re '//GDB:mantra1$' 'fa.cpp' 'break'
+commands
+    #silent
+    print show_mantras(kc, b.it)
+end
+
+#break reached_boundary
+break_re '//GDB:mantra2$' 'fa.cpp' 'break'
+commands
+    #silent
+    print show_mantras(kc, b.it)
+end
+
+break_re '//GDB:mantra3$' 'fa.cpp' 'break'
+commands
+    #silent
+    print show_mantras(kc, b.it)
+end
+
+break_re '//GDB:mantra4$' 'fa.cpp' 'break'
+commands
+    #silent
+    print show_mantras(kc, b.it)
+end
+
+
+break reached_boundary
 #break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
 #commands
 #    silent
@@ -244,11 +275,11 @@ end
 #end
 
 
-define reached_boundary
-    bt 1
-    info locals
-end
-break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
+#define reached_boundary
+#    bt 1
+#    info locals
+#end
+#break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 
 break_re 'kc->last_uqct = kc->uqct;' 'fa.cpp' 'break'

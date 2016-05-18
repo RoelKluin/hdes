@@ -13,7 +13,7 @@
 #include "fa.h"
 
 int
-show_mantras(kct_t C*C kc)
+show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
 {
     unsigned j = 0;
 
@@ -21,7 +21,7 @@ show_mantras(kct_t C*C kc)
     std::list<Mantra>::iterator it = kc->bnd->begin();
     if (it != kc->bnd->end()) {
         do {
-            EPR("[%u]:\t(%u+) %u - %u", j++, (*it).corr, (*it).s, (*it).e);
+            EPR("[%u%c]:\t(%u+) %u - %u\t(ke:%u)", j++, it==here?'*':' ', (*it).corr, (*it).s, (*it).e, (*it).ke);
         } while (++it != kc->bnd->end());
     } else {
         EPR("[ entirely mapable ]");

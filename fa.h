@@ -192,6 +192,7 @@ static uint32_t
 _build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
 {
     uint32_t p = seq.p;
+    NB(p >= KEY_WIDTH);
     seq.p -= KEY_WIDTH;
     build_key(s, seq, p);
     uint32_t ndx = get_ndx(seq);
@@ -219,7 +220,7 @@ int ammend_kc(struct gzfh_t*, kct_t*);
 int map_fq_se(struct seqb2_t*, char C*C);
 
 // mantra.cpp
-int show_mantras(kct_t C*C kc, Hdr *C h);
+int show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here);
 int insert_mantra(kct_t *C kc, Hdr* h);
 void pot_mantra_end(kct_t *C kc, Hdr *C h, C uint32_t dna, C uint32_t b2pos);
 #endif // RK_FA_H

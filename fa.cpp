@@ -116,7 +116,7 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     if ((*b.it).s == (*b.it).e) {
         b.it = kc->bnd->erase(b.it);   // nothing left
         b.prev = NULL;
-    }
+    }//GDB:mantra1
 }
 
 static void
@@ -222,10 +222,10 @@ reached_boundary(kct_t *kc, Bnd &b)
     // if at start and entirely mapable: remove mantra.
     NB(b.it != kc->bnd->end());
     if (b.prev == NULL && in_scope(kc, prev, (*b.it).e)) {
-EPR("mantra removed");
+EPR("mantra removed");//GDB:mantra2
         b.it = kc->bnd->erase(b.it);
     } else {
-EPR("next bnd");
+EPR("next bnd");//GDB:mantra3
         (*b.it).ke = b.sk - kc->kct;
         ++b.it;
     }
