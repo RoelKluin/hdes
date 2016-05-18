@@ -125,7 +125,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
     C uint32_t prev = _prev_or_bnd_start(b);
     C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 2 : (*b.it).e;
 
-    uint32_t *contxt_idx;
+    uint32_t *contxt_idx = kc->contxt_idx;
     keyseq_t seq = {0};
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
