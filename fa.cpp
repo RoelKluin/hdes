@@ -53,7 +53,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
             EPR0("%u%c:\t0x%x\t", i, c, kc->kct[i]);
             if (kc->kct[i] != 0)
-                print_posseq(s, b2pos_of(kc->kct[i]));
+                print_posseq(s, b2pos_of(kc->kct[i])>>1);
             else
                 EPR("(removed)");
             ++i;
@@ -71,7 +71,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 EPR0("~%u%c:\t0x%x\t", i, c, kc->kct[i]);
                 if (kc->kct[i] != 0) {
                     --j;
-                    print_posseq(s, b2pos_of(kc->kct[i]));
+                    print_posseq(s, b2pos_of(kc->kct[i])>>1);
                 } else {
                     EPR("(removed)");
                 }
@@ -123,7 +123,7 @@ static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
-    C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 1 : (*b.it).e;
+    C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 2 : (*b.it).e;
 
     uint32_t *contxt_idx;
     keyseq_t seq = {0};
@@ -152,7 +152,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
-    seq.p = prev + 1;
+    seq.p = prev + 2;
     contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_KCT);
 EPR("kept %u-%u", prev, pend);
@@ -177,9 +177,9 @@ print_seq(&seq);
             ++kc->uqct;    // unique or decremented later.
 
             if (k - kc->kct >= (*b.it).ke)
-                EPR("// a position is pending for %u'th (!= %u), first was excised", seq.p, b2pos_of(kc, k));
+                EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
-            *k = seq.p << 1 | (seq.t != 0); // set new pos and strand, unset dupbit
+            *k = seq.p | (seq.t != 0); // set new pos and strand, unset dupbit
             if (b.sk != k) {
                 *b.sk = *k;
                 *k ^= *k;//
@@ -194,7 +194,7 @@ print_seq(&seq);
 
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq);
-        ++seq.p;
+        seq.p += 2;
     }
     if (thisk - kc->kct != (*b.it).ke) {
         //NB((thisk - b.sk) - b.moved == 0, "%u - %u", (b.sk - thisk), b.moved);

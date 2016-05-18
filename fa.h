@@ -31,7 +31,7 @@
 
 #define DUP_BIT    0x80000000 // Set if key is uniq for remaining sections (and pos stored).
 #define STRAND_BIT 0x00000001 // the bit to store the original orientation of ref once uniq.
-#define B2POS_MASK 0x7FFFFFFF // position, once unique
+#define B2POS_MASK 0x7FFFFFFE // position, once unique
 
 // stored position is one-based to ensure a bit is set
 // this is the kct offset: can be 0.
@@ -88,13 +88,13 @@ seq_next(struct keyseq_t &seq)
 
 #define DEBUG 1
 
-#define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + KEY_WIDTH - 1)
+#define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + NT_WIDTH - 2)
 
 #define in_scope(kc, fst, nxt) ({\
     uint32_t __f = fst, __n = nxt;\
     NB(__f < __n, "%u, %u", __f, __n);\
     NB(__n <= kc->s_l);\
-    (nxt) - (fst) - 1u < (kc)->extension;\
+    (nxt) - (fst) - 2u < ((kc)->extension << 1);\
 })
 
 packed_struct Mantra { // not yet covered by unique keys
@@ -178,29 +178,29 @@ b2pos_of(kct_t C*C kc, uint32_t C*C k)
     NB(k - kc->kct >= 0);
     NB(*k != NO_KCT);
 
-    return (*k & B2POS_MASK) >> 1;
+    return *k & B2POS_MASK;
 }
 
 static inline uint32_t
 b2pos_of(uint32_t C k)
 {
     NB(k != NO_KCT);
-    return (k & B2POS_MASK) >> 1;
+    return k & B2POS_MASK;
 }
 
 static uint32_t
 _build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
 {
     uint32_t p = seq.p;
-    NB(p >= KEY_WIDTH);
-    seq.p -= KEY_WIDTH;
+    NB(p >= NT_WIDTH);
+    seq.p -= NT_WIDTH;
     build_key(s, seq, p);
     uint32_t ndx = get_ndx(seq);
     NB(ndx < KEYNT_BUFSZ);
     return ndx;
 }
 #define build_ndx_kct(kc, seq, s) ({\
-    NB((seq.p >> 2) < kc->s_l, "%u >= %u!!", (seq.p >> 2), kc->s_l);\
+    NB((seq.p >> 3) < kc->s_l, "%u >= %u!!", (seq.p >> 3), kc->s_l);\
     _build_ndx_kct(seq, s);\
 })
 

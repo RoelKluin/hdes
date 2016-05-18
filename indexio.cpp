@@ -206,7 +206,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
         }
         // construct index from sequence
         keyseq_t seq = {.p = b2pos_of(kc, k)};
-        NB(seq.p > KEY_WIDTH - 1);
+        NB(seq.p > NT_WIDTH - 2);
 
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);

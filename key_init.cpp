@@ -172,7 +172,7 @@ finish_contig(kct_t*C kc, Hdr* h, HK &hk, keyseq_t &seq)
     hk.len = (seq.p >> 3) + !!(seq.p & 6);
     buf_grow_add(kc->hk, 1ul, 0, hk);
     hk.hoffs = kc->h_l;
-    end_pos(kc, h, seq.p >> 1);
+    end_pos(kc, h, seq.p);
     return 0;
 }
 
@@ -224,9 +224,9 @@ case 'G':   seq.t &= 0x3;
                 if (i == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (seq.p) { // N-stretch, unless at start, needs insertion
-                        end_pos(kc, h, seq.p >> 1);
+                        end_pos(kc, h, seq.p);
                         corr += kc->bnd->back().corr;
-                        kc->bnd->push_back({.s = seq.p >> 1});
+                        kc->bnd->push_back({.s = seq.p});
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;

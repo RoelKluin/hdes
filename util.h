@@ -260,9 +260,9 @@ static void
 print_posseq(uint8_t const*const s, uint32_t p, unsigned len = KEY_WIDTH)
 {
     keyseq_t seq {.p = p};
-    seq.p -= KEY_WIDTH;
+    seq.p -= NT_WIDTH;
     build_key(s, seq, p);
-    EPR0("%u\t", p);
+    EPR0("%u\t", p>>1);
     print_dna(seq.dna, '\n', len);
 }
 

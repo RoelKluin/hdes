@@ -48,7 +48,8 @@ typedef uint32_t uint32_t;
 
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
-#define KEYNT_TOP ((KEY_WIDTH - 1) * 2)
+#define NT_WIDTH (KEY_WIDTH << 1)
+#define KEYNT_TOP (NT_WIDTH - 2)
 
 // maximum length of the read name
 #define SEQ_MAX_NAME_ETC    (1u << 14)
@@ -61,7 +62,7 @@ typedef uint32_t uint32_t;
 #define KEYNT_STRAND (1ul << KEY_WIDTH)
 #define KEYNT_AC (1ul << (KEY_WIDTH - 1))
 
-#define KEYNT_MASK ((1ul << (KEY_WIDTH << 1)) - 1ul)
+#define KEYNT_MASK ((1ul << NT_WIDTH) - 1ul)
 #define HALF_KEYNT_MASK (KEYNT_STRAND - 1ul)
 #define KEYNT_TRUNC_UPPER (~HALF_KEYNT_MASK & KEYNT_TRUNC_MASK)
 
@@ -115,7 +116,7 @@ typedef uint32_t uint32_t;
     dna = (dna & m) << 4 | (dna & ~m) >> 4;\
     m = ODD_BYTE_MASK;\
     asm ("bswap %0" : "=r" (dna) : "0" (dna));\
-    dna >> ((sizeof(dna) << 3) - (KEY_WIDTH << 1));\
+    dna >> ((sizeof(dna) << 3) - NT_WIDTH);\
 })
 
 inline uint32_t revcmp(uint32_t dna) /* Reverse Complement, is ok. */
@@ -133,7 +134,7 @@ struct __attribute__ ((__packed__)) keyseq_t {
 static inline void
 get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq)
 {
-    seq.t = (s[seq.p>>2] >> ((seq.p&3) << 1)) & 3;
+    seq.t = (s[seq.p>>3] >> (seq.p&6)) & 3;
     seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
 }
@@ -145,7 +146,8 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 #define build_key(s, seq, pend)\
     do {\
         get_next_nt_seq(s, seq);\
-    } while (++seq.p != pend)
+        seq.p += 2;\
+    } while (seq.p != pend)
 
 #define _get_ndx(t, dna, rc) ({\
     t = dna ^ rc;\

@@ -21,7 +21,7 @@ show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
     std::list<Mantra>::iterator it = kc->bnd->begin();
     if (it != kc->bnd->end()) {
         do {
-            EPR("[%u%c]:\t(%u+) %u - %u\t(ke:%u)", j++, it==here?'*':' ', (*it).corr, (*it).s, (*it).e, (*it).ke);
+            EPR("[%u%c]:\t(%u+) %u - %u\t(ke:%u)", j++, it==here?'*':' ', (*it).corr, (*it).s>>1, (*it).e>>1, (*it).ke);
         } while (++it != kc->bnd->end());
     } else {
         EPR("[ entirely mapable ]");

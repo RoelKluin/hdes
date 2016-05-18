@@ -54,7 +54,7 @@ define pseq
     if $argc != 0
         help pseq
     else
-        printf "[\t+%u]:\t", seq.p
+        printf "[\t+%u]:\t", seq.p>>1
         call print_seq(&seq, KEY_WIDTH)
     end
 end
