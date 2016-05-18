@@ -155,7 +155,7 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
     t |= !t;/* for palindromes: have to set one */\
     t &= dna;/* was devbit set? */\
     uint32_t __x = t ? dna : rc;\
-    uint32_t __m = __x & ((uint32_t)1 << KEYNT_BUFSZ_SHFT);\
+    uint32_t __m = __x & (1u << KEYNT_BUFSZ_SHFT);\
     __x ^ __m ^ (__m - !!__m);\
 })
 #define get_ndx(seq) _get_ndx(seq.t, seq.dna, seq.rc)

@@ -83,6 +83,16 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
     }
 }
 
+static void
+print_hdr(kct_t *kc)
+{
+    HK *hk = kc->hk;
+    for (unsigned i = 0; i != kc->hk_l; ++i) {
+        EPR("[%u]:\tkoffs:%u", i, hk->koffs);
+        ++hk;
+    }
+}
+
 /*
  * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
@@ -132,7 +142,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
         shrink_mantra(kc, b, thisk, prev, pend);
         // The distance between b.sk and k may have grown by excised 1st kcts (beside uniq).
         if (thisk - b.sk > b.moved) {
-            EPR("%u were moved during excision", (thisk - b.sk) - b.moved + 1);
+            EPR("%u were moved to kct end during excision", (thisk - b.sk) - b.moved + 1);
 
             for (uint32_t *k = b.sk + b.moved; k <= thisk; ++k) {
                 NB(k < kc->kct + kc->kct_l);
@@ -165,15 +175,13 @@ print_seq(&seq);
             // second occurance
 
             if (~*k & DUP_BIT) {
-                EPR("// no dup after all");
+                // no dup after all
 
                 *k |= DUP_BIT;
                 --kc->uqct;
-            } else {
-                EPR("dup bit was already set");
             }
         } else {
-            EPR("// 1st occurance");
+            // 1st occurance;
             ++kc->uqct;    // unique or decremented later.
 
             if (k - kc->kct >= (*b.it).ke)
@@ -184,7 +192,7 @@ print_seq(&seq);
                 *b.sk = *k;
                 *k ^= *k;//
                 *contxt_idx = b.sk - kc->kct;//GDB:move
-                EPR("moved");
+                EPR("moved up");
             }
             ++b.sk;
             NB(b.sk <= kc->kct + kc->kct_l);
@@ -275,7 +283,6 @@ ext_uq_iter(kct_t *kc)
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
 
         if (k < kc->kct + hk->koffs) {
-EPR("%u k's left on bnd", hk->koffs - (k - kc->kct));
 
             while (k < kc->kct + hk->koffs) {
 

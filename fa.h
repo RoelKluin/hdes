@@ -147,10 +147,10 @@ struct Bnd {
 
 struct kct_t {
     char* id;      // characters of headers
-    uint8_t* s;    // all needed 2bit sequences in order (excluding Ns or first ones).
+    uint8_t* s;    // all needed 2bit sequences in order (excluding Ns).
     uint32_t* contxt_idx;
                    // Later we may want to point to a combination in the non-observed for edits to
-                   // this ndx or surroundings that does result in an ndx that does occur.
+                   // this ndx or surroundings that do result in an ndx that does occur.
 
     uint32_t* kct;
                    // non occurant are initally set to NO_KCT. see Extension below.
