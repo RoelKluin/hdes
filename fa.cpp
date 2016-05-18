@@ -97,11 +97,11 @@ static void
 shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t p)
 {
     NB(b.it != kc->bnd->end());
-    if (b.prev) {                          // not at mantra start
+    if (b.prev && prev != (*b.it).s) {     // not at mantra start
         C uint32_t end = (*b.it).e;
         C uint32_t ke = (*b.it).ke;
         (*b.it).e = prev;
-        (*b.it).ke = b.prev - kc->kct;
+        (*b.it).ke = b.sk - kc->kct;
         if (thisk - kc->kct != (*b.it).ke) {         // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*b.it).s = p;                 // mantra became two smaller ranges.
@@ -204,6 +204,13 @@ print_seq(&seq);
         contxt_idx = get_kct(kc, seq);
         buf_grow(kc->kct, 1, 0);
         uint32_t *k = kc->kct + kc->kct_l;
+        if (pend != (*b.it).e) {
+            kc->bnd->insert(b.it, *b.it);  // copy of current
+            (*--b.it).e = pend;
+            (*b.it).ke = b.sk - kc->kct;
+            (*++b.it).s = pend + 1;
+            //mantra4
+        }
         NB(k != thisk);
         *k = *thisk;
         *thisk ^= *thisk;//
