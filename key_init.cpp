@@ -168,7 +168,8 @@ static inline int
 finish_contig(kct_t*C kc, Hdr* h, HK &hk, keyseq_t &seq)
 {
     hk.koffs = kc->kct_l;
-    hk.len = seq.p >> 1;
+    // the 2bit buffer per contig starts at the first nt 0 of 4.
+    hk.len = (seq.p >> 3) + !!(seq.p & 6);
     buf_grow_add(kc->hk, 1ul, 0, hk);
     hk.hoffs = kc->h_l;
     end_pos(kc, h, seq.p >> 1);

@@ -58,7 +58,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 EPR("(removed)");
             ++i;
         }
-        s += (hk->len >> 2) + !!(hk->len & 3);
+        s += hk->len;
     }
     uint64_t* ext = kc->ext;
     while (i < kc->kct_l) {
@@ -78,7 +78,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 if (++i == kc->kct_l)
                     return;
             }
-            s += (hk->len >> 2) + !!(hk->len & 3);
+            s += hk->len;
         }
     }
 }
@@ -302,7 +302,7 @@ print_posseq(b.s, b2pos_of(*k));
 EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         NB(hk->koffs <= kc->kct_l);
         NB(hk->koffs >= b.sk - kc->kct);
-        b.s += (hk->len >> 2) + !!(hk->len & 3);
+        b.s += hk->len;
 
         //XXX: this is cumulative for contigs for this extension and iteration.
         uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
@@ -330,7 +330,7 @@ out:
             }
             ++k;
         }
-        b.s += (hk->len >> 2) + !!(hk->len & 3);
+        b.s += hk->len;
     }
     kc->kct_l = b.sk - kc->kct;
     return 0;

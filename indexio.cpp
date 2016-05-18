@@ -200,7 +200,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
 
         // XXX: ensure the k's contigs are sorted or this won't be efficient.
         while (k >= kc->kct + hk->koffs) {
-            s += (hk->len >> 2) + !!(hk->len & 3);
+            s += hk->len;
             NB(hk != kc->hk + kc->hk_l);
             ++hk;
         }
