@@ -216,7 +216,7 @@ print_seq(&seq);
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*--b.it).e = pend;
             (*b.it).ke = b.sk - kc->kct;
-            (*++b.it).s = pend + 1;
+            (*++b.it).s = pend + 2;
             //mantra4
         }
         NB(k != thisk);
