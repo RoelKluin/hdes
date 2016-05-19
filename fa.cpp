@@ -43,7 +43,6 @@ static void
 print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 {
     unsigned i = 0;
-    unsigned offs = 0;
     uint8_t *s = kc->s;
     HK *hk;
     EPR("");
@@ -53,7 +52,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
             EPR0("%u%c:\t0x%x\t", i, c, kc->kct[i]);
             if (kc->kct[i] != 0)
-                print_posseq(s, b2pos_of(kc->kct[i])>>1);
+                print_posseq(s, kc->kct[i]);
             else
                 EPR("(removed)");
             ++i;
@@ -71,7 +70,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 EPR0("~%u%c:\t0x%x\t", i, c, kc->kct[i]);
                 if (kc->kct[i] != 0) {
                     --j;
-                    print_posseq(s, b2pos_of(kc->kct[i])>>1);
+                    print_posseq(s, kc->kct[i]);
                 } else {
                     EPR("(removed)");
                 }
@@ -133,7 +132,7 @@ static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 {
     C uint32_t prev = _prev_or_bnd_start(b);
-    C uint32_t pend = (thisk - kc->kct != (*b.it).ke) ? b2pos_of(*thisk) - 2 : (*b.it).e;
+    C uint32_t pend = thisk - kc->kct != (*b.it).ke ? b2pos_of(*thisk) - 2 : (*b.it).e;
 
     uint32_t *contxt_idx = kc->contxt_idx;
     keyseq_t seq = {0};
@@ -146,11 +145,10 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *C thisk)
 
             for (uint32_t *k = b.sk + b.moved; k <= thisk; ++k) {
                 NB(k < kc->kct + kc->kct_l);
-                seq.p = b2pos_of(kc, k);
-                contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
                 buf_grow(kc->kct, 1, 0);
-                kc->kct[kc->kct_l] = *k;
+                kc->kct[kc->kct_l] = seq.p = *k;
                 *k ^= *k;//
+                contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
                 *contxt_idx = kc->kct_l++;//GDB:1
             }
             b.moved = b.sk - thisk + 1;
@@ -187,7 +185,7 @@ print_seq(&seq);
             if (k - kc->kct >= (*b.it).ke)
                 EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
-            *k = seq.p | (seq.t != 0); // set new pos and strand, unset dupbit
+            *k = seq.p; // set new pos and strand, unset dupbit
             if (b.sk != k) {
                 *b.sk = *k;
                 *k ^= *k;//
@@ -197,19 +195,21 @@ print_seq(&seq);
             ++b.sk;
             NB(b.sk <= kc->kct + kc->kct_l);
         }
+        seq.p = b2pos_of(seq.p);
         if (seq.p == pend)
             break;
 
         get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq);
+        contxt_idx = get_kct(kc, seq, 1);
         seq.p += 2;
     }
     if (thisk - kc->kct != (*b.it).ke) {
         //NB((thisk - b.sk) - b.moved == 0, "%u - %u", (b.sk - thisk), b.moved);
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
+        seq.p = b2pos_of(seq.p);
         get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq);
+        contxt_idx = get_kct(kc, seq, 0);
         buf_grow(kc->kct, 1, 0);
         uint32_t *k = kc->kct + kc->kct_l;
         if (pend != (*b.it).e) {
@@ -291,19 +291,17 @@ EPR("%u", k - kc->kct);
 
                     if (IS_UQ(k)) { // they are handled during excision (or postponed) - process_mantra()
 EPR("uniq");
-print_posseq(b.s, b2pos_of(*k));
+print_posseq(b.s, *k);
                         process_mantra(kc, b, k); //
                     }
                     ++k;
                 }
                 if (b.it == kc->bnd->end())
-                    goto out;
+                    break;
 
                 skip_mantra(kc, b, k);
             }
-        } else {
-            if (b.it == kc->bnd->end())
-                goto out;
+        } else if (b.it != kc->bnd->end()) {
             skip_mantra(kc, b, k);
         }
 EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
@@ -315,6 +313,7 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
 
         buf_grow_add(kc->ext, 1ul, 0, uq_and_1stexcised);
+        kc->ext[kc->ext_l++] = uq_and_1stexcised;
         EPQ(uq_and_1stexcised, "total %u uniq", uq_and_1stexcised);
         hk->koffs = b.sk - kc->kct;
         //kc->uqct = uq_and_1stexcised;
@@ -323,14 +322,16 @@ out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     b.s = kc->s;
+    NB(kc->ext_l >= kc->hk_l);
     uint64_t* ext = kc->ext;
     // put uniqs and 1st excised back in array (recompression)
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
         int j = *ext++;
         while (j--) {
+            NB(kc->kct - k < kc->kct_l);
             if (*k != 0) {
-                keyseq_t seq = {.p = b2pos_of(kc, k) };
-                uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
+                keyseq_t seq = {.p = *k };
+                uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
                 *contxt_idx = b.sk - kc->kct;
                 *b.sk++ = *k;
                 *k ^= *k;//

@@ -114,7 +114,6 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     uint8_t *s = sb2->s + l;
     //const unsigned phred_offset = sb2->phred_offset;
     unsigned fq_ent_max = SEQ_MAX_NAME_ETC + sb2->readlength + 1;
-    uint32_t ndx;
     int c = kc->readlength - KEY_WIDTH + 1;
     uint64_t* buf = (uint64_t*)malloc(c * sizeof(uint64_t));
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
@@ -163,9 +162,9 @@ default:            seq_next(seq);
 		    }
 		    //ASSERT(i <= kc->readlength, c = -EFAULT; goto out);
 		    // seq.t only has strand at offset KEY_WIDTH.
-                    ndx = get_ndx(seq);
-                    uint32_t k = kc->contxt_idx[ndx];
- EPR("%u:%lx\t%x", i, (uint64_t)ndx, k);
+                    get_ndx(seq, 1);
+                    uint32_t k = kc->contxt_idx[seq.t];
+ EPR("%u:%lx\t%x", i, (uint64_t)seq.t, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
                         buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
@@ -190,7 +189,7 @@ default:            seq_next(seq);
                         uint32_t t = buf[0];
                         // TODO: early verify and process unique count if correct.
                         if (kc->kct[k] > kc->kct[t]) {
-                            buf[i - KEY_WIDTH] = kc->contxt_idx[ndx];
+                            buf[i - KEY_WIDTH] = kc->contxt_idx[seq.t];
 		            bufi[i - KEY_WIDTH] = i ^ seq.t;
 			} else {
 			    // lowest inferiority
@@ -207,31 +206,31 @@ default:            seq_next(seq);
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
         }
-        ndx = buf[0];
+        seq.t = buf[0];
         *s = '\0';
         while ((c = gc(g)) != '\n' && c != -1) {} // skip 2nd hdr line
         unsigned seqlen = i, tln = 0, mps = 0, mq = 0, flag = 44;
         const char* mtd = "*";
-	if (b2pos_of(kc->kct[ndx]) >= end_pos) {
+	if (b2pos_of(kc->kct[seq.t]) >= end_pos) {
             while ((c = gc(g)) != -1 && c != '@') {}
             continue;
         }
 
 
 
-        if (((uint32_t)ndx < kc->kct_l) && IS_UQ(kc->kct + ndx)) {
+        if (((uint32_t)seq.t < kc->kct_l) && IS_UQ(kc->kct + seq.t)) {
             mq = 37;
             flag = (seq.t ^ 1) & 1;
             if ((seq.t & 1)) { //XXX
                 while ((c = gc(g)) != -1 && c != '@') {}
                 continue;
             }
-	    flag = !(kc->kct[ndx] & STRAND_BIT) ^ !(bufi[0] & KEYNT_STRAND);
+	    flag = !(kc->kct[seq.t] & STRAND_BIT) ^ !(bufi[0] & KEYNT_STRAND);
             flag = (flag << 4) | 0x42;
 
 
 
-            uint64_t pos = b2pos_of(kc->kct[ndx]);
+            uint64_t pos = b2pos_of(kc->kct[seq.t]);
 
             c = get_tid_and_pos(kc, &pos, bufi[0] & ~KEYNT_STRAND);
 	    if (c < 0) {

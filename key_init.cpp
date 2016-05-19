@@ -161,7 +161,7 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t len)
     kc->bnd->back().e = len;
     kc->bnd->back().ke = kc->kct_l;
     kc->totNts += len + kc->bnd->back().corr;
-    EPR("processed %u(%lu) Nts for %s", len, kc->totNts, kc->id + h->ido);
+    EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }
 
 static inline int
@@ -206,20 +206,20 @@ case 'G':   seq.t &= 0x3;
             _addtoseq(kc->s, seq);
             if (i == 0) {
                 next_seqpos(kc->s, seq);
-                uint32_t ndx;
-                uint32_t* n = kc->contxt_idx + get_kct0(kc, seq, ndx);
+                uint32_t* n = get_kct(kc, seq, 1);
                 if (*n == NO_KCT) {
 
                     buf_grow(kc->kct, 1, 0);
                     *n = kc->kct_l++;
                     // set first pos + orient
-                    kc->kct[*n] = seq.p | (seq.t != 0);
+                    kc->kct[*n] = seq.p;
 
                 } else if (!(kc->kct[*n] & DUP_BIT)) {
 
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
                     --kc->uqct;
                 }
+                seq.p = b2pos_of(seq.p);
             } else {
                 if (i == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
                     NB(h != NULL);

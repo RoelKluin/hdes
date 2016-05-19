@@ -259,9 +259,10 @@ print_seq(keyseq_t* seq, unsigned len = KEY_WIDTH)
 static void
 print_posseq(uint8_t const*const s, uint32_t p, unsigned len = KEY_WIDTH)
 {
-    keyseq_t seq {.p = p};
+    keyseq_t seq {.p = p = _b2pos_of(p)};
+    NB(p >= NT_WIDTH);
     seq.p -= NT_WIDTH;
-    build_key(s, seq, p);
+    build_seq(s, seq, p);
     EPR0("%u\t", p>>1);
     print_dna(seq.dna, '\n', len);
 }

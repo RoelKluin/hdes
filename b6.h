@@ -11,6 +11,7 @@
 #ifndef RK_B6_H
 # define RK_B6_H
 #include <stdint.h>
+#include <signal.h>
 
 # define BITS_PER_LONG 64
 
@@ -40,11 +41,14 @@
 #error "KEY_LENGTH > 16 not supported"
 #endif
 
-typedef uint32_t uint32_t;
 #define DEVIANT_BIT_MASK 0xaaaaaaaaU
 #define ODD_BYTE_MASK 0x00ff00ffU
 #define ODD_NIBBLE_MASK 0x0f0f0f0fU
 #define ODD_TWOBIT_MASK 0x33333333U
+
+#define DUP_BIT    0x80000000 // Set if key is uniq for remaining sections (and pos stored).
+#define STRAND_BIT 0x00000001 // the bit to store the original orientation of ref once uniq.
+#define B2POS_MASK 0x7FFFFFFE // position, once unique
 
 #define KEY_CUTOFF 0                        // cut off, to get random keys, [XXX: keep for assembly]
 #define KEY_WIDTH (KEY_LENGTH + KEY_CUTOFF) // entire key maximized on (after conversion)
@@ -71,6 +75,7 @@ typedef uint32_t uint32_t;
 #define HALF_SNDX_MASK (HALF_KEYNT_MASK | KEYNT_STRAND)
 #define SNDX_TRUNC_UPPER (~HALF_SNDX_MASK & SNDX_TRUNC_MASK)
 
+#define _b2pos_of(pos) ((pos) & B2POS_MASK)
 
 
 // set b to 2bit for c, returns true if twobit
@@ -134,6 +139,7 @@ struct __attribute__ ((__packed__)) keyseq_t {
 static inline void
 get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq)
 {
+    if (seq.p & 1) raise(SIGTRAP);
     seq.t = (s[seq.p>>3] >> (seq.p&6)) & 3;
     seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
@@ -143,22 +149,36 @@ extern inline void get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq);
 unsigned b6(unsigned c);
 unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 
-#define build_key(s, seq, pend)\
+#define build_seq(s, seq, pend)\
     do {\
         get_next_nt_seq(s, seq);\
         seq.p += 2;\
     } while (seq.p != pend)
 
-#define _get_ndx(t, dna, rc) ({\
-    t = dna ^ rc;\
-    t &= -t;/* isolate deviant bit */\
-    t |= !t;/* for palindromes: have to set one */\
-    t &= dna;/* was devbit set? */\
-    uint32_t __x = t ? dna : rc;\
-    uint32_t __m = __x & (1u << KEYNT_BUFSZ_SHFT);\
-    __x ^ __m ^ (__m - !!__m);\
+
+// if with_orient is 1, the orientation is stored in the first bit of seq.p (
+#define get_ndx(seq, do_store_orientation) ({\
+    if ((seq.p & 1) || do_store_orientation > 1) raise(SIGTRAP);\
+    seq.t = seq.dna ^ seq.rc;\
+    seq.t &= -seq.t;                  /* isolate deviant bit */\
+    seq.t |= !seq.t;                  /* for palindromes: have to set one */\
+    seq.t = !(seq.t & seq.dna);       /* was devbit set? */\
+    seq.p |= do_store_orientation & seq.t;\
+    seq.t = seq.dna ^ (-seq.t & (seq.dna ^ seq.rc)); /* dna or rc dependent on devbit */\
+    seq.t ^= (-!!(seq.t & KEYNT_BUFSZ)) & SNDX_TRUNC_MASK; /*shorten index by one */\
 })
-#define get_ndx(seq) _get_ndx(seq.t, seq.dna, seq.rc)
+
+static uint32_t
+_build_ndx_kct(keyseq_t &seq, uint8_t const*const s, uint32_t with_orient = 1)
+{
+    uint32_t p = seq.p = _b2pos_of(seq.p);
+    if (p < NT_WIDTH) raise(SIGTRAP);
+    seq.p -= NT_WIDTH;
+    build_seq(s, seq, p);
+    get_ndx(seq, with_orient);
+    if (seq.t >= KEYNT_BUFSZ) raise(SIGTRAP);
+    return seq.t;
+}
 
 /* With the b6 conversion, only the specified characters are converted to
  * 2bits, left shifted by one, with all other bits zeroed. With the function

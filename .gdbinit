@@ -114,7 +114,7 @@ end
 b fa_read
 
 #b key_init.cpp:190
-break_re 'uint32_t ndx;' 'key_init.cpp' 'break'
+break_re 'get_kct(kc, seq, 1);' 'key_init.cpp' 'break'
 commands
     silent
     pseq

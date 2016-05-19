@@ -27,12 +27,6 @@
 #define ORIENT_SHFT 36
 #define SAME_CT_SHFT 37
 
-// TODO: do not count, rather write pos on 1st occurance (1-based), in case of multiple, set length
-
-#define DUP_BIT    0x80000000 // Set if key is uniq for remaining sections (and pos stored).
-#define STRAND_BIT 0x00000001 // the bit to store the original orientation of ref once uniq.
-#define B2POS_MASK 0x7FFFFFFE // position, once unique
-
 // stored position is one-based to ensure a bit is set
 // this is the kct offset: can be 0.
 #define NO_KCT -1u
@@ -57,17 +51,11 @@ seq_next(struct keyseq_t &seq)
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
 }
 
-#define get_kct0(kc, seq, ndx) ({\
-    ndx = get_ndx(seq);\
-    NB(ndx < KEYNT_BUFSZ);\
-    ndx;\
-})
-
-#define get_kct(kc, seq) ({\
-    uint32_t __ndx;\
-    __ndx = get_kct0(kc, seq, __ndx);\
-    NB(kc->contxt_idx[__ndx] < kc->kct_l);\
-    kc->contxt_idx + __ndx;\
+#define get_kct(kc, seq, with_orient) ({\
+    get_ndx(seq, with_orient);\
+    NB(seq.t < KEYNT_BUFSZ);\
+    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_KCT);\
+    kc->contxt_idx + seq.t;\
 })
 
 #define _addtoseq(buf, seq)\
@@ -92,9 +80,10 @@ seq_next(struct keyseq_t &seq)
 
 #define in_scope(kc, fst, nxt) ({\
     uint32_t __f = fst, __n = nxt;\
+    NB((__f & 1) == 0 && (__n & 1) == 0);\
     NB(__f < __n, "%u, %u", __f, __n);\
     NB(__n <= kc->s_l);\
-    (nxt) - (fst) - 2u < ((kc)->extension << 1);\
+    (__n) - (__f) - 2u < ((kc)->extension << 1);\
 })
 
 packed_struct Mantra { // not yet covered by unique keys
@@ -178,30 +167,19 @@ b2pos_of(kct_t C*C kc, uint32_t C*C k)
     NB(k - kc->kct >= 0);
     NB(*k != NO_KCT);
 
-    return *k & B2POS_MASK;
+    return _b2pos_of(*k);
 }
 
 static inline uint32_t
 b2pos_of(uint32_t C k)
 {
     NB(k != NO_KCT);
-    return k & B2POS_MASK;
+    return _b2pos_of(k);
 }
 
-static uint32_t
-_build_ndx_kct(keyseq_t &seq, uint8_t const*const s)
-{
-    uint32_t p = seq.p;
-    NB(p >= NT_WIDTH);
-    seq.p -= NT_WIDTH;
-    build_key(s, seq, p);
-    uint32_t ndx = get_ndx(seq);
-    NB(ndx < KEYNT_BUFSZ);
-    return ndx;
-}
-#define build_ndx_kct(kc, seq, s) ({\
-    NB((seq.p >> 3) < kc->s_l, "%u >= %u!!", (seq.p >> 3), kc->s_l);\
-    _build_ndx_kct(seq, s);\
+#define build_ndx_kct(kc, seq, s, ...) ({\
+    NB((b2pos_of(seq.p) >> 3) <= kc->s_l, "%u >= %u!!", (b2pos_of(seq.p) >> 3), kc->s_l);\
+    _build_ndx_kct(seq, s, ##__VA_ARGS__);\
 })
 
 void free_kc(kct_t* kc);
