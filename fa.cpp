@@ -203,7 +203,7 @@ print_seq(&seq);
         contxt_idx = get_kct(kc, seq, 1);
         seq.p += 2;
     }
-    if (thisk - kc->kct != (*b.it).ke) {
+    if (thisk - kc->kct != (*b.it).ke) { //excise just one unique
         //NB((thisk - b.sk) - b.moved == 0, "%u - %u", (b.sk - thisk), b.moved);
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
@@ -328,7 +328,7 @@ out:
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
         int j = *ext++;
         while (j--) {
-            NB(kc->kct - k < kc->kct_l);
+            NB(k - kc->kct < kc->kct_l);
             if (*k != 0) {
                 keyseq_t seq = {.p = *k };
                 uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
