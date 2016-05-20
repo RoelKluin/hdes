@@ -1,7 +1,7 @@
 
 source gdb_py/frame_filter.py
-source /home/roel/.local/lib/python2.7/site-packages/voltron/entry.py
-voltron init
+#source /home/roel/.local/lib/python2.7/site-packages/voltron/entry.py
+#voltron init
 set disassembly-flavor intel
 
 define hook-quit

@@ -59,7 +59,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
         }
         s += hk->len;
     }
-    uint64_t* ext = kc->ext;
+    uint32_t* ext = kc->ext;
     while (i < kc->kct_l) {
         s = kc->s;
         for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
@@ -313,21 +313,19 @@ EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
         uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
 
         buf_grow_add(kc->ext, 1ul, 0, uq_and_1stexcised);
-        kc->ext[kc->ext_l++] = uq_and_1stexcised;
-        EPQ(uq_and_1stexcised, "total %u uniq", uq_and_1stexcised);
         hk->koffs = b.sk - kc->kct;
-        //kc->uqct = uq_and_1stexcised;
     }
 out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     b.s = kc->s;
     NB(kc->ext_l >= kc->hk_l);
-    uint64_t* ext = kc->ext;
+    uint32_t* ext = kc->ext;
+    unsigned j = 0;
     // put uniqs and 1st excised back in array (recompression)
     for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
-        int j = *ext++;
-        while (j--) {
+	EPR("ext: %lu", *ext);
+        while (j < *ext) {
             NB(k - kc->kct < kc->kct_l);
             if (*k != 0) {
                 keyseq_t seq = {.p = *k };
@@ -337,8 +335,11 @@ out:
                 *k ^= *k;//
             }
             ++k;
+	    ++j;
         }
         b.s += hk->len;
+	*ext = b.sk - kc->kct;
+	++ext;
     }
     kc->kct_l = b.sk - kc->kct;
     return 0;

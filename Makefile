@@ -58,7 +58,7 @@ libuqct.a:$(OBJS)
 coverage:
 	$(GCOV) -b $(SOURCES)
 cleartest:
-	rm runtests/*.{2b,nn,bd,ub,kc,uq} 2>/dev/null; echo
+	pwd;rm runtests/*.2b runtests/*.nn runtests/*.bd runtests/*.ub runtests/*.kc runtests/*.uq
 clean:
 	rm -f $(PREPROCESSED) $(ASSEMBLIES) $(OBJECTS) $(PROG) core vgcore.*
 

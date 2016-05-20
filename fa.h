@@ -144,7 +144,7 @@ struct kct_t {
     uint32_t* kct;
                    // non occurant are initally set to NO_KCT. see Extension below.
 
-    uint64_t* ext; // ndx offset for key extensions. If a position is after this u64 of the nth
+    uint32_t* ext; // ndx offset for key extensions. If a position is after this u64 of the nth
                    // extension n u64 (but before the next, or NO_KCT) then the key became unique
                    // with this extension. If a key is found to be incorrect, One or more
                    // mismatches must have occurred within this key, + extension n.
