@@ -112,18 +112,8 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
 
 struct Hdr {
     uint32_t ido;     // id contains offset to kc->id character for the header ID.
-    uint8_t p_l;      // How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
-};
-
-/*
- * the kc->kct keys are ordered. Initially upon occurance on the genome
- */
-// to look up key offset to 1) respective header and 2) for what extension the keys became uniq
-struct HK {
-    uint32_t hoffs;
-    uint32_t ext;
     uint32_t len; // 2bit offset for this contig
-    uint32_t koffs;
+    uint8_t p_l;      // How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
 struct Bnd {
@@ -150,11 +140,12 @@ struct kct_t {
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hk_l, h_l, uqct, last_uqct;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct, last_uqct;
     unsigned readlength, iter, ext_l, ext_m, extension;
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hk_m;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
     Hdr* h;
-    HK* hk;
+    uint32_t* hkoffs;   // kc->kct keys are ordered per contig. hkoffs indicates how many k's
+                        // per extension per contig.
     std::list<Mantra>* bnd;
     // could be possible to move bnd here.
 };

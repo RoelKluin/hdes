@@ -69,22 +69,22 @@ get_tid_and_pos(kct_t* kc, uint64_t *pos, C unsigned bufi)
         --bd;
 
         //position beyond end of last boundary of this contig must be on a later one.
-        if ((hk.s_s + (*bd).e + bufi) < *pos)
+        if ((h.s_s + (*bd).e + bufi) < *pos)
             continue;
 
-        while (((hk.s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
+        while (((h.s_s + (*bd).s + bufi) > *pos) && bd != h->bnd->begin()) {
 
             --bd;
         }
-        ASSERT ((hk.s_s + (*bd).s) <= *pos, return -EFAULT);
+        ASSERT ((h.s_s + (*bd).s) <= *pos, return -EFAULT);
         break;
     }*/
     ASSERT (h != kc->h + kc->h_l, return -EFAULT);
 
-    //ASSERT(*pos + (*bd).corr > hk.s_s + bufi, return -EFAULT,
-    //        "%s\t%lu\t%lu", kc->id + h->ido, *pos + (*bd).corr, hk.s_s + bufi
+    //ASSERT(*pos + (*bd).corr > h.s_s + bufi, return -EFAULT,
+    //        "%s\t%lu\t%lu", kc->id + h->ido, *pos + (*bd).corr, h.s_s + bufi
     //        /*, "\n%lx + %x <= %lx + %x +s", *pos, (*bd).corr, h->s_s, bufi, KEY_WIDTH*/);
-    //*pos += (*bd).corr - hk.s_s + KEY_WIDTH - bufi - 1;
+    //*pos += (*bd).corr - h.s_s + KEY_WIDTH - bufi - 1;
 
     return h->ido;
 }
@@ -119,7 +119,7 @@ fq_read(kct_t* kc, seqb2_t *sb2)
     unsigned* bufi = (unsigned*)malloc(c * sizeof(unsigned));
     keyseq_t seq = {0};
     Hdr* lh = kc->h + kc->h_l - 1;
-    const uint64_t end_pos = /*FIXME: hk.s_s, prev: lh->s_s + lh->end_pos*/ 0;
+    const uint64_t end_pos = /*FIXME: h.s_s, prev: lh->s_s + lh->end_pos*/ 0;
     //struct mapstat_t ms = {0};
 
     set_readfunc(fhin, &g, &gc);
@@ -167,12 +167,12 @@ default:            seq_next(seq);
  EPR("%u:%lx\t%x", i, (uint64_t)seq.t, k);
 		    // put not recognized and multimapper keys to end - unused.
                     if (k >= kc->kct_l || IS_UQ(kc->kct + k) == false) {
-                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
+                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write seq.t here.
                         bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }
 		    if (b2pos_of(kc->kct[k]) >= end_pos) { // beyond chromosomes?
-                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write ndx here.
+                        buf[i - KEY_WIDTH] = ~0ul; // FIXME: could write seq.t here.
                         bufi[i - KEY_WIDTH] = i ^ seq.t;
                         continue;
                     }

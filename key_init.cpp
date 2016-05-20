@@ -122,7 +122,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
     } else {
 
         EPR("contig occurred twice: %s", hdr);
-        // To fix order reversal would need kc->s movement and adaptations including hk.s_s.
+        // To fix order reversal would need kc->s movement and adaptations in header start.
         if (h->p_l != UNKNOWN_HDR && got->second->p_l != UNKNOWN_HDR) {
 
             NB(atoi(kc->id + part[START]) > atoi(get_header_part(kc->id + got->second->ido, END)),
@@ -165,13 +165,11 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 }
 
 static inline int
-finish_contig(kct_t*C kc, Hdr* h, HK &hk, keyseq_t &seq)
+finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
 {
-    hk.koffs = kc->kct_l;
     // the 2bit buffer per contig starts at the first nt 0 of 4.
-    hk.len = (seq.p >> 3) + !!(seq.p & 6);
-    buf_grow_add(kc->hk, 1ul, 0, hk);
-    hk.hoffs = kc->h_l;
+    h->len = (seq.p >> 3) + !!(seq.p & 6);
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);
     return 0;
 }
@@ -192,7 +190,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     keyseq_t seq = {0};
     kc->bnd = new std::list<Mantra>();
     Hdr_umap lookup;
-    HK hk = {.hoffs = kc->h_l};
     set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
@@ -239,7 +236,7 @@ case 0x1e: // new contig
             NB(seq.t == '>');
             if (h) {
                 // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
-                _EVAL(finish_contig(kc, h, hk, seq));
+                _EVAL(finish_contig(kc, h, seq));
                 if (kc->s_l & 3) {
                     // the 2bit buffer per contig starts at the first nt 0 of 4.
                     kc->s_l += -kc->s_l & 3;
@@ -257,7 +254,7 @@ default:    if (isspace(seq.t))
             ++corr;
         }
     }
-    res = finish_contig(kc, h, hk, seq);
+    res = finish_contig(kc, h, seq);
     kc->uqct += kc->kct_l;
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
 err:
@@ -273,7 +270,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->id = buf_init(kc->id, 8);
     kc->s = buf_init(kc->s, 8);
     kc->h = buf_init(kc->h, 1);
-    kc->hk = buf_init(kc->hk, 1);
+    kc->hkoffs = buf_init(kc->hkoffs, 1);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = NO_KCT;

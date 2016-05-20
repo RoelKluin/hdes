@@ -77,6 +77,7 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
         __WRITE_VAL(h->p_l, fhout)
+        __WRITE_VAL(h->len, fhout)
         // sequence, if read, is not stored.
         __WRITE_VAL(h->ido, fhout)
     }
@@ -115,6 +116,7 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
     kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
         __READ_VAL(h->p_l, fhin)
+        __READ_VAL(h->len, fhin)
         __READ_VAL(h->ido, fhin)
     }
     res = 0;
@@ -163,7 +165,7 @@ int save_kc(struct gzfh_t* fhout, kct_t* kc)
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
-    __WRITE_LMPTR(kc->hk, fhout)
+    __WRITE_LMPTR(kc->hkoffs, fhout)
 
     __WRITE_VAL(kc->kct_l, fhout)
     __WRITE_PTR(kc->kct, fhout, kc->kct_l)
@@ -183,7 +185,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     kc->kct = NULL;
     // 0: version number
     // 1: buffer sizes
-    __READ_LMPTR(kc->hk, fhin)
+    __READ_LMPTR(kc->hkoffs, fhin)
 
     __READ_VAL(kc->kct_l, fhin)
     __READ_PTR(kc->kct, fhin, kc->kct_l);
@@ -191,7 +193,7 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = kc->kct_l;
 
-    HK *hk = kc->hk;
+    uint32_t i = 0;
     uint8_t *s = kc->s;
 
     for (uint64_t i=0ul; i != kc->kct_l; ++i) {
@@ -199,10 +201,10 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
         uint32_t *k = kc->kct + i;
 
         // XXX: ensure the k's contigs are sorted or this won't be efficient.
-        while (k >= kc->kct + hk->koffs) {
-            s += hk->len;
-            NB(hk != kc->hk + kc->hk_l);
-            ++hk;
+        while (k >= kc->kct + kc->hkoffs[i]) {
+            s += kc->h[i].len;
+            NB(i != kc->h_l);
+            ++i;
         }
         // construct index from sequence
         keyseq_t seq = {.p = *k};

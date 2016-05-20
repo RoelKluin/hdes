@@ -34,7 +34,7 @@ free_kc(kct_t *kc)
     buf_free(kc->s);
     buf_free(kc->kct);
     buf_free(kc->h);
-    buf_free(kc->hk);
+    buf_free(kc->hkoffs);
     buf_free(kc->ext);
     buf_free(kc->contxt_idx);
 }
@@ -42,27 +42,26 @@ free_kc(kct_t *kc)
 static void
 print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 {
-    unsigned i = 0;
+    unsigned i, j = 0;
     uint8_t *s = kc->s;
-    HK *hk;
     EPR("");
-    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
-        while (i < hk->koffs) {
-            uint32_t* k = kc->kct + i;
+    for (i = 0; i != kc->h_l; ++i) {
+        while (j < kc->hkoffs[i]) {
+            uint32_t* k = kc->kct + j;
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
-            EPR0("%u%c:\t0x%x\t", i, c, kc->kct[i]);
-            if (kc->kct[i] != 0)
-                print_posseq(s, kc->kct[i]);
+            EPR0("%u%c:\t0x%x\t", j, c, kc->kct[j]);
+            if (kc->kct[j] != 0)
+                print_posseq(s, kc->kct[j]);
             else
                 EPR("(removed)");
-            ++i;
+            ++j;
         }
-        s += hk->len;
+        s += kc->h[i].len;
     }
     uint32_t* ext = kc->ext;
     while (i < kc->kct_l) {
         s = kc->s;
-        for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+        for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
             unsigned j = ext - kc->ext < kc->ext_l ? *ext++ : ~0u;
             while (j) {
                 uint32_t* k = kc->kct + i;
@@ -77,7 +76,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 if (++i == kc->kct_l)
                     return;
             }
-            s += hk->len;
+            s += h->len;
         }
     }
 }
@@ -85,11 +84,8 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 static void
 print_hdr(kct_t *kc)
 {
-    HK *hk = kc->hk;
-    for (unsigned i = 0; i != kc->hk_l; ++i) {
-        EPR("[%u]:\tkoffs:%u", i, hk->koffs);
-        ++hk;
-    }
+    for (unsigned i = 0; i != kc->h_l; ++i)
+        EPR("[%u]:\tkoffs:%u", i, kc->hkoffs[i]);
 }
 
 /*
@@ -143,8 +139,8 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
             raise(SIGTRAP);
         kc->kct = t;
         b.sk = t + ok1;
-        *k1 = t + ok3;
         if (ok2 != ~0u) b.prev = t + ok2;
+        *k1 = t + ok3;
         if (ok4 != ~0u) *k2 = t + ok4;
     }
 }
@@ -292,7 +288,7 @@ skip_mantra(kct_t *kc, Bnd &b, uint32_t **k)
 static int
 ext_uq_iter(kct_t *kc)
 {
-    HK *hk;
+    uint32_t* hkoffs = kc->hkoffs;
     uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
         .sk = k,
@@ -303,11 +299,11 @@ ext_uq_iter(kct_t *kc)
     };
 
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
+    for (unsigned i = 0; i != kc->h_l; ++i) {
 
-        if (k < kc->kct + hk->koffs) {
+        if (k < kc->kct + kc->hkoffs[i]) {
 
-            while (k < kc->kct + hk->koffs) {
+            while (k < kc->kct + kc->hkoffs[i]) {
 
                 while (k - kc->kct < (*b.it).ke) {
 EPR("%u", k - kc->kct);
@@ -327,27 +323,26 @@ print_posseq(b.s, *k);
         } else if (b.it != kc->bnd->end()) {
             skip_mantra(kc, b, &k);
         }
-EPR("next hdr %u, %u", hk->koffs, b.sk - kc->kct);
-        NB(hk->koffs <= kc->kct_l);
-        NB(hk->koffs >= b.sk - kc->kct);
-        b.s += hk->len;
+EPR("next hdr %u, %u", kc->hkoffs[i], b.sk - kc->kct);
+        NB(kc->hkoffs[i] <= kc->kct_l);
+        NB(kc->hkoffs[i] >= b.sk - kc->kct);
+        b.s += kc->h[i].len;
 
         //XXX: this is cumulative for contigs for this extension and iteration.
-        uint32_t uq_and_1stexcised = hk->koffs - (b.sk - kc->kct);
+        uint32_t uq_and_1stexcised = kc->hkoffs[i] - (b.sk - kc->kct);
 
         buf_grow_add(kc->ext, 1ul, 0, uq_and_1stexcised);
-        hk->koffs = b.sk - kc->kct;
+        kc->hkoffs[i] = b.sk - kc->kct;
     }
 out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     b.s = kc->s;
-    NB(kc->ext_l >= kc->hk_l);
+    NB(kc->ext_l >= kc->h_l);
     uint32_t* ext = kc->ext;
     unsigned j = 0;
     // put uniqs and 1st excised back in array (recompression)
-    for (hk = kc->hk; hk != kc->hk + kc->hk_l; ++hk) {
-	EPR("ext: %lu", *ext);
+    for (unsigned i = 0; i != kc->h_l; ++i) {
         while (j < *ext) {
             NB(k - kc->kct < kc->kct_l);
             if (*k != 0) {
@@ -360,7 +355,7 @@ out:
             ++k;
 	    ++j;
         }
-        b.s += hk->len;
+        b.s += kc->h[i].len;
 	*ext = b.sk - kc->kct;
 	++ext;
     }
