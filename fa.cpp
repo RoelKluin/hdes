@@ -35,47 +35,35 @@ free_kc(kct_t *kc)
     buf_free(kc->kct);
     buf_free(kc->h);
     buf_free(kc->hkoffs);
-    buf_free(kc->ext);
     buf_free(kc->contxt_idx);
 }
 
 static void
 print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 {
-    unsigned i, j = 0;
-    uint8_t *s = kc->s;
+    unsigned i = 0;
     EPR("");
-    for (i = 0; i != kc->h_l; ++i) {
-        while (j < kc->hkoffs[i]) {
-            uint32_t* k = kc->kct + j;
+    uint32_t* k = kc->kct;
+    Hdr* h = kc->h;
+    uint8_t *s = kc->s;
+    uint32_t* hkoffs = kc->hkoffs;
+    while (k - kc->kct < kc->kct_l) {
+        while (k - kc->kct < *hkoffs) {
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
-            EPR0("%u%c:\t0x%x\t", j, c, kc->kct[j]);
-            if (kc->kct[j] != 0)
-                print_posseq(s, kc->kct[j]);
+            EPR0("%c>%s:%u\t%u\t", c, kc->id + h->ido, i, *hkoffs);
+            if (*k != 0)
+                print_posseq(s, *k);
             else
                 EPR("(removed)");
-            ++j;
+            ++k;
         }
-        s += kc->h[i].len;
-    }
-    uint32_t* ext = kc->ext;
-    while (i < kc->kct_l) {
-        s = kc->s;
-        for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
-            unsigned j = ext - kc->ext < kc->ext_l ? *ext++ : ~0u;
-            while (j) {
-                uint32_t* k = kc->kct + i;
-                char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
-                EPR0("~%u%c:\t0x%x\t", i, c, kc->kct[i]);
-                if (kc->kct[i] != 0) {
-                    --j;
-                    print_posseq(s, kc->kct[i]);
-                } else {
-                    EPR("(removed)");
-                }
-                if (++i == kc->kct_l)
-                    return;
-            }
+        if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
+            hkoffs = &kc->kct_l;
+        if (++h == kc->h + kc->h_l) {
+            h = kc->h;
+            s = kc->s;
+            ++i;
+        } else {
             s += h->len;
         }
     }
@@ -297,7 +285,7 @@ ext_uq_iter(kct_t *kc)
         .moved = 0,
         .it = kc->bnd->begin()
     };
-
+    uint32_t skctl = kc->kct_l;
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
     for (unsigned i = 0; i != kc->h_l; ++i) {
 
@@ -329,37 +317,38 @@ EPR("next hdr %u, %u", kc->hkoffs[i], b.sk - kc->kct);
         b.s += kc->h[i].len;
 
         //XXX: this is cumulative for contigs for this extension and iteration.
-        uint32_t uq_and_1stexcised = kc->hkoffs[i] - (b.sk - kc->kct);
 
-        buf_grow_add(kc->ext, 1ul, 0, uq_and_1stexcised);
+        buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
         kc->hkoffs[i] = b.sk - kc->kct;
     }
 out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     b.s = kc->s;
-    NB(kc->ext_l >= kc->h_l);
-    uint32_t* ext = kc->ext;
-    unsigned j = 0;
+    Hdr* h = kc->h;
+    uint32_t* e = kc->hkoffs + kc->hkoffs_l - kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
-    for (unsigned i = 0; i != kc->h_l; ++i) {
-        while (j < *ext) {
-            NB(k - kc->kct < kc->kct_l);
-            if (*k != 0) {
-                keyseq_t seq = {.p = *k };
-                uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
-                *contxt_idx = b.sk - kc->kct;
-                *b.sk++ = *k;
-                *k ^= *k;//
+    for (k = kc->kct + skctl;k - kc->kct < kc->kct_l; ++k) {
+        while (k - kc->kct > *e) {
+            NB(e < kc->hkoffs + kc->hkoffs_l);
+            *e = b.sk - kc->kct;
+            ++e;
+            if (++h == kc->h + kc->h_l) {
+                h = kc->h;
+                b.s = kc->s;
+            } else {
+                b.s += h->len;
             }
-            ++k;
-	    ++j;
         }
-        b.s += kc->h[i].len;
-	*ext = b.sk - kc->kct;
-	++ext;
+        if (*k != 0) {
+            keyseq_t seq = {.p = *k };
+            kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.sk - kc->kct;
+            *b.sk++ = *k;
+            *k ^= *k;//
+        }
     }
-    kc->kct_l = b.sk - kc->kct;
+    NB(b.sk - kc->kct == skctl);
+    kc->kct_l = skctl;
     return 0;
 }
 
@@ -367,7 +356,6 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res = -ENOMEM;
-    kc->ext = buf_init(kc->ext, 1);
     for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques

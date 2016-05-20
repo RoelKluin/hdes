@@ -134,18 +134,19 @@ struct kct_t {
     uint32_t* kct;
                    // non occurant are initally set to NO_KCT. see Extension below.
 
-    uint32_t* ext; // ndx offset for key extensions. If a position is after this u64 of the nth
+    uint64_t s_l, totNts;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct, last_uqct;
+    unsigned readlength, iter, extension;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
+    Hdr* h;
+    uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
+                      // per extension per contig.
+
+                   // ndx offset for key extensions. If a position is after this u64 of the nth
                    // extension n u64 (but before the next, or NO_KCT) then the key became unique
                    // with this extension. If a key is found to be incorrect, One or more
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
-    uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct, last_uqct;
-    unsigned readlength, iter, ext_l, ext_m, extension;
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
-    Hdr* h;
-    uint32_t* hkoffs;   // kc->kct keys are ordered per contig. hkoffs indicates how many k's
-                        // per extension per contig.
     std::list<Mantra>* bnd;
     // could be possible to move bnd here.
 };
