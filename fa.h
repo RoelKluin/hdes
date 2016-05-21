@@ -169,6 +169,13 @@ b2pos_of(uint32_t C k)
     return _b2pos_of(k);
 }
 
+#define hdr_end_k(kc, h) ({\
+    uint32_t __koffs = (kc)->hkoffs[(h) - (kc)->h];\
+    NB(__koffs <= (kc)->kct_l);\
+    (kc)->kct + __koffs;\
+})
+
+
 #define build_ndx_kct(kc, seq, s, ...) ({\
     NB((b2pos_of(seq.p) >> 3) <= kc->s_l, "%u >= %u!!", (b2pos_of(seq.p) >> 3), kc->s_l);\
     _build_ndx_kct(seq, s, ##__VA_ARGS__);\

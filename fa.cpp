@@ -43,11 +43,11 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 {
     unsigned i = 0;
     EPR("");
-    uint32_t* k = kc->kct;
     Hdr* h = kc->h;
     uint8_t *s = kc->s;
     uint32_t* hkoffs = kc->hkoffs;
-    while (k - kc->kct < kc->kct_l) {
+
+    for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
         while (k - kc->kct < *hkoffs) {
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
             EPR0("%c>%s:%u\t%u\t", c, kc->id + h->ido, i, *hkoffs);
@@ -57,6 +57,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 EPR("(removed)");
             ++k;
         }
+        // ensure we continue printing if this contig was not yet finished (for debugging)
         if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
             hkoffs = &kc->kct_l;
         if (++h == kc->h + kc->h_l) {
@@ -276,7 +277,6 @@ skip_mantra(kct_t *kc, Bnd &b, uint32_t **k)
 static int
 ext_uq_iter(kct_t *kc)
 {
-    uint32_t* hkoffs = kc->hkoffs;
     uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
         .sk = k,
@@ -287,11 +287,11 @@ ext_uq_iter(kct_t *kc)
     };
     uint32_t skctl = kc->kct_l;
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    for (unsigned i = 0; i != kc->h_l; ++i) {
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
 
-        if (k < kc->kct + kc->hkoffs[i]) {
+        if (k < hdr_end_k(kc, h)) {
 
-            while (k < kc->kct + kc->hkoffs[i]) {
+            while (k < hdr_end_k(kc, h)) {
 
                 while (k - kc->kct < (*b.it).ke) {
 EPR("%u", k - kc->kct);
@@ -319,18 +319,19 @@ EPR("next hdr %u, %u", kc->hkoffs[i], b.sk - kc->kct);
         //XXX: this is cumulative for contigs for this extension and iteration.
 
         buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-        kc->hkoffs[i] = b.sk - kc->kct;
+        // also update new end for header
+        kc->hkoffs[h - kc->h] = b.sk - kc->kct;
     }
 out:
     kc->uqct = k - b.sk;
     kc->last_uqct = kc->uqct;
     Hdr* h = kc->h;
-    uint32_t* e = kc->hkoffs + kc->hkoffs_l - kc->h_l;
+    b.s = kc->s;
+    uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
-    for (k = kc->kct + skctl;k - kc->kct < kc->kct_l; ++h, ++e) {
-        b.s = kc->s + h->len;
+    for (k = kc->kct + skctl;k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
 
-        while (k - kc->kct < *e) {
+        while (k - kc->kct < *hkoffs) {
             if (*k != 0) {
                 keyseq_t seq = {.p = *k };
                 kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.sk - kc->kct;
@@ -339,8 +340,9 @@ out:
             }
             ++k;
         }
-        NB(e < kc->hkoffs + kc->hkoffs_l);
-        *e = b.sk - kc->kct;
+        NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
+        *hkoffs = b.sk - kc->kct;
+        b.s += h->len;
     }
     NB(b.sk - kc->kct == skctl);
     kc->kct_l = skctl;
