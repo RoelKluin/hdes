@@ -120,7 +120,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
         uint32_t ok1, ok2, ok3, ok4;
 
         ok1 = b.sk - kc->kct;
-        ok2 = b.prev ? b.prev - kc->kct : ~0u;
+        // adapting b.prev is not needed: is always set after function.
         ok3 = *k1 - kc->kct;
         ok4 = k2 ? *k2 - kc->kct : ~0u;
         uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
@@ -128,7 +128,6 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
             raise(SIGTRAP);
         kc->kct = t;
         b.sk = t + ok1;
-        if (ok2 != ~0u) b.prev = t + ok2;
         *k1 = t + ok3;
         if (ok4 != ~0u) *k2 = t + ok4;
     }
@@ -152,7 +151,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
             for (uint32_t *k = b.sk + b.moved; k <= *thisk; ++k) {
                 NB(k < kc->kct + kc->kct_l);
                 // if kct grows, pointers thisk, k, b.sk b.prev become invalid!!
-                buf_grow_ks(kc, b, thisk, k ? &k : NULL);
+                buf_grow_ks(kc, b, thisk, &k);
                 kc->kct[kc->kct_l] = seq.p = *k;
                 contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
                 *k ^= *k;//
