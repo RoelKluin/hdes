@@ -322,9 +322,7 @@ EPR("next hdr %u, %u", kc->hkoffs[i], b.sk - kc->kct);
         // also update new end for header
         kc->hkoffs[h - kc->h] = b.sk - kc->kct;
     }
-out:
     kc->uqct = k - b.sk;
-    kc->last_uqct = kc->uqct;
     Hdr* h = kc->h;
     b.s = kc->s;
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;

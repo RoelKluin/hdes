@@ -111,9 +111,9 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
+    uint32_t len;     // 2bit length of this contig
     uint32_t ido;     // id contains offset to kc->id character for the header ID.
-    uint32_t len; // 2bit offset for this contig
-    uint8_t p_l;      // How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
+    uint8_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
 struct Bnd {
@@ -133,11 +133,6 @@ struct kct_t {
 
     uint32_t* kct;
                    // non occurant are initally set to NO_KCT. see Extension below.
-
-    uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct, last_uqct;
-    unsigned readlength, iter, extension;
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
     Hdr* h;
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
                       // per extension per contig.
@@ -148,6 +143,11 @@ struct kct_t {
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
     std::list<Mantra>* bnd;
+
+    uint64_t s_l, totNts;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct;
+    unsigned readlength, iter, extension;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
     // could be possible to move bnd here.
 };
 
