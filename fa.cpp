@@ -59,22 +59,15 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
         }
         // ensure we continue printing if this contig was not yet finished (for debugging)
         if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
-            hkoffs = &kc->kct_l;
-        if (++h == kc->h + kc->h_l) {
+           hkoffs = &kc->kct_l;
+        if (h == kc->h + kc->h_l - 1) {
             h = kc->h;
             s = kc->s;
             ++i; // increase extenion nr.
         } else {
-            s += h->len;
+            s += h++->len;
         }
     }
-}
-
-static void
-print_hdr(kct_t *kc)
-{
-    for (unsigned i = 0; i != kc->h_l; ++i)
-        EPR("[%u]:\tkoffs:%u", i, kc->hkoffs[i]);
 }
 
 /*
