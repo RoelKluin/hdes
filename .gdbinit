@@ -100,6 +100,14 @@ document break_re
 end
 
 
+define run_until
+    if kc->iter == 0 && kc->extension <= 1
+        c
+    else
+        bt 1
+    end
+end
+
 
 # leave this: is for buffers.
 #tb key_init.cpp:190
@@ -118,7 +126,7 @@ end
 #
 #################################################################
 # key_init.cpp
-b fa_read
+#b fa_read
 
 #b key_init.cpp:190
 break_re 'get_kct(kc, seq, 1);' 'key_init.cpp' 'break'
@@ -154,6 +162,7 @@ break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
 commands
     silent
     print show_mantras(kc, kc->bnd->begin())
+    run_until
 end
 
 
@@ -165,6 +174,7 @@ define handle_non_uniques
     #bt 2
     #printf "prev:%u\tseq.p:%u\tpend:%u\text-1:%u\t", prev, seq.p, pend, kc->ext + 1
     pseq
+    run_until
 end
 
 #b fa.cpp:157
@@ -173,19 +183,18 @@ commands
     silent
     pkct kc->kct + *contxt_idx
     print show_mantras(kc, b.it)
-    handle_non_uniques
     wa seq.dna
     commands
         silent
         pseq
-        #c
+        run_until
     end
     break_re 'for(;;) {' 'fa.cpp' 'break'
     commands
         silent
         handle_non_uniques
-        #c
     end
+    handle_non_uniques
 end
 
 #b fa.cpp:251
@@ -193,7 +202,7 @@ break_re '// update contig' 'fa.cpp' 'break'
 commands
     silent
     printf "uniq at\t%u\n", *k >> 1
-    #c
+    run_until
 end
 
 #b fa.cpp:201
@@ -210,7 +219,7 @@ break_re '// update contig' 'fa.cpp' 'break'
 commands
     silent
     printf "header update (can be late?):\t"
-    #c
+    run_until
 end
 
 #b fa.cpp:216
@@ -218,68 +227,68 @@ break_re '// update assembly' 'fa.cpp' 'break'
 commands
     silent
     printf "boundary update:\t"
-    #c
+    run_until
 end
 
 break_re '*contxt_idx = kc->kct_l++;//GDB:1' 'fa.cpp' 'break'
 commands
     silent
     pkct k
+    run_until
 end
 
 break_re '*contxt_idx = kc->kct_l++;//GDB:2' 'fa.cpp' 'break'
 commands
     silent
     pkct k
+    run_until
 end
 
 break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
     silent
     pkct k
+    run_until
 end
 
-break_re 'kc->kct_l = b.sk - kc->kct;' 'fa.cpp' 'break'
-commands
-    silent
-    pkct k
-    print show_mantras(kc, b.it)
-end
-
-break shrink_mantra
-
+#break shrink_mantra
 break_re '//GDB:mantra1$' 'fa.cpp' 'break'
 commands
-    #silent
+    silent
     print show_mantras(kc, b.it)
+    run_until
 end
 
 #break reached_boundary
 break_re '//GDB:mantra2$' 'fa.cpp' 'break'
 commands
-    #silent
+    silent
     print show_mantras(kc, b.it)
+    run_until
 end
 
 break_re '//GDB:mantra3$' 'fa.cpp' 'break'
 commands
-    #silent
+    silent
     print show_mantras(kc, b.it)
+    run_until
 end
 
 break_re '//GDB:mantra4$' 'fa.cpp' 'break'
 commands
-    #silent
+    silent
     print show_mantras(kc, b.it)
+    run_until
 end
 
 
 break reached_boundary
 #break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
-#commands
-#    silent
-#    pkct
-#end
+commands
+    silent
+    pkct
+    run_until
+end
 
 
 #define reached_boundary
@@ -290,6 +299,20 @@ break reached_boundary
 
 
 break_re 'kc->last_uqct = kc->uqct;' 'fa.cpp' 'break'
+commands
+    silent
+    pkct k
+    print show_mantras(kc, b.it)
+    run_until
+end
+
+break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
+commands
+    silent
+    pkct k
+    print show_mantras(kc, b.it)
+    #run_until
+end
 
 #########################################################################################
 # mapping
