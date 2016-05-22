@@ -50,7 +50,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
     for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
         while (k - kc->kct < *hkoffs) {
             char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
-            EPR0("%c>%s:%u\t%u\t", c, kc->id + h->ido, i, *hkoffs);
+            EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
             else
@@ -84,28 +84,29 @@ static void
 shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t p)
 {
     NB(b.it != kc->bnd->end());
-    if (b.prev && prev != (*b.it).s) {     // not at mantra start
+    if (b.prev && prev != (*b.it).s + NT_WIDTH - 2) {     // not at mantra start
         C uint32_t end = (*b.it).e;
         C uint32_t ke = (*b.it).ke;
         (*b.it).e = prev;
         (*b.it).ke = b.sk - kc->kct;
         if (thisk - kc->kct != (*b.it).ke) {         // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
-            (*b.it).s = p;                 // mantra became two smaller ranges.
+            (*b.it).s = p - NT_WIDTH;                 // mantra became two smaller ranges.
             (*b.it).e = end;
             (*b.it).ke = ke;
         } // or end got shifted
     } else {
         // shift start or if at end, force erase (entirely mapable).
-        (*b.it).s = (thisk - kc->kct != (*b.it).ke) ? p : (*b.it).e; // or entire region became mapable, force erase.
+        (*b.it).s = ((thisk - kc->kct != (*b.it).ke) ? p : (*b.it).e) - NT_WIDTH; // or entire region became mapable, force erase.
     }
-    NB((*b.it).s <= (*b.it).e);
-    if ((*b.it).s == (*b.it).e) {
+    NB((*b.it).s <= (*b.it).e - NT_WIDTH);
+    if ((*b.it).s == (*b.it).e - NT_WIDTH) {
         b.it = kc->bnd->erase(b.it);   // nothing left
         b.prev = NULL;
     }//GDB:mantra1
 }
 
+// if kct grows, pointers *thisk, k, b.sk b.prev become invalid
 static void
 buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 {
@@ -139,19 +140,18 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
         shrink_mantra(kc, b, *thisk, prev, pend);
         // The distance between b.sk and k may have grown by excised 1st kcts (beside uniq).
         if (*thisk - b.sk > b.moved) {
-            EPR("%u were moved to kct end during excision", (*thisk - b.sk) - b.moved + 1);
 
             for (uint32_t *k = b.sk + b.moved; k <= *thisk; ++k) {
                 NB(k < kc->kct + kc->kct_l);
-                // if kct grows, pointers thisk, k, b.sk b.prev become invalid!!
                 buf_grow_ks(kc, b, thisk, &k);
+                NB(k != kc->kct + kc->kct_l);
                 kc->kct[kc->kct_l] = seq.p = *k;
                 contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
                 *k ^= *k;//
                 *contxt_idx = kc->kct_l++;//GDB:1
             }
-            b.moved = b.sk - *thisk + 1;
             b.prev = kc->kct + *contxt_idx;
+            b.moved = b.sk - *thisk + 1;
         } else {
             b.prev = *thisk;
         }
@@ -162,13 +162,12 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     seq.p = prev + 2;
     contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_KCT);
-EPR("kept %u-%u", prev, pend);
 
     for (;;) {
         uint32_t *k = kc->kct + *contxt_idx;
 print_seq(&seq);
 
-        if (k < b.sk) { // XXX requires multi-contig uniqs and excised in b.sk .. k
+        if (k < b.sk) {
             // second occurance
 
             if (~*k & DUP_BIT) {
@@ -189,7 +188,6 @@ print_seq(&seq);
                 *b.sk = *k;
                 *k ^= *k;//
                 *contxt_idx = b.sk - kc->kct;//GDB:move
-                EPR("moved up");
             }
             ++b.sk;
             NB(b.sk <= kc->kct + kc->kct_l);
@@ -203,20 +201,19 @@ print_seq(&seq);
         seq.p += 2;
     }
     if (*thisk - kc->kct != (*b.it).ke) { //excise just one unique
-        //NB((*thisk - b.sk) - b.moved == 0, "%u - %u", (b.sk - *thisk), b.moved);
+
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
         seq.p = b2pos_of(seq.p);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq, 0);
-        // if kct grows, pointers *thisk, k, b.sk b.prev become invalid!!
         buf_grow_ks(kc, b, thisk, NULL);
         uint32_t *k = kc->kct + kc->kct_l;
         if (pend != (*b.it).e) {
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*--b.it).e = pend;
             (*b.it).ke = b.sk - kc->kct;
-            (*++b.it).s = pend + 2;
+            (*++b.it).s = pend - 2;
             //mantra4
         }
         NB(k != *thisk);
@@ -230,29 +227,18 @@ print_seq(&seq);
 }
 
 static void
-reached_boundary(kct_t *kc, Bnd &b)
-{
-    C uint32_t prev = _prev_or_bnd_start(b);
-
-    // if at start and entirely mapable: remove mantra.
-    NB(b.it != kc->bnd->end());
-    if (b.prev == NULL && in_scope(kc, prev, (*b.it).e)) {
-EPR("mantra removed");//GDB:mantra2
-        b.it = kc->bnd->erase(b.it);
-    } else {
-EPR("next bnd");//GDB:mantra3
-        (*b.it).ke = b.sk - kc->kct;
-        ++b.it;
-    }
-}
-
-static inline void
-skip_mantra(kct_t *kc, Bnd &b, uint32_t **k)
+next_mantra(kct_t *kc, Bnd &b, uint32_t **k)
 {
     process_mantra(kc, b, k);
-    if (b.it != kc->bnd->end())
-        reached_boundary(kc, b);
     b.prev = NULL;
+
+    if (b.it == kc->bnd->end())
+        return;
+
+    // next mantra
+    (*b.it).ke = b.sk - kc->kct;
+    if (++b.it == kc->bnd->end())
+        return;
 }
 
 /*
@@ -279,47 +265,37 @@ ext_uq_iter(kct_t *kc)
     };
     uint32_t skctl = kc->kct_l;
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
-    for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
+    for (Hdr* h = kc->h; h != kc->h + kc->h_l;) {
+        do {
+            while (k - kc->kct < (*b.it).ke) {
 
-        if (k < hdr_end_k(kc, h)) {
+                if (IS_UQ(k)) // they are handled during excision (or postponed) - process_mantra()
+                    process_mantra(kc, b, &k);
 
-            while (k < hdr_end_k(kc, h)) {
-
-                while (k - kc->kct < (*b.it).ke) {
-EPR("%u", k - kc->kct);
-
-                    if (IS_UQ(k)) { // they are handled during excision (or postponed) - process_mantra()
-EPR("uniq");
-print_posseq(b.s, *k);
-                        process_mantra(kc, b, &k); //
-                    }
-                    ++k;
-                }
-                if (b.it == kc->bnd->end())
-                    break;
-
-                skip_mantra(kc, b, &k);//
+                ++k;
             }
-        } else if (b.it != kc->bnd->end()) {
-            skip_mantra(kc, b, &k);
-        }
-EPR("next hdr %u, %u", kc->hkoffs[i], b.sk - kc->kct);
-        NB(kc->hkoffs[i] <= kc->kct_l);
-        NB(kc->hkoffs[i] >= b.sk - kc->kct);
-        b.s += kc->h[i].len;
+            next_mantra(kc, b, &k);
 
-        //XXX: this is cumulative for contigs for this extension and iteration.
+        } while (b.it != kc->bnd->end() && k < hdr_end_k(kc, h));
 
         buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
         // also update new end for header
         kc->hkoffs[h - kc->h] = b.sk - kc->kct;
+
+        NB(hdr_end_k(kc, h) >= b.sk);
+        if (b.it == kc->bnd->end())
+            break;
+
+        b.s += h->len;
+        ++h;
     }
+
     kc->uqct = k - b.sk;
     Hdr* h = kc->h;
     b.s = kc->s;
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
-    for (k = kc->kct + skctl;k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
+    for (k = kc->kct + skctl; k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
 
         while (k - kc->kct < *hkoffs) {
             if (*k != 0) {

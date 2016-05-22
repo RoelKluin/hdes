@@ -36,6 +36,7 @@ document pbuf
 end
 
 define pkct
+    #bt
     if $argc != 0
         call print_kct(kc, b, $arg0)
     else
@@ -44,16 +45,16 @@ define pkct
 end
 
 define pdna
-    if $argc != 1
+    if $argc != 2
         help pdna
     else
-        call print_seq(&$arg0, KEY_WIDTH)
+        call print_dna($arg0, $arg1, KEY_WIDTH)
     end
 end
 
 document pdna
 	Prints dna.
-	Syntax: pdna <dna (or number)>
+	Syntax: pdna <dna (or number)> <delimitor>
 end
 
 
@@ -198,7 +199,7 @@ commands
 end
 
 #b fa.cpp:251
-break_re '// update contig' 'fa.cpp' 'break'
+break_re '/NB(hdr_end_k(kc, h) >= b.sk);' 'fa.cpp' 'break'
 commands
     silent
     printf "uniq at\t%u\n", *k >> 1
@@ -210,43 +211,44 @@ end
 ## if the assigned break was 1:
 #
 #command 1
-#pdna seq 3
+#pdna seq 3 '\n'
 #p seq.p + (s - kc->s)
 #end
-
-#b fa.cpp:200
-break_re '// update contig' 'fa.cpp' 'break'
-commands
-    silent
-    printf "header update (can be late?):\t"
-    run_until
-end
 
 #b fa.cpp:216
 break_re '// update assembly' 'fa.cpp' 'break'
 commands
     silent
-    printf "boundary update:\t"
+    printf "boundary update:\n"
     run_until
 end
 
-break_re '*contxt_idx = kc->kct_l++;//GDB:1' 'fa.cpp' 'break'
+break_re '//GDB:1$' 'fa.cpp' 'break'
 commands
     silent
-    pkct k
+    pdna seq.dna ','
+    run_until
+end
+
+break_re 'b.prev = kc->kct + .contxt_idx;' 'fa.cpp' 'break'
+commands
+    silent
+    printf "\nThese %u were moved to kct end.\n", (*thisk - b.sk) - b.moved + 1
+    pkct *thisk
     run_until
 end
 
 break_re '*contxt_idx = kc->kct_l++;//GDB:2' 'fa.cpp' 'break'
 commands
     silent
-    pkct k
+    pkct *thisk
     run_until
 end
 
 break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
     silent
+    printf "^^^---moved up\n"
     pkct k
     run_until
 end
@@ -267,16 +269,10 @@ commands
     run_until
 end
 
-break_re '//GDB:mantra3$' 'fa.cpp' 'break'
+break_re '// next mantra$' 'fa.cpp' 'break'
 commands
     silent
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-break_re '//GDB:mantra4$' 'fa.cpp' 'break'
-commands
-    silent
+    printf 'next mantra\n'
     print show_mantras(kc, b.it)
     run_until
 end
@@ -290,6 +286,7 @@ commands
     run_until
 end
 
+#break next_mantra if b.prev == 0
 
 #define reached_boundary
 #    bt 1
@@ -298,7 +295,7 @@ end
 #break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 
-break_re 'kc->last_uqct = kc->uqct;' 'fa.cpp' 'break'
+break_re 'kc->uqct = k - b.sk;' 'fa.cpp' 'break'
 commands
     silent
     pkct k
@@ -312,6 +309,31 @@ commands
     pkct k
     print show_mantras(kc, b.it)
     #run_until
+end
+
+break_re 'if (IS_UQ(k))' 'fa.cpp' 'break'
+commands
+    silent
+    call print_posseq(b.s, *k, KEY_WIDTH)
+    if ~*k & DUP_BIT
+        printf "uniq----^^^\n"
+    end
+    run_until
+end
+
+
+break_re 'NB(hdr_end_k(kc, h) >= b.sk);' 'fa.cpp' 'break'
+commands
+    silent
+    printf "stored offset %u for hdr %u\nnext hdr\n", b.sk - kc->kct, h - kc->h
+    if h - kc->h != kc->h_l - 1
+        printf "2bit sequence offset became %u:\t", b.s + h->len - kc->s
+        call print_dna(b.s[h->len], '.', 4)
+        printf "..\n"
+    else
+        printf "(looping)\n"
+    end
+    run_until
 end
 
 #########################################################################################

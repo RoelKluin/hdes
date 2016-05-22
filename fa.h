@@ -81,7 +81,7 @@ seq_next(struct keyseq_t &seq)
 #define in_scope(kc, fst, nxt) ({\
     uint32_t __f = fst, __n = nxt;\
     NB((__f & 1) == 0 && (__n & 1) == 0);\
-    NB(__f < __n, "%u, %u", __f, __n);\
+    NB(__f < __n, "%u, %u", __f >> 1, __n >> 1);\
     NB(__n <= kc->s_l);\
     (__n) - (__f) - 2u < ((kc)->extension << 1);\
 })
@@ -89,7 +89,7 @@ seq_next(struct keyseq_t &seq)
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t s; // start pos
     uint32_t corr; // 'real' position correction
-    uint32_t e; // end pos
+    uint32_t e; // end pos including KEY_WIDTH
     uint32_t ke; // offset to end k of mantra
 };
 
