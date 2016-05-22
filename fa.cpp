@@ -49,7 +49,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 
     for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
         while (k - kc->kct < *hkoffs) {
-            char c = k!=tk?(k!=b.prev?(k!=b.sk?' ':'s'):'p'):'k';
+            char c = k!=tk?(k!=b.prev?(k!=b.tgtk?' ':'s'):'p'):'k';
             EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
@@ -88,7 +88,7 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
         C uint32_t end = (*b.it).e;
         C uint32_t ke = (*b.it).ke;
         (*b.it).e = prev;
-        (*b.it).ke = b.sk - kc->kct;
+        (*b.it).ke = b.tgtk - kc->kct;
         if (thisk - kc->kct != (*b.it).ke) {         // not at mantra end either
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*b.it).s = p - NT_WIDTH;                 // mantra became two smaller ranges.
@@ -106,14 +106,14 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C thisk, C uint32_t prev, C uint32_t
     }//GDB:mantra1
 }
 
-// if kct grows, pointers *thisk, k, b.sk b.prev become invalid
+// if kct grows, pointers *thisk, k, b.tgtk b.prev become invalid
 static void
 buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 {
     if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
         uint32_t ok1, ok2, ok3, ok4;
 
-        ok1 = b.sk - kc->kct;
+        ok1 = b.tgtk - kc->kct;
         // adapting b.prev is not needed: is always set after function.
         ok3 = *k1 - kc->kct;
         ok4 = k2 ? *k2 - kc->kct : ~0u;
@@ -121,7 +121,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
         if_ever (t == NULL)
             raise(SIGTRAP);
         kc->kct = t;
-        b.sk = t + ok1;
+        b.tgtk = t + ok1;
         *k1 = t + ok3;
         if (ok4 != ~0u) *k2 = t + ok4;
     }
@@ -138,23 +138,20 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
 
     if (in_scope(kc, prev, pend)) { // a 2nd uniq
         shrink_mantra(kc, b, *thisk, prev, pend);
-        // The distance between b.sk and k may have grown by excised 1st kcts (beside uniq).
-        if (*thisk - b.sk > b.moved) {
+        // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
 
-            for (uint32_t *k = b.sk + b.moved; k <= *thisk; ++k) {
-                NB(k < kc->kct + kc->kct_l);
-                buf_grow_ks(kc, b, thisk, &k);
-                NB(k != kc->kct + kc->kct_l);
-                kc->kct[kc->kct_l] = seq.p = *k;
-                contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
-                *k ^= *k;//
-                *contxt_idx = kc->kct_l++;//GDB:1
-            }
-            b.prev = kc->kct + *contxt_idx;
-            b.moved = b.sk - *thisk + 1;
-        } else {
-            b.prev = *thisk;
+        EPR("previously moved were %u", b.moved);
+        for (uint32_t *k = b.tgtk + b.moved; k <= *thisk; ++k) {
+            NB(k < kc->kct + kc->kct_l);
+            buf_grow_ks(kc, b, thisk, &k);
+            NB(k != kc->kct + kc->kct_l);
+            kc->kct[kc->kct_l] = seq.p = *k;
+            contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
+            *k ^= *k;//
+            *contxt_idx = kc->kct_l++;//GDB:1
+            ++b.moved;
         }
+        b.prev = kc->kct + *contxt_idx;
         return;
     }
     // prev to pend are uniques, not in scope. between uniqs are
@@ -167,7 +164,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
         uint32_t *k = kc->kct + *contxt_idx;
 print_seq(&seq);
 
-        if (k < b.sk) {
+        if (k < b.tgtk) {
             // second occurance
 
             if (~*k & DUP_BIT) {
@@ -184,13 +181,14 @@ print_seq(&seq);
                 EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
             *k = seq.p; // set new pos and strand, unset dupbit
-            if (b.sk != k) {
-                *b.sk = *k;
+            if (b.tgtk != k) {
+                *b.tgtk = *k;
                 *k ^= *k;//
-                *contxt_idx = b.sk - kc->kct;//GDB:move
+                *contxt_idx = b.tgtk - kc->kct;//GDB:move
             }
-            ++b.sk;
-            NB(b.sk <= kc->kct + kc->kct_l);
+            ++b.tgtk;
+
+            NB(b.tgtk <= kc->kct + kc->kct_l);
         }
         seq.p = b2pos_of(seq.p);
         if (seq.p == pend)
@@ -212,7 +210,7 @@ print_seq(&seq);
         if (pend != (*b.it).e) {
             kc->bnd->insert(b.it, *b.it);  // copy of current
             (*--b.it).e = pend;
-            (*b.it).ke = b.sk - kc->kct;
+            (*b.it).ke = b.tgtk - kc->kct;
             (*++b.it).s = pend - 2;
             //mantra4
         }
@@ -236,7 +234,7 @@ next_mantra(kct_t *kc, Bnd &b, uint32_t **k)
         return;
 
     // next mantra
-    (*b.it).ke = b.sk - kc->kct;
+    (*b.it).ke = b.tgtk - kc->kct;
     if (++b.it == kc->bnd->end())
         return;
 }
@@ -257,7 +255,7 @@ ext_uq_iter(kct_t *kc)
 {
     uint32_t *k = kc->kct; // location after uniques, from last time
     Bnd b = {
-        .sk = k,
+        .tgtk = k,
         .s = kc->s,
         .prev = NULL,
         .moved = 0,
@@ -280,9 +278,8 @@ ext_uq_iter(kct_t *kc)
 
         buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
         // also update new end for header
-        kc->hkoffs[h - kc->h] = b.sk - kc->kct;
+        kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
 
-        NB(hdr_end_k(kc, h) >= b.sk);
         if (b.it == kc->bnd->end())
             break;
 
@@ -290,7 +287,7 @@ ext_uq_iter(kct_t *kc)
         ++h;
     }
 
-    kc->uqct = k - b.sk;
+    kc->uqct = k - b.tgtk;
     Hdr* h = kc->h;
     b.s = kc->s;
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
@@ -300,17 +297,17 @@ ext_uq_iter(kct_t *kc)
         while (k - kc->kct < *hkoffs) {
             if (*k != 0) {
                 keyseq_t seq = {.p = *k };
-                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.sk - kc->kct;
-                *b.sk++ = *k;
+                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
+                *b.tgtk++ = *k;
                 *k ^= *k;//
             }
             ++k;
         }
         NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
-        *hkoffs = b.sk - kc->kct;
+        *hkoffs = b.tgtk - kc->kct;
         b.s += h->len;
     }
-    NB(b.sk - kc->kct == skctl);
+    NB(b.tgtk - kc->kct == skctl);
     kc->kct_l = skctl;
     return 0;
 }

@@ -199,12 +199,12 @@ commands
 end
 
 #b fa.cpp:251
-break_re '/NB(hdr_end_k(kc, h) >= b.sk);' 'fa.cpp' 'break'
-commands
-    silent
-    printf "uniq at\t%u\n", *k >> 1
-    run_until
-end
+#break_re '/NB(hdr_end_k(kc, h) >= b.tgtk);' 'fa.cpp' 'break'
+#commands
+#    silent
+#    printf "uniq at\t%u\n", *k >> 1
+#    run_until
+#end
 
 #b fa.cpp:201
 #
@@ -233,7 +233,7 @@ end
 break_re 'b.prev = kc->kct + .contxt_idx;' 'fa.cpp' 'break'
 commands
     silent
-    printf "\nThese %u were moved to kct end.\n", (*thisk - b.sk) - b.moved + 1
+    printf "\nThese were moved to kct end.\n"
     pkct *thisk
     run_until
 end
@@ -279,7 +279,7 @@ end
 
 
 break reached_boundary
-#break_re 'b.moved = b.sk - thisk + 1;$' 'fa.cpp' 'break'
+#break_re 'b.moved = b.tgtk - thisk + 1;$' 'fa.cpp' 'break'
 commands
     silent
     pkct
@@ -295,7 +295,7 @@ end
 #break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
 
-break_re 'kc->uqct = k - b.sk;' 'fa.cpp' 'break'
+break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
 commands
     silent
     pkct k
@@ -322,10 +322,10 @@ commands
 end
 
 
-break_re 'NB(hdr_end_k(kc, h) >= b.sk);' 'fa.cpp' 'break'
+break_re '// also update new end for header' 'fa.cpp' 'break'
 commands
     silent
-    printf "stored offset %u for hdr %u\nnext hdr\n", b.sk - kc->kct, h - kc->h
+    printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, h - kc->h
     if h - kc->h != kc->h_l - 1
         printf "2bit sequence offset became %u:\t", b.s + h->len - kc->s
         call print_dna(b.s[h->len], '.', 4)
