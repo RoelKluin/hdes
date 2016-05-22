@@ -150,7 +150,7 @@ commands
         output  kc->id[h->ido]
         printf "\n"
     else
-        if kc->s_l != h->s_s
+        if seq.p != 0
             printf "N stretch of %u\n", corr
         else
             printf "N stretch at start of contig (not inserted)\n"

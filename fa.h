@@ -82,7 +82,7 @@ seq_next(struct keyseq_t &seq)
     uint32_t __f = fst, __n = nxt;\
     NB((__f & 1) == 0 && (__n & 1) == 0);\
     NB(__f < __n, "%u, %u", __f >> 1, __n >> 1);\
-    NB(__n <= kc->s_l);\
+    NB((__n >> 1) <= kc->s_l);\
     (__n) - (__f) - 2u < ((kc)->extension << 1);\
 })
 
