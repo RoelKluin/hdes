@@ -102,7 +102,7 @@ end
 
 
 define run_until
-    if kc->iter == 0 && kc->extension <= 1
+    if kc->iter == 0 && kc->extension <= 0
         c
     else
         bt 1
