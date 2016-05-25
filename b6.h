@@ -151,9 +151,13 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 
 #define build_seq(s, seq, pend)\
     do {\
-        get_next_nt_seq(s, seq);\
-        seq.p += 2;\
-    } while (seq.p != pend)
+        if (p < NT_WIDTH) raise(SIGTRAP);\
+        seq.p -= NT_WIDTH;\
+        do {\
+            get_next_nt_seq(s, seq);\
+            seq.p += 2;\
+        } while (seq.p != pend);\
+    } while (0)
 
 
 // if with_orient is 1, the orientation is stored in the first bit of seq.p (
@@ -172,8 +176,6 @@ static uint32_t
 _build_ndx_kct(keyseq_t &seq, uint8_t const*const s, uint32_t with_orient = 1)
 {
     uint32_t p = seq.p = _b2pos_of(seq.p);
-    if (p < NT_WIDTH) raise(SIGTRAP);
-    seq.p -= NT_WIDTH;
     build_seq(s, seq, p);
     get_ndx(seq, with_orient);
     if (seq.t >= KEYNT_BUFSZ) raise(SIGTRAP);

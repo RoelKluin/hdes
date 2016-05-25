@@ -76,20 +76,23 @@ seq_next(struct keyseq_t &seq)
 
 #define DEBUG 1
 
-#define _prev_or_bnd_start(b) (b.prev ? b2pos_of(*b.prev) : (*b.it).s + NT_WIDTH - 2)
+#define is_no_end_k(kc, b, k) (k - kc->kct <= (*b.it).ke)
 
-#define in_scope(kc, fst, nxt) ({\
-    uint32_t __f = fst, __n = nxt;\
-    NB((__f & 1) == 0 && (__n & 1) == 0);\
-    NB(__f < __n, "%u, %u", __f >> 1, __n >> 1);\
-    NB((__n >> 1) <= kc->s_l);\
-    (__n) - (__f) - 2u < ((kc)->extension << 1);\
-})
+#define after_prev(b) (b.prev ? b2pos_of(*b.prev) + 2: (*b.it).s)
+
+#define kepos(kc, it) (b2pos_of(kc->kct[(*it).ke]))
+
+#define last_kepos(kc) (b2pos_of(kc->kct[kc->bnd->back().ke]))
+
+#define before_this(kc, b, k) (is_no_end_k(kc, b, k) ? b2pos_of(*k) - 2: kepos(kc, b.it))
+
+#define in_scope(kc, b, k) (is_no_end_k(kc, b, k) ?\
+        (b2pos_of(*k) < ((kc)->extension << 1) + after_prev(b)) :\
+        (kepos(kc, b.it) + 2 <= after_prev(b)))
 
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t s; // start pos
     uint32_t corr; // 'real' position correction
-    uint32_t e; // end pos including KEY_WIDTH
     uint32_t ke; // offset to end k of mantra
 };
 

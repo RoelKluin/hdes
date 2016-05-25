@@ -86,11 +86,10 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
 }
 
 static inline void
-set_header_type(kct_t*C kc, Hdr* h, int type, uint32_t corr, uint32_t endpos)
+set_header_type(kct_t*C kc, Hdr* h, int type, uint32_t corr)
 {
     h->p_l = type;
     kc->bnd->back().corr = corr;
-    kc->bnd->back().e = endpos;
 }
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
@@ -118,7 +117,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
-        kc->bnd->push_back({0});
+        kc->bnd->push_back({.s=NT_WIDTH});
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -131,26 +130,26 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         h = got->second;
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
-        // only insert when last contig had any sequence
-        if (kc->bnd->back().e != kc->bnd->back().s) {
+        // only insert when last contig had at least one KEY_WIDTH of sequence
+        if (last_kepos(kc) != kc->bnd->back().s) {
             if (res != NR && res != META) {
-                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd->back().corr, ~0u);
+                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd->back().corr);
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
                 return h;
             }
 
             // correction propagation Not thoroughly checked yet...
-            uint32_t corr = kc->bnd->back().corr - kc->bnd->back().e; // start of current is added later.
-            kc->bnd->push_back({.s=0, .corr=corr});
+            uint32_t corr = kc->bnd->back().corr - last_kepos(kc); // start of current is added later.
+            kc->bnd->push_back({.s= NT_WIDTH, .corr=corr});
         }
     }
 
     if (res == NR || res == META) {
         // ensembl coords are 1-based, we use 0-based.
-        set_header_type(kc, h, res, atoi(kc->id + part[START]) - 1, atoi(kc->id + part[END]));
+        set_header_type(kc, h, res, atoi(kc->id + part[START]) - 1);
     } else { //TODO: hash lookup from fai
         EPR("\nWARNING: non-ensembl reference.");
-        set_header_type(kc, h, UNKNOWN_HDR, 0, ~0u);
+        set_header_type(kc, h, UNKNOWN_HDR, 0);
     }
     return h;
 }
@@ -158,8 +157,10 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 static inline void
 end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
-    kc->bnd->back().e = len;
-    kc->bnd->back().ke = kc->kct_l;
+    EPQ(len != last_kepos(kc) && last_kepos(kc) != ~0u,
+            "End position does not position given in header %u <=> %u (given position ignored)",
+            len, last_kepos(kc));
+    kc->bnd->back().ke = kc->kct_l - 1;
     kc->totNts += len + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }
@@ -169,6 +170,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
+    EPR(">%s:s len:%u", kc->id + h->ido, h->len);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);
     return 0;
@@ -201,14 +203,14 @@ case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
             _addtoseq(kc->s, seq);
+            next_seqpos(kc->s, seq);
             if (i == 0) {
-                next_seqpos(kc->s, seq);
                 uint32_t* n = get_kct(kc, seq, 1);
                 if (*n == NO_KCT) {
 
                     buf_grow(kc->kct, 1, 0);
                     *n = kc->kct_l++;
-                    // set first pos + orient
+                    // set first pos + orient, one based & one left shifted pos
                     kc->kct[*n] = seq.p;
 
                 } else if (!(kc->kct[*n] & DUP_BIT)) {
@@ -218,18 +220,16 @@ case 'G':   seq.t &= 0x3;
                 }
                 seq.p = b2pos_of(seq.p);
             } else {
-                if (i == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
+                if (i-- == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
-                    if (seq.p) { // N-stretch, unless at start, needs insertion
+                    if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h, seq.p);
                         corr += kc->bnd->back().corr;
-                        kc->bnd->push_back({.s = seq.p});
+                        kc->bnd->push_back({.s = seq.p + NT_WIDTH});
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;
                 }
-                --i;
-                next_seqpos(kc->s, seq);
             }
             break;
 case 0x1e: // new contig
@@ -247,7 +247,8 @@ case 0x1e: // new contig
             }
             h = new_header(kc, h, g, gc, lookup);
             NB(h != NULL);
-            --corr;
+            i = KEY_WIDTH - 1;
+            break;
 default:    if (isspace(seq.t))
                 break;
             i = KEY_WIDTH - 1;
