@@ -29,13 +29,13 @@
 
 // stored position is one-based to ensure a bit is set
 // this is the kct offset: can be 0.
-#define NO_KCT -1u
+#define NO_K -1u
 
 #define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
 
 #define IS_DUP(k) ({\
     decltype(*(k)) __t = *(k);\
-    NB(b2pos_of(__t) >= (KEY_WIDTH - 1) && __t != NO_KCT);\
+    NB(b2pos_of(__t) >= (KEY_WIDTH - 1) && __t != NO_K);\
     __t & DUP_BIT;\
 })
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
@@ -54,7 +54,7 @@ seq_next(struct keyseq_t &seq)
 #define get_kct(kc, seq, with_orient) ({\
     get_ndx(seq, with_orient);\
     NB(seq.t < KEYNT_BUFSZ);\
-    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_KCT);\
+    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_K);\
     kc->contxt_idx + seq.t;\
 })
 
@@ -84,11 +84,11 @@ seq_next(struct keyseq_t &seq)
 
 #define last_kepos(kc) (b2pos_of(kc->kct[kc->bnd->back().ke]))
 
-#define before_this(kc, b, k) (is_no_end_k(kc, b, k) ? b2pos_of(*k) - 2: kepos(kc, b.it))
+#define before_this(kc, b, k) (is_no_end_k(kc, b, k) ? b2pos_of(*k) - 2 : kepos(kc, b.it))
 
 #define in_scope(kc, b, k) (is_no_end_k(kc, b, k) ?\
         (b2pos_of(*k) < ((kc)->extension << 1) + after_prev(b)) :\
-        (kepos(kc, b.it) + 2 <= after_prev(b)))
+        (kepos(kc, b.it) < after_prev(b)))
 
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t s; // start pos
@@ -114,7 +114,8 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
-    uint32_t len;     // 2bit length of this contig
+    uint32_t len, end;  // 2bit length of this contig, TODO use only end - requires frames in
+                        // per contig to build keys
     uint32_t ido;     // id contains offset to kc->id character for the header ID.
     uint8_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
@@ -135,13 +136,13 @@ struct kct_t {
                    // this ndx or surroundings that do result in an ndx that does occur.
 
     uint32_t* kct;
-                   // non occurant are initally set to NO_KCT. see Extension below.
+                   // non occurant are initally set to NO_K. see Extension below.
     Hdr* h;
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
                       // per extension per contig.
 
                    // ndx offset for key extensions. If a position is after this u64 of the nth
-                   // extension n u64 (but before the next, or NO_KCT) then the key became unique
+                   // extension n u64 (but before the next, or NO_K) then the key became unique
                    // with this extension. If a key is found to be incorrect, One or more
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
@@ -160,7 +161,7 @@ b2pos_of(kct_t C*C kc, uint32_t C*C k)
 {
     NB(k - kc->kct < kc->kct_l);
     NB(k - kc->kct >= 0);
-    NB(*k != NO_KCT);
+    NB(*k != NO_K);
 
     return _b2pos_of(*k);
 }
@@ -168,13 +169,13 @@ b2pos_of(kct_t C*C kc, uint32_t C*C k)
 static inline uint32_t
 b2pos_of(uint32_t C k)
 {
-    NB(k != NO_KCT);
+    NB(k != NO_K);
     return _b2pos_of(k);
 }
 
 #define hdr_end_k(kc, h) ({\
     uint32_t __koffs = (kc)->hkoffs[(h) - (kc)->h];\
-    NB(__koffs <= (kc)->kct_l);\
+    NB(__koffs < (kc)->kct_l);\
     (kc)->kct + __koffs;\
 })
 

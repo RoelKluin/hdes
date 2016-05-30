@@ -170,8 +170,9 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
+    h->end = seq.p;
     EPR(">%s:s len:%u", kc->id + h->ido, h->len);
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l - 1);
     end_pos(kc, h, seq.p);
     return 0;
 }
@@ -206,7 +207,7 @@ case 'G':   seq.t &= 0x3;
             next_seqpos(kc->s, seq);
             if (i == 0) {
                 uint32_t* n = get_kct(kc, seq, 1);
-                if (*n == NO_KCT) {
+                if (*n == NO_K) {
 
                     buf_grow(kc->kct, 1, 0);
                     *n = kc->kct_l++;
@@ -274,7 +275,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->hkoffs = buf_init(kc->hkoffs, 1);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-        kc->contxt_idx[i] = NO_KCT;
+        kc->contxt_idx[i] = NO_K;
 
     /* TODO: load dbSNP and known sites, and mark them. */
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");
