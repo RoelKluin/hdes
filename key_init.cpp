@@ -98,7 +98,7 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
-new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
+new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint32_t endpos)
 {
     uint32_t part[ENS_HDR_PARTCT] = {0};
     int res = parse_header_parts(kc, g, gc, part);
@@ -131,7 +131,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had at least one KEY_WIDTH of sequence
-        if (last_kepos(kc) != kc->bnd->back().s) {
+        if (endpos != kc->bnd->back().s) {
             if (res != NR && res != META) {
                 set_header_type(kc, h, UNKNOWN_HDR, kc->bnd->back().corr);
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
@@ -139,7 +139,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
             }
 
             // correction propagation Not thoroughly checked yet...
-            uint32_t corr = kc->bnd->back().corr - last_kepos(kc); // start of current is added later.
+            uint32_t corr = kc->bnd->back().corr - endpos; // start of current is added later.
             kc->bnd->push_back({.s= NT_WIDTH, .corr=corr});
         }
     }
@@ -157,9 +157,8 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup)
 static inline void
 end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
-    EPQ(len != last_kepos(kc) && last_kepos(kc) != ~0u,
-            "End position does not position given in header %u <=> %u (given position ignored)",
-            len, last_kepos(kc));
+    EPQ(len != h->end, "End position does not match given in header %u <=> %u (given ignored)",
+            len, h->end);
     kc->bnd->back().ke = kc->kct_l - 1;
     kc->totNts += len + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
@@ -246,7 +245,7 @@ case 0x1e: // new contig
                 }
                 seq.p = 0;
             }
-            h = new_header(kc, h, g, gc, lookup);
+            h = new_header(kc, h, g, gc, lookup, seq.p);
             NB(h != NULL);
             i = KEY_WIDTH - 1;
             break;
