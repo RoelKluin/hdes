@@ -181,18 +181,18 @@ end
 #b fa.cpp:157
 break_re 'for (;;) {' 'fa.cpp' 'tbreak'
 commands
-    silent
+    #silent
     pkct kc->kct + *contxt_idx
     print show_mantras(kc, b.it)
     wa seq.dna
     commands
-        silent
+        #silent
         pseq
         run_until
     end
     break_re 'for(;;) {' 'fa.cpp' 'break'
     commands
-        silent
+        #silent
         handle_non_uniques
     end
     handle_non_uniques
@@ -201,7 +201,7 @@ end
 #b fa.cpp:251
 #break_re '/NB(hdr_end_k(kc, h) >= b.tgtk);' 'fa.cpp' 'break'
 #commands
-#    silent
+#    #silent
 #    printf "uniq at\t%u\n", *k >> 1
 #    run_until
 #end
@@ -219,21 +219,21 @@ end
 break next_mantra
 #break_re '// update assembly' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     printf "boundary update:\n"
     run_until
 end
 
 break_re '//GDB:1$' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     pdna seq.dna ','
     run_until
 end
 
 break_re 'b.prev = kc->kct + .contxt_idx;' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     printf "\nThese were moved to kct end.\n"
     pkct *thisk
     run_until
@@ -241,14 +241,14 @@ end
 
 break_re '*contxt_idx = kc->kct_l++;//GDB:2' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     pkct *thisk
     run_until
 end
 
 break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     printf "^^^---moved up\n"
     pkct k
     run_until
@@ -257,7 +257,7 @@ end
 #break shrink_mantra
 break_re '//GDB:mantra1$' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     print show_mantras(kc, b.it)
     run_until
 end
@@ -265,27 +265,27 @@ end
 #break reached_boundary
 break_re '//GDB:mantra2$' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     print show_mantras(kc, b.it)
     run_until
 end
 
 break_re '// next mantra$' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     printf 'next mantra\n'
     print show_mantras(kc, b.it)
     run_until
 end
 
 
-break reached_boundary
+#break reached_boundary
 #break_re 'b.moved = b.tgtk - thisk + 1;$' 'fa.cpp' 'break'
-commands
-    silent
-    pkct
-    run_until
-end
+#commands
+#    #silent
+#    pkct
+#    run_until
+#end
 
 #break next_mantra if b.prev == 0
 
@@ -298,7 +298,7 @@ end
 
 break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     pkct k
     print show_mantras(kc, b.it)
     run_until
@@ -306,7 +306,7 @@ end
 
 break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     pkct k
     print show_mantras(kc, b.it)
     #run_until
@@ -314,7 +314,7 @@ end
 
 break_re 'if (IS_UQ(k))' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     call print_posseq(b.s, *k, KEY_WIDTH)
     if ~*k & DUP_BIT
         printf "uniq----^^^\n"
@@ -325,7 +325,7 @@ end
 
 break_re '// also update new end for header' 'fa.cpp' 'break'
 commands
-    silent
+    #silent
     printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, h - kc->h
     if h - kc->h != kc->h_l - 1
         printf "2bit sequence offset became %u:\t", b.s + h->len - kc->s
