@@ -159,7 +159,7 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
     EPQ(len != h->end, "End position does not match given in header %u <=> %u (given ignored)",
             len, h->end);
-    kc->bnd->back().ke = kc->kct_l - 1;
+    kc->bnd->back().ke = kc->kct_l;
     kc->totNts += len + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }
@@ -171,7 +171,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
     h->len = (seq.p >> 3) + !!(seq.p & 6);
     h->end = seq.p;
     EPR(">%s:s len:%u", kc->id + h->ido, h->len);
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l - 1);
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);
     return 0;
 }

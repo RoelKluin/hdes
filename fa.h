@@ -76,7 +76,7 @@ seq_next(struct keyseq_t &seq)
 
 #define DEBUG 1
 
-#define is_no_end_k(kc, b, k) (k - kc->kct <= (*b.it).ke)
+#define is_no_end_k(kc, b, k) (k - kc->kct < (*b.it).ke)
 
 #define after_prev(b) (b.prev ? b2pos_of(*b.prev) + 2: (*b.it).s)
 
