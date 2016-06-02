@@ -297,12 +297,21 @@ ext_uq_iter(kct_t *kc)
     kc->uqct = k - b.tgtk;
     h = kc->h;
     b.s = kc->s;
+    b.it = kc->bnd->begin();
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
     for (k = kc->kct + skctl; k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
 
         while (k - kc->kct < *hkoffs) {
             if (*k != 0) {
+                while (b.it != kc->bnd->end()) {
+                    if ((*b.it).ke >= k - kc->kct) {
+                        if ((*b.it).ke == k - kc->kct)
+                            (*b.it).ke = b.tgtk - kc->kct;
+                        break;
+                    }
+                    ++b.it;
+                }
                 keyseq_t seq = {.p = *k };
                 kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
                 *b.tgtk++ = *k;

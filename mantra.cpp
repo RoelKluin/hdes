@@ -36,8 +36,6 @@ show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
                     kc->id + h->ido, (*it).corr, (*it).s >>1, end >> 1, ke);
             if (ke >= kc->hkoffs[h - kc->h])
                 ++h;
-            else if (ke >= kc->hkoffs[kc->h_l])
-                ++h;
         } while (++it != kc->bnd->end());
     } else {
         EPR("[ entirely mapable ]");
