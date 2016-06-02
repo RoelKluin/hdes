@@ -291,7 +291,7 @@ ext_uq_iter(kct_t *kc)
         } else {
             (*b.it).ke = b.tgtk - kc->kct;
         }
-
+        //GDB:next mantra
     } while (++b.it != kc->bnd->end());
 
     kc->uqct = k - b.tgtk;
