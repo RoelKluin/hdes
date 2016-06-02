@@ -49,7 +49,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
 
     for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
         while (k - kc->kct < *hkoffs) {
-            char c = k!=tk?(k!=b.prev?(k!=b.tgtk?' ':'t'):'p'):'k';
+            char c = k!=tk?((b.prev == NO_K || k!=kc->kct + kc->contxt_idx[b.prev])?(k!=b.tgtk?' ':'t'):'p'):'k';
             EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
@@ -84,9 +84,9 @@ static void
 shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
 {
     NB(b.it != kc->bnd->end());
-    if (b.prev) { // not at mantra start
+    if (b.prev != NO_K) { // not at mantra start
         C uint32_t ke = (*b.it).ke;
-        (*b.it).ke = b.prev - kc->kct;
+        (*b.it).ke = kc->contxt_idx[b.prev];
 
         kc->bnd->insert(b.it, *b.it);     // copy of current
         // mantra became two smaller ranges.
@@ -104,7 +104,6 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
         uint32_t ok1, ok2, ok3, ok4;
 
         ok1 = b.tgtk - kc->kct;
-        // adapting b.prev is not needed: is always set after function.
         ok3 = *k1 - kc->kct;
         ok4 = k2 ? *k2 - kc->kct : ~0u;
         uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
@@ -138,7 +137,7 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
-    keyseq_t seq = { .p = after_prev(b) };
+    keyseq_t seq = { .p = after_prev(kc, b) };
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_K);
     for (;;) {
@@ -194,7 +193,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
         // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
         contxt_idx = excise(kc, b, thisk);
         NB(contxt_idx != NULL);
-        b.prev = kc->kct + *contxt_idx;
+        b.prev = contxt_idx - kc->contxt_idx;//GDB:moved
         EPR("previously moved were %u", b.moved);
         return;
     }
@@ -215,13 +214,16 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
 
         NB(k != *thisk);
         *k = **thisk;
-        b.prev = k;
+        b.prev = contxt_idx - kc->contxt_idx;
         shrink_mantra(kc, b, *thisk);
         **thisk ^= **thisk;//
         *contxt_idx = kc->kct_l++;//GDB:2
 
     } else {
-        b.prev = *thisk;
+        seq.p = b2pos_of(seq.p);
+        get_next_nt_seq(b.s, seq);
+        contxt_idx = get_kct(kc, seq, 0);
+        b.prev = contxt_idx - kc->contxt_idx;
     }
 }
 
@@ -243,7 +245,7 @@ ext_uq_iter(kct_t *kc)
     Bnd b = {
         .tgtk = k,
         .s = kc->s,
-        .prev = NULL,
+        .prev = NO_K,
         .moved = 0,
         .it = kc->bnd->begin()
     };
@@ -252,7 +254,7 @@ ext_uq_iter(kct_t *kc)
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
 
     do {
-        b.prev = NULL;
+        b.prev = NO_K;
         while (k - kc->kct != (*b.it).ke) {
 
             if (IS_UQ(k)) // they are handled during excision (or postponed) - process_mantra()
@@ -262,34 +264,33 @@ ext_uq_iter(kct_t *kc)
         if (k == hdr_end_k(kc, h)) {
             EPR("new hdr");
             // check whether last uniq was adjoining end
-            if (b.prev) {
+            if (b.prev != NO_K) {
                 // in scope ?
-                if (h->end <= (kc->extension << 1) + b2pos_of(*b.prev)) {
+                if (h->end <= (kc->extension << 1) + prev_pos(kc, b)) {
                     EPR("in scope...");
-                    (*b.it).ke = b.prev - kc->kct;
                     --k;
                     excise(kc, b, &k);
                     ++k;
+                    (*b.it).ke = kc->contxt_idx[b.prev];
                 } else {
                     EPR("// XXX single uniq excision (or was it already done?)");
+                    (*b.it).ke = b.tgtk - kc->kct;
                 }
             } else {
                 EPR("// No uniq");
                 move_uniq(kc, b, h->end);
-                //b.it = kc->bnd->erase(b.it); // nothing left
+                (*b.it).ke = b.tgtk - kc->kct;
             }
 
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             // also update new end for header
             kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
 
-            if (b.it == kc->bnd->end())
-                break;
-
             b.s += h->len;
             ++h;
+        } else {
+            (*b.it).ke = b.tgtk - kc->kct;
         }
-        (*b.it).ke = b.tgtk - kc->kct;
 
     } while (++b.it != kc->bnd->end());
 
@@ -300,7 +301,7 @@ ext_uq_iter(kct_t *kc)
     // put uniqs and 1st excised back in array (recompression)
     for (k = kc->kct + skctl; k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
 
-        while (k - kc->kct <= *hkoffs) {
+        while (k - kc->kct < *hkoffs) {
             if (*k != 0) {
                 keyseq_t seq = {.p = *k };
                 kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;

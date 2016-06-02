@@ -78,7 +78,9 @@ seq_next(struct keyseq_t &seq)
 
 #define is_no_end_k(kc, b, k) (k - kc->kct < (*b.it).ke)
 
-#define after_prev(b) (b.prev ? b2pos_of(*b.prev) + 2: (*b.it).s)
+#define prev_pos(kc, b) (b2pos_of(kc->kct[kc->contxt_idx[b.prev]]))
+
+#define after_prev(kc, b) (b.prev != NO_K ? prev_pos(kc, b) + 2: (*b.it).s)
 
 #define kepos(kc, it) (b2pos_of(kc->kct[(*it).ke]))
 
@@ -87,8 +89,8 @@ seq_next(struct keyseq_t &seq)
 #define before_this(kc, b, k) (is_no_end_k(kc, b, k) ? b2pos_of(*k) - 2 : kepos(kc, b.it))
 
 #define in_scope(kc, b, k) (is_no_end_k(kc, b, k) ?\
-        (b2pos_of(*k) < ((kc)->extension << 1) + after_prev(b)) :\
-        (kepos(kc, b.it) < after_prev(b)))
+        (b2pos_of(*k) < ((kc)->extension << 1) + after_prev(kc, b)) :\
+        (kepos(kc, b.it) < after_prev(kc, b)))
 
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t s; // start pos
@@ -123,7 +125,7 @@ struct Hdr {
 struct Bnd {
     uint32_t *tgtk;
     uint8_t* s;
-    uint32_t *prev;
+    uint32_t prev;
     uint32_t moved;
     std::list<Mantra>::iterator it;
 };

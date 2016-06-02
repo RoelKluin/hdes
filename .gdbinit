@@ -231,7 +231,7 @@ commands
     run_until
 end
 
-break_re 'b.prev = kc->kct + .contxt_idx;' 'fa.cpp' 'break'
+break_re 'b.prev = .contxt_idx;//GDB:moved' 'fa.cpp' 'break'
 commands
     #silent
     printf "\nThese were moved to kct end.\n"
