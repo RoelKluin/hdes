@@ -301,24 +301,10 @@ end
 #end
 #break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
 
+###########################################################################
+# ext_uq_iter()
 
-break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
-commands
-#    silent
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
-commands
-#    silent
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-break_re 'if (IS_UQ(k))' 'fa.cpp' 'break'
+break_re '//GDB:UQ1$' 'fa.cpp' 'break'
 commands
 #    silent
     call print_posseq(b.s, *k, KEY_WIDTH)
@@ -328,6 +314,23 @@ commands
     run_until
 end
 
+break_re '//GDB:UQ2$' 'fa.cpp' 'break'
+commands
+#    silent
+    call print_posseq(b.s, *k, KEY_WIDTH)
+    if ~*k & DUP_BIT
+        printf "uniQ----^^^\n"
+    end
+    run_until
+end
+
+break_re '// check whether last uniq was adjoining end' 'fa.cpp' 'break'
+commands
+    printf "new hdr\n"
+    pkct k
+    print show_mantras(kc, b.it)
+    run_until
+end
 
 break_re '// also update new end for header' 'fa.cpp' 'break'
 commands
@@ -342,6 +345,25 @@ commands
     end
     run_until
 end
+
+break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
+commands
+#    silent
+    pkct k
+    print show_mantras(kc, b.it)
+    run_until
+end
+
+break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
+commands
+#    silent
+    b ext_uq_iter
+    pkct kc->kct + kc->kct_l
+    print show_mantras(kc, b.it)
+    run_until
+end
+
+
 
 #########################################################################################
 # mapping

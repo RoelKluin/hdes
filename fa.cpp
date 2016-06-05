@@ -79,6 +79,8 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
  * mantras start at the chr start, the position after a N-stretch or after a region scoped
  * by uniques, the first non-unique after. The mantra ends at chr end, stretch or first non
  * unique before a region scoped by uniques.
+ *
+ * while the no. regions can grow, the total no. sequence decreases, hence: shrink.
  */
 static void
 shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
@@ -154,6 +156,7 @@ print_seq(&seq);
                 --kc->uqct;
             }
         } else {
+
             // 1st occurance;
             ++kc->uqct;    // unique or decremented later.
 
@@ -227,6 +230,55 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     }
 }
 
+static inline Hdr*
+next_hdr(kct_t *kc, Bnd &b, Hdr* h)
+{
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    // also update new end for header
+    kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
+    b.s += h->len;
+    return ++h;
+}
+
+static void
+k_compression(kct_t *kc, Bnd &b, uint32_t skctl)
+{
+    Hdr* h;
+    b.s = kc->s;
+    b.it = kc->bnd->begin();
+    uint32_t *hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
+    uint32_t *k = kc->kct + skctl;
+    kc->kct_l = skctl;
+    // put uniqs and 1st excised back in array (recompression)
+    for (h = kc->h; h != kc->h + kc->h_l; ++h, ++hkoffs) {
+
+        for (;k - kc->kct < *hkoffs; ++k) {
+
+            if (*k == 0)
+                continue;
+
+            if (k != b.tgtk) {
+                keyseq_t seq = {.p = *k };
+                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
+                *b.tgtk = *k;
+                *k ^= *k;//
+            }
+            ++b.tgtk;
+            if (k - kc->kct != (*b.it).ke) // no mantra end
+                continue;
+
+            // XXX: waarom moet .ke een eerder stoppen dan hkoffs ??
+            (*b.it).ke = b.tgtk - kc->kct - 1;
+
+            if (++b.it == kc->bnd->end())
+                break;
+        }
+        NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
+        *hkoffs = b.tgtk - kc->kct;
+        b.s += h->len;
+    }
+}
+
 /*
  * Called for extensions 1+, primary uniques were already determined upon reading the fasta.
  * secondary uniques arise when all but one key are already covered by primary unique keys.
@@ -257,12 +309,12 @@ ext_uq_iter(kct_t *kc)
         b.prev = NO_K;
         while (k - kc->kct != (*b.it).ke) {
 
-            if (IS_UQ(k)) // they are handled during excision (or postponed) - process_mantra()
+            if (IS_UQ(k)) //GDB:UQ1
                 process_mantra(kc, b, &k);
             ++k;
         }
-        if (k == hdr_end_k(kc, h)) {
-            EPR("new hdr");
+        if (k >= hdr_end_k(kc, h)) {
+
             // check whether last uniq was adjoining end
             if (b.prev != NO_K) {
                 // in scope ?
@@ -276,18 +328,15 @@ ext_uq_iter(kct_t *kc)
                     EPR("// XXX single uniq excision (or was it already done?)");
                     (*b.it).ke = b.tgtk - kc->kct;
                 }
-            } else {
+            } else if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
                 EPR("// No uniq");
                 move_uniq(kc, b, h->end);
                 (*b.it).ke = b.tgtk - kc->kct;
+            } else {
+                EPR("not at contig end");
+                (*b.it).ke = b.tgtk - kc->kct;
             }
-
-            buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-            // also update new end for header
-            kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
-
-            b.s += h->len;
-            ++h;
+            h = next_hdr(kc, b, h);
         } else {
             (*b.it).ke = b.tgtk - kc->kct;
         }
@@ -295,35 +344,11 @@ ext_uq_iter(kct_t *kc)
     } while (++b.it != kc->bnd->end());
 
     kc->uqct = k - b.tgtk;
-    h = kc->h;
-    b.s = kc->s;
-    b.it = kc->bnd->begin();
-    uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
-    // put uniqs and 1st excised back in array (recompression)
-    for (k = kc->kct + skctl; k - kc->kct < kc->kct_l; ++h, ++hkoffs) {
-
-        while (k - kc->kct < *hkoffs) {
-            if (*k != 0) {
-                while (b.it != kc->bnd->end()) {
-                    if ((*b.it).ke >= k - kc->kct) {
-                        if ((*b.it).ke == k - kc->kct)
-                            (*b.it).ke = b.tgtk - kc->kct;
-                        break;
-                    }
-                    ++b.it;
-                }
-                keyseq_t seq = {.p = *k };
-                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
-                *b.tgtk++ = *k;
-                *k ^= *k;//
-            }
-            ++k;
-        }
-        NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
-        *hkoffs = b.tgtk - kc->kct;
-        b.s += h->len;
+    if (kc->uqct == 0) {
+        kc->hkoffs_l -= kc->h_l;
+        return 0;
     }
-    kc->kct_l = skctl;
+    k_compression(kc, b, skctl);
     return 0;
 }
 

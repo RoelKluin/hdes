@@ -23,14 +23,7 @@ show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
     if (it != kc->bnd->end()) {
         do {
             uint32_t ke = (*it).ke;
-            uint32_t end;
-            if (ke != kc->hkoffs[h - kc->h]) {
-                EPR("til pos");
-                end = kepos(kc, it) - 2;
-            } else {
-                EPR("til hdr_end");
-                end = h->end;
-            }
+            uint32_t end = ke != kc->hkoffs[h - kc->h] ? kepos(kc, it) - 2 : h->end;
 
             EPR("[%u%c]:\t>%s (%u+)%u - %u\t(ke:%u)", j++, it==here?'*':' ',
                     kc->id + h->ido, (*it).corr, (*it).s >>1, end >> 1, ke);
