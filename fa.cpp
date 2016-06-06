@@ -307,39 +307,48 @@ ext_uq_iter(kct_t *kc)
 
     do {
         b.prev = NO_K;
-        while (k - kc->kct != (*b.it).ke) {
+        if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
+            while (k - kc->kct < kc->hkoffs[h - kc->h] &&
+                    b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
+                if (IS_UQ(k)) //GDB:UQ1
+                    process_mantra(kc, b, &k);
+                ++k;
+            }
+        } else {
+            while (k - kc->kct != (*b.it).ke) {
 
-            if (IS_UQ(k)) //GDB:UQ1
-                process_mantra(kc, b, &k);
-            ++k;
+                if (IS_UQ(k)) //GDB:UQ2
+                    process_mantra(kc, b, &k);
+                ++k;
+            }
         }
-        if (k >= hdr_end_k(kc, h)) {
+        if (k < hdr_end_k(kc, h)) {
+            // multiple boundaries for contig
+            (*b.it).ke = b.tgtk - kc->kct;
+            continue;
+        }
 
-            // check whether last uniq was adjoining end
-            if (b.prev != NO_K) {
-                // in scope ?
-                if (h->end <= (kc->extension << 1) + prev_pos(kc, b)) {
-                    EPR("in scope...");
-                    --k;
-                    excise(kc, b, &k);
-                    ++k;
-                    (*b.it).ke = kc->contxt_idx[b.prev];
-                } else {
-                    EPR("// XXX single uniq excision (or was it already done?)");
-                    (*b.it).ke = b.tgtk - kc->kct;
-                }
-            } else if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
-                EPR("// No uniq");
-                move_uniq(kc, b, h->end);
-                (*b.it).ke = b.tgtk - kc->kct;
+        // check whether last uniq was adjoining end
+        if (b.prev != NO_K) {
+            // in scope ?
+            if (h->end <= (kc->extension << 1) + prev_pos(kc, b)) {
+                --k;
+                excise(kc, b, &k);
+                ++k;
+                (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
-                EPR("not at contig end");
                 (*b.it).ke = b.tgtk - kc->kct;
             }
-            h = next_hdr(kc, b, h);
-        } else {
+        } else if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
+            move_uniq(kc, b, h->end);
             (*b.it).ke = b.tgtk - kc->kct;
+        } else {
+            // leave the .ke uniq, just update the tgt index
+
+            b.tgtk += kc->hkoffs[h - kc->h] - (h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0);
+
         }
+        h = next_hdr(kc, b, h);
         //GDB:next mantra
     } while (++b.it != kc->bnd->end());
 
