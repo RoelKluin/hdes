@@ -103,7 +103,7 @@ static void
 buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 {
     if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
-        uint32_t ok1, ok2, ok3, ok4;
+        uint32_t ok1, ok3, ok4;
 
         ok1 = b.tgtk - kc->kct;
         ok3 = *k1 - kc->kct;
@@ -293,7 +293,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t skctl)
 static int
 ext_uq_iter(kct_t *kc)
 {
-    uint32_t *k = kc->kct; // location after uniques, from last time
+    uint32_t *k = kc->kct;
     Bnd b = {
         .tgtk = k,
         .s = kc->s,
