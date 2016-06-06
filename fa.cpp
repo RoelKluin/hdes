@@ -365,7 +365,7 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res = -ENOMEM;
-    for (kc->extension = 1; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
+    for (kc->extension = 0; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
         kc->iter = 0;
         do { // until no no more new uniques
             kc->uqct = 0;

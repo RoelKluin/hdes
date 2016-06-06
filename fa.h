@@ -89,7 +89,7 @@ seq_next(struct keyseq_t &seq)
 #define before_this(kc, b, k) (is_no_end_k(kc, b, k) ? b2pos_of(*k) - 2 : kepos(kc, b.it))
 
 #define in_scope(kc, b, k) (is_no_end_k(kc, b, k) ?\
-        (b2pos_of(*k) < ((kc)->extension << 1) + after_prev(kc, b)) :\
+        (b2pos_of(*k) <= ((kc)->extension << 1) + after_prev(kc, b)) :\
         (kepos(kc, b.it) < after_prev(kc, b)))
 
 packed_struct Mantra { // not yet covered by unique keys
