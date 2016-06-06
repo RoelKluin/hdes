@@ -203,7 +203,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    keyseq_t seq = move_uniq(kc, b, before_this(kc, b, *thisk));
+    keyseq_t seq = move_uniq(kc, b, is_no_end_k(kc, b, *thisk) ? b2pos_of(**thisk) - 2 : kepos(kc, b.it));
 
     if (*thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
 
