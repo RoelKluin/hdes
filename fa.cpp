@@ -118,22 +118,41 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
     }
 }
 
+static inline uint32_t *
+excise_one(kct_t *kc, Bnd &b, uint32_t **thisk, uint32_t *k)
+{
+    keyseq_t seq = {0};
+    NB(k < kc->kct + kc->kct_l);
+    buf_grow_ks(kc, b, thisk, &k);
+    NB(k != kc->kct + kc->kct_l);
+    kc->kct[kc->kct_l] = seq.p = *k;
+    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
+    *k ^= *k;//
+    *contxt_idx = kc->kct_l++;//GDB:1
+    ++b.moved;
+    return contxt_idx;
+}
+
 static uint32_t *
 excise(kct_t *kc, Bnd &b, uint32_t **thisk)
 {
     uint32_t *contxt_idx = NULL;
-    keyseq_t seq = {0};
-    for (uint32_t *k = b.tgtk + b.moved; k <= *thisk; ++k) {
-        NB(k < kc->kct + kc->kct_l);
-        buf_grow_ks(kc, b, thisk, &k);
-        NB(k != kc->kct + kc->kct_l);
-        kc->kct[kc->kct_l] = seq.p = *k;
-        contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
-        *k ^= *k;//
-        *contxt_idx = kc->kct_l++;//GDB:1
-        ++b.moved;
-    }
+    for (uint32_t *k = b.tgtk + b.moved; k < *thisk; ++k)
+        contxt_idx = excise_one(kc, b, thisk, k);
+
     return contxt_idx;
+}
+
+static inline void
+move_k(kct_t *kc, Bnd &b, uint32_t *k, uint32_t *contxt_idx)
+{
+    if (b.tgtk != k) {
+        NB(*k);
+        *b.tgtk = *k;
+        *k ^= *k;//
+        *contxt_idx = b.tgtk - kc->kct;//GDB:move
+    }
+    ++b.tgtk;
 }
 
 static keyseq_t
@@ -164,13 +183,7 @@ print_seq(&seq);
                 EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
             *k = seq.p; // set new pos and strand, unset dupbit
-            if (b.tgtk != k) {
-                NB(*k);
-                *b.tgtk = *k;
-                *k ^= *k;//
-                *contxt_idx = b.tgtk - kc->kct;//GDB:move
-            }
-            ++b.tgtk;
+            move_k(kc, b, k, contxt_idx);
 
             NB(b.tgtk <= kc->kct + kc->kct_l);
         }
@@ -194,7 +207,9 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     if (in_scope(kc, b, *thisk)) { // a 2nd uniq
         shrink_mantra(kc, b, *thisk);
         // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
-        contxt_idx = excise(kc, b, thisk);
+        excise(kc, b, thisk);
+        contxt_idx = excise_one(kc, b, thisk, *thisk);
+
         NB(contxt_idx != NULL);
         b.prev = contxt_idx - kc->contxt_idx;//GDB:moved
         EPR("previously moved were %u", b.moved);
@@ -332,9 +347,7 @@ ext_uq_iter(kct_t *kc)
         if (b.prev != NO_K) {
             // in scope ?
             if (h->end <= (kc->extension << 1) + prev_pos(kc, b)) {
-                --k;
                 excise(kc, b, &k);
-                ++k;
                 (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
                 (*b.it).ke = b.tgtk - kc->kct;
@@ -346,11 +359,11 @@ ext_uq_iter(kct_t *kc)
             // leave the .ke uniq, just update the tgt index
 
             b.tgtk += kc->hkoffs[h - kc->h] - (h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0);
-
         }
         h = next_hdr(kc, b, h);
         //GDB:next mantra
-    } while (++b.it != kc->bnd->end());
+        ++b.it;
+    } while (b.it != kc->bnd->end());
 
     kc->uqct = k - b.tgtk;
     if (kc->uqct == 0) {
