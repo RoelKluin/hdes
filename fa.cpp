@@ -353,12 +353,31 @@ ext_uq_iter(kct_t *kc)
                 (*b.it).ke = b.tgtk - kc->kct;
             }
         } else if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
+            if (h->end <= (kc->extension << 1) + (*b.it).s) {
+                excise(kc, b, &k);
+                b.it = kc->bnd->erase(b.it);
+                h = next_hdr(kc, b, h);
+                continue;
+            }
             move_uniq(kc, b, h->end);
             (*b.it).ke = b.tgtk - kc->kct;
         } else {
-            // leave the .ke uniq, just update the tgt index
-
-            b.tgtk += kc->hkoffs[h - kc->h] - (h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0);
+            if (b2pos_of(*k) < (kc->extension << 1) + (*b.it).s) {
+                excise(kc, b, &k);
+                b.it = kc->bnd->erase(b.it);
+                h = next_hdr(kc, b, h);
+                continue;
+            }
+            if (b.moved) {
+                keyseq_t seq = {0};
+                while (b.tgtk + b.moved < kc->kct + kc->hkoffs[h - kc->h]) {
+                    seq.p = b2pos_of(*(b.tgtk + b.moved));
+                    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
+                    move_k(kc, b, b.tgtk + b.moved, contxt_idx);
+                }
+            } else {
+                b.tgtk += kc->hkoffs[h - kc->h] - (h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0);
+            }
         }
         h = next_hdr(kc, b, h);
         //GDB:next mantra
