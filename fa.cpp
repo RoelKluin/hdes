@@ -256,16 +256,15 @@ next_hdr(kct_t *kc, Bnd &b, Hdr* h)
 }
 
 static void
-k_compression(kct_t *kc, Bnd &b, uint32_t skctl)
+k_compression(kct_t *kc, Bnd &b, uint32_t *k)
 {
-    Hdr* h;
+    Hdr* h = kc->h;
     b.s = kc->s;
     b.it = kc->bnd->begin();
-    uint32_t *hkoffs = kc->hkoffs + kc->hkoffs_l - kc->h_l;
-    uint32_t *k = kc->kct + skctl;
-    kc->kct_l = skctl;
+    kc->kct_l = k - kc->kct;
+    uint32_t *hkoffs;
     // put uniqs and 1st excised back in array (recompression)
-    for (h = kc->h; h != kc->h + kc->h_l; ++h, ++hkoffs) {
+    for (hkoffs = kc->hkoffs + kc->h_l; hkoffs != kc->hkoffs + kc->hkoffs_l; ++hkoffs) {
 
         for (;k - kc->kct < *hkoffs; ++k) {
 
@@ -288,9 +287,12 @@ k_compression(kct_t *kc, Bnd &b, uint32_t skctl)
             if (++b.it == kc->bnd->end())
                 break;
         }
-        NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
         *hkoffs = b.tgtk - kc->kct;
         b.s += h->len;
+        if(++h == kc->h + kc->h_l) {
+            h = kc->h;
+            b.s = kc->s;
+        }
     }
 }
 
