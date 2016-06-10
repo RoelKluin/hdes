@@ -102,7 +102,7 @@ end
 
 
 define run_until
-    if kc->iter == 0 && kc->extension <= 1
+    if kc->extension == 0 || kc->iter == 0
         c
     else
         bt 1
@@ -357,7 +357,7 @@ end
 break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
 commands
 #    silent
-    b ext_uq_iter
+    #b ext_uq_iter
     pkct kc->kct + kc->kct_l
     print show_mantras(kc, b.it)
     run_until
