@@ -391,7 +391,7 @@ ext_uq_iter(kct_t *kc)
         kc->hkoffs_l -= kc->h_l;
         return 0;
     }
-    k_compression(kc, b, skctl);
+    k_compression(kc, b, k);
     return 0;
 }
 
