@@ -261,7 +261,6 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
     Hdr* h = kc->h;
     b.s = kc->s;
     b.it = kc->bnd->begin();
-    kc->kct_l = k - kc->kct;
     uint32_t *hkoffs;
     // put uniqs and 1st excised back in array (recompression)
     for (hkoffs = kc->hkoffs + kc->h_l; hkoffs != kc->hkoffs + kc->hkoffs_l; ++hkoffs) {
@@ -294,6 +293,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
             b.s = kc->s;
         }
     }
+    kc->kct_l = b.tgtk - kc->kct;
 }
 
 /*
