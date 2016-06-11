@@ -324,25 +324,23 @@ ext_uq_iter(kct_t *kc)
 
     do {
         b.prev = NO_K;
-        if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
-            while (k - kc->kct < kc->hkoffs[h - kc->h] &&
-                    b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
-                if (IS_UQ(k)) //GDB:UQ1
-                    process_mantra(kc, b, &k);
-                ++k;
-            }
-        } else {
-            while (k - kc->kct != (*b.it).ke) {
+        while (k < hdr_end_k(kc, h)) {
+            if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
+                EPR("// uniq as end of mantra region");
+                while (k - kc->kct < kc->hkoffs[h - kc->h] &&
+                        b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
+                    if (IS_UQ(k)) //GDB:UQ1
+                        process_mantra(kc, b, &k);
+                    ++k;
+                }
+            } else {
+                while (k - kc->kct != (*b.it).ke) {
 
-                if (IS_UQ(k)) //GDB:UQ2
-                    process_mantra(kc, b, &k);
-                ++k;
+                    if (IS_UQ(k)) //GDB:UQ2
+                        process_mantra(kc, b, &k);
+                    ++k;
+                }
             }
-        }
-        if (k < hdr_end_k(kc, h)) {
-            // multiple boundaries for contig
-            (*b.it).ke = b.tgtk - kc->kct;
-            continue;
         }
 
         // check whether last uniq was adjoining end
