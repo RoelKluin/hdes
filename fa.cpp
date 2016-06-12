@@ -201,10 +201,10 @@ print_seq(&seq);
 static void
 process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
 {
-
+    int scope = in_scope(kc, b, *thisk);
     uint32_t *contxt_idx = NULL;
 
-    if (in_scope(kc, b, *thisk)) { // a 2nd uniq
+    if (scope >= 0) { // a 2nd uniq
         shrink_mantra(kc, b, *thisk);
         // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
         excise(kc, b, thisk);
