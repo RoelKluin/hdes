@@ -156,7 +156,7 @@ move_k(kct_t *kc, Bnd &b, uint32_t *k, uint32_t *contxt_idx)
 }
 
 static keyseq_t
-move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
+move_uniq(kct_t *kc, Bnd &b, C uint32_t pstart, C uint32_t pend)
 {
     keyseq_t seq = { .p = after_prev(kc, b) };
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
@@ -218,7 +218,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    keyseq_t seq = move_uniq(kc, b, is_no_end_k(kc, b, *thisk) ? b2pos_of(**thisk) - 2 : kepos(kc, b.it));
+    keyseq_t seq = move_uniq(kc, b, after_prev(kc, b), is_no_end_k(kc, b, *thisk) ? b2pos_of(**thisk) - 2 : kepos(kc, b.it));
 
     if (*thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
 
@@ -245,14 +245,12 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
     }
 }
 
-static inline Hdr*
-next_hdr(kct_t *kc, Bnd &b, Hdr* h)
+static inline void
+add_and_update_hkoffs(kct_t *kc, Hdr* h,  Bnd &b)
 {
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     // also update new end for header
     kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
-    b.s += h->len;
-    return ++h;
 }
 
 static void
@@ -294,6 +292,33 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
         }
     }
     kc->kct_l = b.tgtk - kc->kct;
+    if (b.it == kc->bnd->end())
+        return;
+}
+
+static Hdr*
+moveto_hdr(kct_t *kc, Bnd &b, Hdr* h)
+{
+    if (b.it == kc->bnd->end())
+        return NULL;
+
+    uint32_t ke = (*b.it).ke;
+    if (ke <= kc->hkoffs[kc->h_l-1]) {
+        while (ke > kc->hkoffs[h - kc->h])
+            b.s += h++->len;
+    } else { // uniq as end of mantra
+        h = kc->h;
+        b.s = kc->s;
+        for (uint32_t* hkoffs = kc->hkoffs + kc->h_l;
+                hkoffs != (kc->hkoffs + kc->hkoffs_l) && ke >= *hkoffs; ++hkoffs) {
+            b.s += h++->len;
+            if (h == kc->h + kc->h_l) {
+                h = kc->h;
+                b.s = kc->s;
+            }
+        }
+    }
+    return h;
 }
 
 /*
@@ -346,50 +371,50 @@ ext_uq_iter(kct_t *kc)
         // check whether last uniq was adjoining end
         if (b.prev != NO_K) {
             // in scope ?
-            if (h->end <= (kc->extension << 1) + prev_pos(kc, b)) {
+            if (h->end <= prev_pos(kc, b) + (kc->extension << 1)) {
                 excise(kc, b, &k);
                 (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
                 (*b.it).ke = b.tgtk - kc->kct;
             }
-        } else if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
-            if (h->end <= (kc->extension << 1) + (*b.it).s) {
-                excise(kc, b, &k);
-                b.it = kc->bnd->erase(b.it);
-                h = next_hdr(kc, b, h);
-                continue;
-            }
-            move_uniq(kc, b, h->end);
-            (*b.it).ke = b.tgtk - kc->kct;
         } else {
-            if (b2pos_of(*k) < (kc->extension << 1) + (*b.it).s) {
-                excise(kc, b, &k);
-                b.it = kc->bnd->erase(b.it);
-                h = next_hdr(kc, b, h);
-                continue;
-            }
-            if (b.moved) {
-                keyseq_t seq = {0};
-                while (b.tgtk + b.moved < kc->kct + kc->hkoffs[h - kc->h]) {
-                    seq.p = b2pos_of(*(b.tgtk + b.moved));
-                    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);
-                    move_k(kc, b, b.tgtk + b.moved, contxt_idx);
+            NB(k - kc->kct >= kc->hkoffs[h - kc->h]);
+            if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
+
+                if (h->end < (*b.it).s + (kc->extension << 1)) {
+                    excise(kc, b, &k);
+                    b.it = kc->bnd->erase(b.it);
+                    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+                    kc->hkoffs[h - kc->h] = h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0;
+                    h = moveto_hdr(kc, b, h);
+                    continue;
                 }
+
+                move_uniq(kc, b, after_prev(kc, b), h->end);// XXX
+                (*b.it).ke = b.tgtk - kc->kct;
             } else {
-                b.tgtk += kc->hkoffs[h - kc->h] - (h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0);
+                if (b2pos_of(*k) < (*b.it).s + (kc->extension << 1)) {
+                    excise(kc, b, &k);
+                    b.it = kc->bnd->erase(b.it);
+                    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+                    kc->hkoffs[h - kc->h] = h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0;
+                    h = moveto_hdr(kc, b, h);
+                    continue;
+                }
+                move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
             }
         }
-        h = next_hdr(kc, b, h);
+        add_and_update_hkoffs(kc, h, b);
         //GDB:next mantra
         ++b.it;
+        h = moveto_hdr(kc, b, h);
     } while (b.it != kc->bnd->end());
 
     kc->uqct = k - b.tgtk;
-    if (kc->uqct == 0) {
-        kc->hkoffs_l -= kc->h_l;
-        return 0;
-    }
     k_compression(kc, b, k);
+    if (kc->uqct == 0)
+        kc->hkoffs_l -= kc->h_l;
+
     return 0;
 }
 
