@@ -64,9 +64,11 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     __WRITE_PTR(kc->id, fhout, kc->id_l)
 
     for(std::list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
-        val = (*b).corr;
+        val = (*b).ho;
         __WRITE_VAL(val, fhout)
         val = (*b).s;
+        __WRITE_VAL(val, fhout)
+        val = (*b).corr;
         __WRITE_VAL(val, fhout)
         val = (*b).ke;
         __WRITE_VAL(val, fhout)
@@ -104,8 +106,9 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 
     while (blen--) {
         Mantra m = {0};
-        __READ_VAL(m.corr, fhin)
+        __READ_VAL(m.ho, fhin)
         __READ_VAL(m.s, fhin)
+        __READ_VAL(m.corr, fhin)
         __READ_VAL(m.ke, fhin)
         kc->bnd->push_front(m);
     }

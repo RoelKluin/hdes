@@ -90,6 +90,7 @@ seq_next(struct keyseq_t &seq)
         (b2pos_of(*k) - ((kc)->extension << 1)) : kepos(kc, b.it)))
 
 packed_struct Mantra { // not yet covered by unique keys
+    uint32_t ho;
     uint32_t s; // start pos
     uint32_t corr; // 'real' position correction
     uint32_t ke; // offset to end k of mantra

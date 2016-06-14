@@ -117,7 +117,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
-        kc->bnd->push_back({.s=NT_WIDTH});
+        kc->bnd->push_back({.ho = h - kc->h, .s=NT_WIDTH});
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -140,7 +140,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 
             // correction propagation Not thoroughly checked yet...
             uint32_t corr = kc->bnd->back().corr - endpos; // start of current is added later.
-            kc->bnd->push_back({.s= NT_WIDTH, .corr=corr});
+            kc->bnd->push_back({.ho = h - kc->h, .s= NT_WIDTH, .corr=corr});
         }
     }
 
@@ -225,7 +225,7 @@ case 'G':   seq.t &= 0x3;
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         end_pos(kc, h, seq.p);
                         corr += kc->bnd->back().corr;
-                        kc->bnd->push_back({.s = seq.p + NT_WIDTH});
+                        kc->bnd->push_back({.ho = h - kc->h, .s = seq.p + NT_WIDTH});
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;

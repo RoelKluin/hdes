@@ -301,23 +301,9 @@ moveto_hdr(kct_t *kc, Bnd &b, Hdr* h)
 {
     if (b.it == kc->bnd->end())
         return NULL;
+    while (h != kc->h + (*b.it).ho)
+        b.s += h++->len;
 
-    uint32_t ke = (*b.it).ke;
-    if (ke <= kc->hkoffs[kc->h_l-1]) {
-        while (ke > kc->hkoffs[h - kc->h])
-            b.s += h++->len;
-    } else { // uniq as end of mantra
-        h = kc->h;
-        b.s = kc->s;
-        for (uint32_t* hkoffs = kc->hkoffs + kc->h_l;
-                hkoffs != (kc->hkoffs + kc->hkoffs_l) && ke >= *hkoffs; ++hkoffs) {
-            b.s += h++->len;
-            if (h == kc->h + kc->h_l) {
-                h = kc->h;
-                b.s = kc->s;
-            }
-        }
-    }
     return h;
 }
 
@@ -344,34 +330,34 @@ ext_uq_iter(kct_t *kc)
         .it = kc->bnd->begin()
     };
     uint32_t skctl = kc->kct_l;
-    Hdr* h = kc->h;
+    Hdr* h = moveto_hdr(kc, b, kc->h);
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
 
     do {
         b.prev = NO_K;
-        while (k < hdr_end_k(kc, h)) {
-            if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
-                EPR("// uniq as end of mantra region");
-                while (k - kc->kct < kc->hkoffs[h - kc->h] &&
-                        b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
-                    if (IS_UQ(k)) //GDB:UQ1
-                        process_mantra(kc, b, &k);
-                    ++k;
-                }
-            } else {
-                while (k - kc->kct != (*b.it).ke) {
 
-                    if (IS_UQ(k)) //GDB:UQ2
-                        process_mantra(kc, b, &k);
-                    ++k;
-                }
+        if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
+            EPR("// uniq as end of mantra region");
+            while (k - kc->kct < kc->hkoffs[h - kc->h] &&
+                    b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
+                if (IS_UQ(k)) //GDB:UQ1
+                    process_mantra(kc, b, &k);
+                ++k;
+            }
+        } else {
+            NB(k - kc->kct <= kc->hkoffs[h - kc->h]);
+            while (k - kc->kct != (*b.it).ke) {
+
+                if (IS_UQ(k)) //GDB:UQ2
+                    process_mantra(kc, b, &k);
+                ++k;
             }
         }
 
         // check whether last uniq was adjoining end
         if (b.prev != NO_K) {
             // in scope ?
-            if (h->end <= prev_pos(kc, b) + (kc->extension << 1)) {
+            if (h->end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
                 excise(kc, b, &k);
                 (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
@@ -410,10 +396,7 @@ ext_uq_iter(kct_t *kc)
         h = moveto_hdr(kc, b, h);
     } while (b.it != kc->bnd->end());
 
-    kc->uqct = k - b.tgtk;
     k_compression(kc, b, k);
-    if (kc->uqct == 0)
-        kc->hkoffs_l -= kc->h_l;
 
     return 0;
 }
