@@ -334,6 +334,11 @@ ext_uq_iter(kct_t *kc)
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
 
     do {
+        while (h - kc->h != (*b.it).ho) {
+            // also update header
+            buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+            b.s += h++->len;
+        }
         b.prev = NO_K;
         uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
@@ -355,19 +360,9 @@ ext_uq_iter(kct_t *kc)
         }
 
         // check whether last uniq was adjoining end
-        if (b.prev != NO_K) {
-            // in scope ?
-            if (h->end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
-                excise(kc, b, &k);
-                (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
-            } else {
-                if ((*b.it).ke == *hkoffs) {
-                    move_uniq(kc, b, after_prev(kc, b), h->end);
-                    (*b.it).ke = b.tgtk - kc->kct;
-                } else {
-                    move_uniq(kc, b, after_prev(kc, b), kepos(kc, b.it) - 2);
-                }
-            }
+        if (b.prev != NO_K && h->end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
+            excise(kc, b, &k);
+            (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             ++b.it;
         } else {
             NB(k - kc->kct >= *hkoffs);
@@ -394,11 +389,7 @@ ext_uq_iter(kct_t *kc)
         }
         *hkoffs = b.tgtk - kc->kct;
         //GDB:next mantra
-        while (h != kc->h + (*b.it).ho) {
-            // also update header
-            buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-            b.s += h++->len;
-        }
+
     } while (b.it != kc->bnd->end());
 
     k_compression(kc, b, k);
