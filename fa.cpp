@@ -330,7 +330,7 @@ ext_uq_iter(kct_t *kc)
         .it = kc->bnd->begin()
     };
     uint32_t skctl = kc->kct_l;
-    Hdr* h = moveto_hdr(kc, b, kc->h);
+    Hdr* h = kc->h;
     // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
 
     do {
@@ -359,23 +359,21 @@ ext_uq_iter(kct_t *kc)
             }
         }
 
+        uint32_t end = (*b.it).ke == *hkoffs ? h->end : b2pos_of(*k);
         // check whether last uniq was adjoining end
-        if (b.prev != NO_K && h->end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
+        if (end < (*b.it).s + (kc->extension << 1)) {
+            excise(kc, b, &k);
+            b.it = kc->bnd->erase(b.it);
+        } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
             excise(kc, b, &k);
             (*b.it).ke = kc->contxt_idx[b.prev];
             ++b.it;
         } else {
-            uint32_t end = (*b.it).ke == *hkoffs ? h->end : b2pos_of(*k);
-            if (end < (*b.it).s + (kc->extension << 1)) {
-                excise(kc, b, &k);
-                b.it = kc->bnd->erase(b.it);
-            } else {
 
-                move_uniq(kc, b, after_prev(kc, b), end);
-                if ((*b.it).ke == *hkoffs)
-                    (*b.it).ke = b.tgtk - kc->kct;
-                ++b.it;
-            }
+            move_uniq(kc, b, after_prev(kc, b), end);
+            if ((*b.it).ke == *hkoffs)
+                (*b.it).ke = b.tgtk - kc->kct;
+            ++b.it;
         }
         *hkoffs = b.tgtk - kc->kct;
         //GDB:next mantra
