@@ -335,17 +335,17 @@ ext_uq_iter(kct_t *kc)
 
     do {
         b.prev = NO_K;
+        uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
         if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
             EPR("// uniq as end of mantra region");
-            while (k - kc->kct < kc->hkoffs[(*b.it).ho] &&
-                    b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
+            while (k - kc->kct < *hkoffs && b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
                 if (IS_UQ(k)) //GDB:UQ1
                     process_mantra(kc, b, &k);
                 ++k;
             }
         } else {
-            NB(k - kc->kct <= kc->hkoffs[(*b.it).ho]);
+            NB(k - kc->kct <= *hkoffs);
             while (k - kc->kct != (*b.it).ke) {
 
                 if (IS_UQ(k)) //GDB:UQ2
@@ -361,18 +361,17 @@ ext_uq_iter(kct_t *kc)
                 excise(kc, b, &k);
                 (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
-                if ((*b.it).ke == kc->hkoffs[(*b.it).ho]) {
+                if ((*b.it).ke == *hkoffs) {
                     move_uniq(kc, b, after_prev(kc, b), h->end);
                     (*b.it).ke = b.tgtk - kc->kct;
                 } else {
                     move_uniq(kc, b, after_prev(kc, b), kepos(kc, b.it) - 2);
                 }
             }
-            kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
             ++b.it;
         } else {
-            NB(k - kc->kct >= kc->hkoffs[(*b.it).ho]);
-            if ((*b.it).ke == kc->hkoffs[(*b.it).ho]) {
+            NB(k - kc->kct >= *hkoffs);
+            if ((*b.it).ke == *hkoffs) {
 
                 if (h->end < (*b.it).s + (kc->extension << 1)) {
                     excise(kc, b, &k);
@@ -381,21 +380,19 @@ ext_uq_iter(kct_t *kc)
 
                     move_uniq(kc, b, after_prev(kc, b), h->end);
                     (*b.it).ke = b.tgtk - kc->kct;
-                    kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
                     ++b.it;
                 }
             } else {
                 if (b2pos_of(*k) < (*b.it).s + (kc->extension << 1)) {
                     excise(kc, b, &k);
-                    kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
                     b.it = kc->bnd->erase(b.it);
                 } else {
                     move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
-                    kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
                     ++b.it;
                 }
             }
         }
+        *hkoffs = b.tgtk - kc->kct;
         //GDB:next mantra
         while (h != kc->h + (*b.it).ho) {
             // also update header
