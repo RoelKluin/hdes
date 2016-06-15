@@ -246,11 +246,11 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
 }
 
 static inline void
-add_and_update_hkoffs(kct_t *kc, Hdr* h,  Bnd &b)
+add_and_update_hkoffs(kct_t *kc,  Bnd &b)
 {
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     // also update new end for header
-    kc->hkoffs[h - kc->h] = b.tgtk - kc->kct;
+    kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
 }
 
 static void
@@ -338,14 +338,14 @@ ext_uq_iter(kct_t *kc)
 
         if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
             EPR("// uniq as end of mantra region");
-            while (k - kc->kct < kc->hkoffs[h - kc->h] &&
+            while (k - kc->kct < kc->hkoffs[(*b.it).ho] &&
                     b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
                 if (IS_UQ(k)) //GDB:UQ1
                     process_mantra(kc, b, &k);
                 ++k;
             }
         } else {
-            NB(k - kc->kct <= kc->hkoffs[h - kc->h]);
+            NB(k - kc->kct <= kc->hkoffs[(*b.it).ho]);
             while (k - kc->kct != (*b.it).ke) {
 
                 if (IS_UQ(k)) //GDB:UQ2
@@ -361,18 +361,22 @@ ext_uq_iter(kct_t *kc)
                 excise(kc, b, &k);
                 (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
             } else {
+                if ((*b.it).ke == kc->hkoffs[(*b.it).ho]) {
+                    move_uniq(kc, b, after_prev(kc, b), h->end);
+                } else {
+                    move_uniq(kc, b, after_prev(kc, b), kepos(kc, b.it) - 2);
+                }
                 (*b.it).ke = b.tgtk - kc->kct;
             }
         } else {
-            NB(k - kc->kct >= kc->hkoffs[h - kc->h]);
-            if ((*b.it).ke == kc->hkoffs[h - kc->h]) {
+            NB(k - kc->kct >= kc->hkoffs[(*b.it).ho]);
+            if ((*b.it).ke == kc->hkoffs[(*b.it).ho]) {
 
                 if (h->end < (*b.it).s + (kc->extension << 1)) {
                     excise(kc, b, &k);
                     b.it = kc->bnd->erase(b.it);
                     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-                    kc->hkoffs[h - kc->h] = h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0;
-                    h = moveto_hdr(kc, b, h);
+                    b.s += h++->len;
                     continue;
                 }
 
@@ -380,20 +384,23 @@ ext_uq_iter(kct_t *kc)
                 (*b.it).ke = b.tgtk - kc->kct;
             } else {
                 if (b2pos_of(*k) < (*b.it).s + (kc->extension << 1)) {
+                    while (k - kc->kct < kc->hkoffs[(*b.it).ho])
+                        ++k;
                     excise(kc, b, &k);
-                    b.it = kc->bnd->erase(b.it);
                     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-                    kc->hkoffs[h - kc->h] = h - kc->h ? kc->hkoffs[h - kc->h - 1] : 0;
-                    h = moveto_hdr(kc, b, h);
+                    kc->hkoffs[(*b.it).ho] = (*b.it).ho ? kc->hkoffs[(*b.it).ho - 1] : 0;
+                    b.it = kc->bnd->erase(b.it);
+                    b.s += h++->len;
                     continue;
                 }
                 move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
             }
         }
-        add_and_update_hkoffs(kc, h, b);
+        add_and_update_hkoffs(kc, b);
         //GDB:next mantra
         ++b.it;
-        h = moveto_hdr(kc, b, h);
+        while (h != kc->h + (*b.it).ho)
+            b.s += h++->len;
     } while (b.it != kc->bnd->end());
 
     k_compression(kc, b, k);

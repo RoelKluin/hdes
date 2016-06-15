@@ -335,10 +335,10 @@ end
 break_re '// also update new end for header' 'fa.cpp' 'break'
 commands
 #    silent
-    printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, h - kc->h
-    if h - kc->h != kc->h_l - 1
-        printf "2bit sequence offset became %u:\t", b.s + h->len - kc->s
-        call print_dna(b.s[h->len], '.', 4)
+    printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*b.it).ho
+    if (*b.it).ho != kc->h_l - 1
+        printf "2bit sequence offset became %u:\t", b.s + kc->h[(*b.it).ho]->len - kc->s
+        call print_dna(b.s[kc->h[(*b.it).ho]->len], '.', 4)
         printf "..\n"
     else
         printf "(looping)\n"
