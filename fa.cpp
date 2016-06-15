@@ -368,6 +368,8 @@ ext_uq_iter(kct_t *kc)
                 }
                 (*b.it).ke = b.tgtk - kc->kct;
             }
+            add_and_update_hkoffs(kc, b);
+            ++b.it;
         } else {
             NB(k - kc->kct >= kc->hkoffs[(*b.it).ho]);
             if ((*b.it).ke == kc->hkoffs[(*b.it).ho]) {
@@ -376,12 +378,13 @@ ext_uq_iter(kct_t *kc)
                     excise(kc, b, &k);
                     b.it = kc->bnd->erase(b.it);
                     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-                    b.s += h++->len;
-                    continue;
-                }
+                } else {
 
-                move_uniq(kc, b, after_prev(kc, b), h->end);// XXX
-                (*b.it).ke = b.tgtk - kc->kct;
+                    move_uniq(kc, b, after_prev(kc, b), h->end);
+                    (*b.it).ke = b.tgtk - kc->kct;
+                    add_and_update_hkoffs(kc, b);
+                    ++b.it;
+                }
             } else {
                 if (b2pos_of(*k) < (*b.it).s + (kc->extension << 1)) {
                     while (k - kc->kct < kc->hkoffs[(*b.it).ho])
@@ -390,15 +393,14 @@ ext_uq_iter(kct_t *kc)
                     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
                     kc->hkoffs[(*b.it).ho] = (*b.it).ho ? kc->hkoffs[(*b.it).ho - 1] : 0;
                     b.it = kc->bnd->erase(b.it);
-                    b.s += h++->len;
-                    continue;
+                } else {
+                    move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
+                    add_and_update_hkoffs(kc, b);
+                    ++b.it;
                 }
-                move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
             }
         }
-        add_and_update_hkoffs(kc, b);
         //GDB:next mantra
-        ++b.it;
         while (h != kc->h + (*b.it).ho)
             b.s += h++->len;
     } while (b.it != kc->bnd->end());
@@ -417,7 +419,7 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
         do { // until no no more new uniques
             kc->uqct = 0;
             _EVAL(ext_uq_iter(kc));
-            EPR("observed %u uniques in iteration %u, extension %u\n",
+            EPR("observed %u excised in iteration %u, extension %u\n",
                 kc->uqct, ++kc->iter, kc->extension);
         } while (kc->uqct > 0);
     }
