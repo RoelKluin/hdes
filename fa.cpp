@@ -362,29 +362,19 @@ ext_uq_iter(kct_t *kc)
         // check whether last uniq was adjoining end
         if (b.prev != NO_K && h->end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
             excise(kc, b, &k);
-            (*b.it).ke = kc->contxt_idx[b.prev];//b.tgtk - kc->kct;
+            (*b.it).ke = kc->contxt_idx[b.prev];
             ++b.it;
         } else {
-            NB(k - kc->kct >= *hkoffs);
-            if ((*b.it).ke == *hkoffs) {
-
-                if (h->end < (*b.it).s + (kc->extension << 1)) {
-                    excise(kc, b, &k);
-                    b.it = kc->bnd->erase(b.it);
-                } else {
-
-                    move_uniq(kc, b, after_prev(kc, b), h->end);
-                    (*b.it).ke = b.tgtk - kc->kct;
-                    ++b.it;
-                }
+            uint32_t end = (*b.it).ke == *hkoffs ? h->end : b2pos_of(*k);
+            if (end < (*b.it).s + (kc->extension << 1)) {
+                excise(kc, b, &k);
+                b.it = kc->bnd->erase(b.it);
             } else {
-                if (b2pos_of(*k) < (*b.it).s + (kc->extension << 1)) {
-                    excise(kc, b, &k);
-                    b.it = kc->bnd->erase(b.it);
-                } else {
-                    move_uniq(kc, b, (*b.it).s, kepos(kc, b.it) - 2);
-                    ++b.it;
-                }
+
+                move_uniq(kc, b, after_prev(kc, b), end);
+                if ((*b.it).ke == *hkoffs)
+                    (*b.it).ke = b.tgtk - kc->kct;
+                ++b.it;
             }
         }
         *hkoffs = b.tgtk - kc->kct;
