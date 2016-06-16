@@ -143,18 +143,6 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
     return contxt_idx;
 }
 
-static inline void
-move_k(kct_t *kc, Bnd &b, uint32_t *k, uint32_t *contxt_idx)
-{
-    if (b.tgtk != k) {
-        NB(*k);
-        *b.tgtk = *k;
-        *k ^= *k;//
-        *contxt_idx = b.tgtk - kc->kct;//GDB:move
-    }
-    ++b.tgtk;
-}
-
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pstart, C uint32_t pend)
 {
@@ -183,7 +171,13 @@ print_seq(&seq);
                 EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
             *k = seq.p; // set new pos and strand, unset dupbit
-            move_k(kc, b, k, contxt_idx);
+            if (b.tgtk != k) {
+                NB(*k);
+                *b.tgtk = *k;
+                *k ^= *k;//
+                *contxt_idx = b.tgtk - kc->kct;//GDB:move
+            }
+            ++b.tgtk;
 
             NB(b.tgtk <= kc->kct + kc->kct_l);
         }
