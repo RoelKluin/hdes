@@ -198,43 +198,47 @@ print_seq(&seq);
     return seq;
 }
 
-static void
-process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
+static uint32_t *
+process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
-    int scope = in_scope(kc, b, *thisk);
+    int scope = in_scope(kc, b, thisk);
     uint32_t *contxt_idx = NULL;
 
     if (scope >= 0) { // a 2nd uniq
-        shrink_mantra(kc, b, *thisk);
+        shrink_mantra(kc, b, thisk);
         // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
-        excise(kc, b, thisk);
-        contxt_idx = excise_one(kc, b, thisk, *thisk);
+        excise(kc, b, &thisk);
+        contxt_idx = excise_one(kc, b, &thisk, thisk);
 
         NB(contxt_idx != NULL);
         b.prev = contxt_idx - kc->contxt_idx;//GDB:moved
         EPR("previously moved were %u", b.moved);
-        return;
+        return thisk;
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    keyseq_t seq = move_uniq(kc, b, after_prev(kc, b), is_no_end_k(kc, b, *thisk) ? b2pos_of(**thisk) - 2 : kepos(kc, b.it));
+    keyseq_t seq = move_uniq(kc, b, after_prev(kc, b), is_no_end_k(kc, b, thisk) ? b2pos_of(*thisk) - 2 : kepos(kc, b.it));
 
-    if (*thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
+    if (thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
 
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
         seq.p = b2pos_of(seq.p);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq, 0);
-        buf_grow_ks(kc, b, thisk, NULL);
+        buf_grow_ks(kc, b, &thisk, NULL);
         uint32_t *k = kc->kct + kc->kct_l;
 
-        NB(k != *thisk);
-        *k = **thisk;
+        NB(k != thisk);
+        *k = *thisk;
         b.prev = contxt_idx - kc->contxt_idx;
-        shrink_mantra(kc, b, *thisk);
-        **thisk ^= **thisk;//
+        C uint32_t ke = (*b.it).ke;
+        (*b.it).ke = b2pos_of(*thisk); //XXX
+        kc->bnd->insert(b.it, *b.it);
+        (*b.it).ke = ke;
+        (*b.it).s = b2pos_of(*thisk) + 2;
+        *thisk ^= *thisk;//
         *contxt_idx = kc->kct_l++;//GDB:2
 
     } else {
@@ -243,14 +247,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t **thisk)
         contxt_idx = get_kct(kc, seq, 0);
         b.prev = contxt_idx - kc->contxt_idx;
     }
-}
-
-static inline void
-add_and_update_hkoffs(kct_t *kc,  Bnd &b)
-{
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-    // also update new end for header
-    kc->hkoffs[(*b.it).ho] = b.tgtk - kc->kct;
+    return thisk;
 }
 
 static void
@@ -348,7 +345,7 @@ ext_uq_iter(kct_t *kc)
             EPR("// uniq as end of mantra region");
             while (k - kc->kct < *hkoffs && b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
                 if (IS_UQ(k)) //GDB:UQ1
-                    process_mantra(kc, b, &k);
+                    k = process_mantra(kc, b, k);
                 ++k;
             }
         } else {
@@ -356,7 +353,7 @@ ext_uq_iter(kct_t *kc)
             while (k - kc->kct != (*b.it).ke) {
 
                 if (IS_UQ(k)) //GDB:UQ2
-                    process_mantra(kc, b, &k);
+                    k = process_mantra(kc, b, k);
                 ++k;
             }
         }

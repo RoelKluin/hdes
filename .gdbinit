@@ -102,11 +102,11 @@ end
 
 
 define run_until
-    if kc->extension == 0 || kc->iter == 0
+#    if kc->extension == 0 || kc->iter == 0
         c
-    else
-        bt 1
-    end
+#    else
+#        bt 1
+#    end
 end
 
 
@@ -241,14 +241,14 @@ break_re '//GDB:moved' 'fa.cpp' 'break'
 commands
 #   silent
     printf "\nThese were moved to kct end.\n"
-    pkct *thisk
+    pkct thisk
     run_until
 end
 
 break_re '//GDB:2$' 'fa.cpp' 'break'
 commands
 #    silent
-    pkct *thisk
+    pkct thisk
     run_until
 end
 
@@ -332,7 +332,7 @@ commands
     run_until
 end
 
-break_re '// also update new end for header' 'fa.cpp' 'break'
+break_re '// also update header$' 'fa.cpp' 'break'
 commands
 #    silent
     printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*b.it).ho
@@ -360,6 +360,14 @@ commands
     #b ext_uq_iter
     pkct kc->kct + kc->kct_l
     print show_mantras(kc, b.it)
+    run_until
+end
+
+break_re '//GDB:BUG$' 'fa.cpp' 'break'
+commands
+#    silent
+    #b ext_uq_iter
+    p/x k[-1]
     run_until
 end
 
