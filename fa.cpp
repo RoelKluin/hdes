@@ -370,7 +370,8 @@ ext_uq_iter(kct_t *kc)
         } else {
 
             move_uniq(kc, b, after_prev(kc, b), end);
-            if ((*b.it).ke == *hkoffs)
+
+            if (end == h->end)
                 (*b.it).ke = b.tgtk - kc->kct;
             ++b.it;
         }
