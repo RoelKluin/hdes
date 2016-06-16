@@ -234,7 +234,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
         *k = *thisk;
         b.prev = contxt_idx - kc->contxt_idx;
         C uint32_t ke = (*b.it).ke;
-        (*b.it).ke = b2pos_of(*thisk); //XXX
+        (*b.it).ke = k - kc->kct;
         kc->bnd->insert(b.it, *b.it);
         (*b.it).ke = ke;
         (*b.it).s = b2pos_of(*thisk) + 2;
