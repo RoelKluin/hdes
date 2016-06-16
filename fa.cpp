@@ -259,9 +259,9 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
     Hdr* h = kc->h;
     b.s = kc->s;
     b.it = kc->bnd->begin();
-    uint32_t *hkoffs;
+    uint32_t *hkoffs = kc->hkoffs + kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
-    for (hkoffs = kc->hkoffs + kc->h_l; hkoffs != kc->hkoffs + kc->hkoffs_l; ++hkoffs) {
+    for (; hkoffs != kc->hkoffs + kc->hkoffs_l; ++hkoffs) {
 
         for (;k - kc->kct < *hkoffs; ++k) {
 
@@ -291,9 +291,34 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
             b.s = kc->s;
         }
     }
+    if (b.it != kc->bnd->end()) {
+        for (;k - kc->kct < kc->kct_l; ++k) {
+            if (*k == 0)
+                continue;
+            if (k != b.tgtk) {
+                keyseq_t seq = {.p = *k };
+                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
+                *b.tgtk = *k;
+                *k ^= *k;//
+            }
+            ++b.tgtk;
+            if (k - kc->kct != (*b.it).ke) // no mantra end
+                continue;
+
+            // XXX: waarom moet .ke een eerder stoppen dan hkoffs ??
+            (*b.it).ke = b.tgtk - kc->kct - 1;
+
+            if (++b.it == kc->bnd->end())
+                break;
+        }
+        buf_grow_add(kc->hkoffs, 1ul, 0, b.tgtk - kc->kct);
+        b.s += h->len;
+        if(++h == kc->h + kc->h_l) {
+            h = kc->h;
+            b.s = kc->s;
+        }
+    }
     kc->kct_l = b.tgtk - kc->kct;
-    if (b.it == kc->bnd->end())
-        return;
 }
 
 static Hdr*
