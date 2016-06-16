@@ -143,52 +143,59 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
     return contxt_idx;
 }
 
+static inline uint32_t *
+move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t pend)
+{
+    uint32_t *k = kc->kct + *contxt_idx;
+    print_seq(&seq);
+
+    if (k < b.tgtk) {
+        // second occurance
+
+        if (~*k & DUP_BIT) {
+            // no dup after all
+
+            *k |= DUP_BIT;
+            --kc->uqct;
+        }
+    } else {
+
+        // 1st occurance;
+        ++kc->uqct;    // unique or decremented later.
+
+        if (k - kc->kct >= (*b.it).ke) // XXX: falsie?
+            EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
+
+        *k = seq.p; // set new pos and strand, unset dupbit
+        if (b.tgtk != k) {
+            NB(*k);
+            *b.tgtk = *k;
+            *k ^= *k;//
+            *contxt_idx = b.tgtk - kc->kct;//GDB:move
+        }
+        ++b.tgtk;
+
+        NB(b.tgtk <= kc->kct + kc->kct_l);
+    }
+    seq.p = b2pos_of(seq.p);
+    if (seq.p == pend)
+        return NULL;
+
+    get_next_nt_seq(b.s, seq);
+    contxt_idx = get_kct(kc, seq, 1);
+    seq.p += 2;
+    return contxt_idx;
+}
+
 static keyseq_t
-move_uniq(kct_t *kc, Bnd &b, C uint32_t pstart, C uint32_t pend)
+move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
     keyseq_t seq = { .p = after_prev(kc, b) };
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
     NB(*contxt_idx != NO_K);
-    for (;;) {
-        uint32_t *k = kc->kct + *contxt_idx;
-print_seq(&seq);
+    while (contxt_idx)
+        contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend);
 
-        if (k < b.tgtk) {
-            // second occurance
-
-            if (~*k & DUP_BIT) {
-                // no dup after all
-
-                *k |= DUP_BIT;
-                --kc->uqct;
-            }
-        } else {
-
-            // 1st occurance;
-            ++kc->uqct;    // unique or decremented later.
-
-            if (k - kc->kct >= (*b.it).ke)
-                EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
-
-            *k = seq.p; // set new pos and strand, unset dupbit
-            if (b.tgtk != k) {
-                NB(*k);
-                *b.tgtk = *k;
-                *k ^= *k;//
-                *contxt_idx = b.tgtk - kc->kct;//GDB:move
-            }
-            ++b.tgtk;
-
-            NB(b.tgtk <= kc->kct + kc->kct_l);
-        }
-        seq.p = b2pos_of(seq.p);
-        if (seq.p == pend)
-            break;
-
-        get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq, 1);
-        seq.p += 2;
-    }
     return seq;
 }
 
@@ -212,7 +219,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    keyseq_t seq = move_uniq(kc, b, after_prev(kc, b), is_no_end_k(kc, b, thisk) ? b2pos_of(*thisk) - 2 : kepos(kc, b.it));
+    keyseq_t seq = move_uniq(kc, b, is_no_end_k(kc, b, thisk) ? b2pos_of(*thisk) - 2 : kepos(kc, b.it));
 
     if (thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
 
@@ -363,7 +370,7 @@ ext_uq_iter(kct_t *kc)
             ++b.it;
         } else {
 
-            move_uniq(kc, b, after_prev(kc, b), end);
+            move_uniq(kc, b, end);
 
             if (end == h->end)
                 (*b.it).ke = b.tgtk - kc->kct;

@@ -179,7 +179,7 @@ define handle_non_uniques
 end
 
 #b fa.cpp:157
-break_re 'for (;;) {' 'fa.cpp' 'tbreak'
+break_re 'while (contxt_idx)' 'fa.cpp' 'tbreak'
 commands
 #    silent
     pkct kc->kct + *contxt_idx
@@ -190,7 +190,7 @@ commands
 #        pseq
 #        run_until
 #    end
-    break_re 'for(;;) {' 'fa.cpp' 'break'
+    break_re 'while (contxt_idx)' 'fa.cpp' 'break'
     commands
 #        wa seq.dna
 #        commands
