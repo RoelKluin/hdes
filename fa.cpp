@@ -370,10 +370,28 @@ ext_uq_iter(kct_t *kc)
             ++b.it;
         } else {
 
-            move_uniq(kc, b, end);
+
+            keyseq_t seq = {0};
+            uint32_t *contxt_idx = kc->contxt_idx;
+            if (b.prev != NO_K) {
+                seq.p = prev_pos(kc, b) + 2;
+                if (b.tgtk - kc->kct != kc->contxt_idx[b.prev])
+                    contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
+                else
+                    contxt_idx += b.prev;
+            } else {
+                seq.p = (*b.it).s;
+                contxt_idx += build_ndx_kct(kc, seq, b.s);
+            }
+
+            NB(*contxt_idx != NO_K);
+
+            while (contxt_idx)
+                contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, end);
 
             if (end == h->end)
                 (*b.it).ke = b.tgtk - kc->kct;
+
             ++b.it;
         }
         *hkoffs = b.tgtk - kc->kct;

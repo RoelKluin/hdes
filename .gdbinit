@@ -179,7 +179,7 @@ define handle_non_uniques
 end
 
 #b fa.cpp:157
-break_re 'while (contxt_idx)' 'fa.cpp' 'tbreak'
+break_re 'while (contxt_idx) //GDB' 'fa.cpp' 'tbreak'
 commands
 #    silent
     pkct kc->kct + *contxt_idx
@@ -190,7 +190,7 @@ commands
 #        pseq
 #        run_until
 #    end
-    break_re 'while (contxt_idx)' 'fa.cpp' 'break'
+    break_re 'while (contxt_idx) //GDB' 'fa.cpp' 'break'
     commands
 #        wa seq.dna
 #        commands
@@ -280,6 +280,7 @@ break_re '//GDB:next mantra$' 'fa.cpp' 'break'
 commands
 #    silent
     printf "next mantra\n"
+    pkct k
     print show_mantras(kc, b.it)
     run_until
 end
