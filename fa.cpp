@@ -190,10 +190,24 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
-    keyseq_t seq = { .p = after_prev(kc, b) };
+    /*keyseq_t seq = { .p = after_prev(kc, b) };
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
+    NB(*contxt_idx != NO_K);*/
+    keyseq_t seq = {0};
+    uint32_t *contxt_idx = kc->contxt_idx;
+    if (b.prev != NO_K) {
+        seq.p = prev_pos(kc, b) + 2;
+        if (b.tgtk - kc->kct != kc->contxt_idx[b.prev])
+            contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
+        else
+            contxt_idx += b.prev;
+    } else {
+        seq.p = (*b.it).s;
+        contxt_idx += build_ndx_kct(kc, seq, b.s);
+    }
+
     NB(*contxt_idx != NO_K);
-    while (contxt_idx)
+    while (contxt_idx) //GDB
         contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend);
 
     return seq;
@@ -286,14 +300,14 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
             h = kc->h;
             b.s = kc->s;
         }
-        if (hkoffs == &kc->kct_l) {
-            buf_grow_add(kc->hkoffs, 1ul, 0, b.tgtk - kc->kct);
+        if (hkoffs == &kc->kct_l)
             break;
-        }
+
         if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
             hkoffs = &kc->kct_l;
     }
     kc->kct_l = b.tgtk - kc->kct;
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
 }
 
 static Hdr*
@@ -370,27 +384,12 @@ ext_uq_iter(kct_t *kc)
             ++b.it;
         } else {
 
-
-            keyseq_t seq = {0};
-            uint32_t *contxt_idx = kc->contxt_idx;
-            if (b.prev != NO_K) {
-                seq.p = prev_pos(kc, b) + 2;
-                if (b.tgtk - kc->kct != kc->contxt_idx[b.prev])
-                    contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
-                else
-                    contxt_idx += b.prev;
-            } else {
-                seq.p = (*b.it).s;
-                contxt_idx += build_ndx_kct(kc, seq, b.s);
-            }
-
-            NB(*contxt_idx != NO_K);
-
-            while (contxt_idx)
-                contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, end);
+            move_uniq(kc, b, end);
 
             if (end == h->end)
                 (*b.it).ke = b.tgtk - kc->kct;
+            else if (b.prev != NO_K)
+                (*b.it).ke = kc->contxt_idx[b.prev];
 
             ++b.it;
         }
