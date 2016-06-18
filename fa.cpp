@@ -197,10 +197,13 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
     uint32_t *contxt_idx = kc->contxt_idx;
     if (b.prev != NO_K) {
         seq.p = prev_pos(kc, b) + 2;
-        if (b.tgtk - kc->kct != kc->contxt_idx[b.prev])
+        if (b.tgtk - kc->kct != kc->contxt_idx[b.prev]) {
             contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
-        else
+            NB(*contxt_idx < kc->kct_l);
+        } else {
             contxt_idx += b.prev;
+            NB(*contxt_idx < kc->kct_l);
+        }
     } else {
         seq.p = (*b.it).s;
         contxt_idx += build_ndx_kct(kc, seq, b.s);
@@ -235,33 +238,26 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
 
     keyseq_t seq = move_uniq(kc, b, is_no_end_k(kc, b, thisk) ? b2pos_of(*thisk) - 2 : kepos(kc, b.it));
 
+    seq.p = b2pos_of(seq.p);
+    get_next_nt_seq(b.s, seq);
+    contxt_idx = get_kct(kc, seq, 0);
+
     if (thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
 
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
-        seq.p = b2pos_of(seq.p);
-        get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq, 0);
         buf_grow_ks(kc, b, &thisk, NULL);
-        uint32_t *k = kc->kct + kc->kct_l;
+        kc->kct[kc->kct_l] = *thisk;
 
-        NB(k != thisk);
-        *k = *thisk;
-        b.prev = contxt_idx - kc->contxt_idx;
+        *contxt_idx = kc->kct_l;
         C uint32_t ke = (*b.it).ke;
-        (*b.it).ke = k - kc->kct;
+        (*b.it).ke = ++kc->kct_l;
         kc->bnd->insert(b.it, *b.it);
         (*b.it).ke = ke;
         (*b.it).s = b2pos_of(*thisk) + 2;
         *thisk ^= *thisk;//
-        *contxt_idx = kc->kct_l++;//GDB:2
-
-    } else {
-        seq.p = b2pos_of(seq.p);
-        get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq, 0);
-        b.prev = contxt_idx - kc->contxt_idx;
     }
+    b.prev = contxt_idx - kc->contxt_idx;//GDB:2
     return thisk;
 }
 
@@ -380,7 +376,10 @@ ext_uq_iter(kct_t *kc)
             b.it = kc->bnd->erase(b.it);
         } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
             excise(kc, b, &k);
-            (*b.it).ke = kc->contxt_idx[b.prev];
+            if (b.prev != NO_K)
+                (*b.it).ke = kc->contxt_idx[b.prev];
+            else
+                (*b.it).ke = b.tgtk - kc->kct;
             ++b.it;
         } else {
 
