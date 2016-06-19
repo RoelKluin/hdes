@@ -169,7 +169,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
-    h->end = seq.p;
+    h->end = seq.p - 2;
     EPR(">%s:s len:%u", kc->id + h->ido, h->len);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);

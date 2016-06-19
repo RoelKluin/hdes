@@ -197,10 +197,8 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
         seq.p = prev_pos(kc, b) + 2;
         if (b.tgtk - kc->kct != kc->contxt_idx[b.prev]) {
             contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
-            NB(*contxt_idx < kc->kct_l);
         } else {
             contxt_idx += b.prev;
-            NB(*contxt_idx < kc->kct_l);
         }
     } else {
         seq.p = (*b.it).s;
@@ -252,8 +250,8 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
         *thisk ^= *thisk;//
 
         Mantra copy = *b.it;
-        copy.s = tp + 2;
-        (*b.it).e = tp;
+        (*b.it).s = tp;
+        copy.e = tp;
         kc->bnd->insert(b.it, copy);
     }
     b.prev = contxt_idx - kc->contxt_idx;//GDB:2
@@ -359,7 +357,7 @@ ext_uq_iter(kct_t *kc)
             ++k;
         }
 
-        uint32_t end = (k - kc->kct == *hkoffs ? h->end : b2pos_of(*k)) - 2;
+        uint32_t end = k - kc->kct == *hkoffs ? h->end : b2pos_of(*k);
         // check whether last uniq was adjoining end
         if (end < (*b.it).s + (kc->extension << 1)) {
             excise(kc, b, &k);
