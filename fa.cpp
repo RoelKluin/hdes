@@ -300,7 +300,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
     }
     kc->kct_l = b.tgtk - kc->kct;
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-    //GDB:after k_compression
+    //GDBk
 }
 
 static Hdr*
@@ -377,7 +377,7 @@ ext_uq_iter(kct_t *kc)
 
     } while (b.it != kc->bnd->end());
 
-    k_compression(kc, b, k);
+    k_compression(kc, b, k);//GDBk
 }
 
 static int

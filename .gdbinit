@@ -84,21 +84,18 @@ end
 #set prompt \033[01;31mgdb$ \033[0m
 
 define break_re
-    if $argc != 3 && $argc != 4
+    if $argc != 3
         help break_re
     else
-        if $argc == 3
-            python break_re_py($arg0, $arg1, $arg2)
-        else
-            python break_re_py($arg0, $arg1, $arg2, $arg3)
-        end
+        python break_re_py($arg0, $arg1, $arg2)
     end
 end
 
 document break_re
 	Insert specified break in file where match occurs [must be only one].
-	Syntax: break_re <match> <file> <break|tbreak> [command]
+	Syntax: break_re <match> <file> <break|tbreak>
 end
+
 
 
 define run_until
@@ -168,6 +165,7 @@ end
 
 #################################################################
 # fa.cpp
+
 
 
 define handle_non_uniques
@@ -331,13 +329,6 @@ commands
     run_until
 end
 
-break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
-commands
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
-end
-
 break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
 commands
     pkct kc->kct + kc->kct_l
@@ -351,22 +342,28 @@ commands
     run_until
 end
 
-break_re 'k_compression(kc, b, k);' 'fa.cpp' 'break'
-commands
-    print "before k_compression():"
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
+
+set $i = $bpnum
+python break_re_py('//GDBk$', 'fa.cpp', 'break', 1)
+while $i < $bpnum
+    set $i = $i + 1
+    commands $i
+        call print_kct(kc, b, k)
+        print show_mantras(kc, b.it)
+        run_until
+    end
 end
 
-break_re '//GDB:after k_compression$' 'fa.cpp' 'break'
-commands
-    print "after k_compression():"
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
+set $i = $bpnum
+python break_re_py('//GDBt$', 'fa.cpp', 'break', 1)
+while $i < $bpnum
+    set $i = $i + 1
+    commands $i
+        call print_kct(kc, b, thisk)
+        print show_mantras(kc, b.it)
+        run_until
+    end
 end
-
 
 #########################################################################################
 # mapping
