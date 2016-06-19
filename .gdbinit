@@ -176,7 +176,7 @@ define handle_non_uniques
 end
 
 #b fa.cpp:157
-break_re 'while (contxt_idx) //GDB' 'fa.cpp' 'tbreak'
+break_re 'contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB' 'fa.cpp' 'tbreak'
 commands
     pkct kc->kct + *contxt_idx
     print show_mantras(kc, b.it)
@@ -186,7 +186,7 @@ commands
 #        pseq
 #        run_until
 #    end
-    break_re 'while (contxt_idx) //GDB' 'fa.cpp' 'break'
+    break_re 'contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB' 'fa.cpp' 'break'
     commands
 #        wa seq.dna
 #        commands
@@ -348,6 +348,7 @@ python break_re_py('//GDBk$', 'fa.cpp', 'break', 1)
 while $i < $bpnum
     set $i = $i + 1
     commands $i
+        printf "\tat:%s:%u\n", __FILE__, __LINE__
         call print_kct(kc, b, k)
         print show_mantras(kc, b.it)
         run_until
@@ -359,9 +360,20 @@ python break_re_py('//GDBt$', 'fa.cpp', 'break', 1)
 while $i < $bpnum
     set $i = $i + 1
     commands $i
+        printf "\tat:%s:%u\n", __FILE__, __LINE__
         call print_kct(kc, b, thisk)
         print show_mantras(kc, b.it)
         run_until
+    end
+end
+
+set $i = $bpnum
+python break_re_py('//GDBm', 'fa.cpp', 'break', 1)
+while $i < $bpnum
+    set $i = $i + 1
+    commands $i
+        silent
+        printf "\t=>\tat:%s:%u\n", __FILE__, __LINE__
     end
 end
 

@@ -163,9 +163,8 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
         // 1st occurance;
         ++kc->uqct;    // unique or decremented later.
 
-        if (b2pos_of(*k) >= (*b.it).e) {
+        if (b2pos_of(*k) >= (*b.it).e)
             EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
-        }
 
         *k = seq.p; // set new pos and strand, unset dupbit
         if (b.tgtk != k) {
@@ -191,24 +190,13 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
-    keyseq_t seq = {0};
-    uint32_t *contxt_idx = kc->contxt_idx;
-    if (b.prev != NO_K) {
-        seq.p = prev_pos(kc, b) + 2;
-        if (b.tgtk - kc->kct != kc->contxt_idx[b.prev]) {
-            contxt_idx += build_ndx_kct(kc, seq, b.s); // already increments seq.p
-        } else {
-            contxt_idx += b.prev;
-        }
-    } else {
-        seq.p = (*b.it).s;
-        contxt_idx += build_ndx_kct(kc, seq, b.s);
-    }
+    keyseq_t seq = {.p = after_prev(kc, b)};
+    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
     NB(*contxt_idx < kc->kct_l);
     NB(*contxt_idx != NO_K);
 
-    while (contxt_idx) //GDB
-        contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend);
+    while (contxt_idx)
+        contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB
 
     return seq;
 }
@@ -250,7 +238,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
         *thisk ^= *thisk;//
 
         Mantra copy = *b.it;
-        (*b.it).s = tp;
+        (*b.it).s = tp + 2;
         copy.e = tp;
         kc->bnd->insert(b.it, copy);
     }
@@ -278,11 +266,9 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
                 *b.tgtk = *k;
                 *k ^= *k;//
             }
-            if (b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
+            if (b.it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
                 (*b.it).e = b2pos_of(*b.tgtk);
-
-                if (++b.it == kc->bnd->end())
-                    break;
+                ++b.it;
             }
             ++b.tgtk;
         }
@@ -300,7 +286,6 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
     }
     kc->kct_l = b.tgtk - kc->kct;
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-    //GDBk
 }
 
 static Hdr*
@@ -362,7 +347,7 @@ ext_uq_iter(kct_t *kc)
         if (end < (*b.it).s + (kc->extension << 1)) {
             excise(kc, b, &k);
             b.it = kc->bnd->erase(b.it);
-        } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
+        } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1)) {
             excise(kc, b, &k);
             (*b.it).e = prev_pos(kc, b);
             ++b.it;
@@ -378,6 +363,7 @@ ext_uq_iter(kct_t *kc)
     } while (b.it != kc->bnd->end());
 
     k_compression(kc, b, k);//GDBk
+    NB(skctl == kc->kct_l); //GDBk
 }
 
 static int

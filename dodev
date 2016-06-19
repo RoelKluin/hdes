@@ -21,7 +21,7 @@ GDB=
 BN="${ref}"
 BA=${BN}-SE_true-RL_${RL}.1
 
-while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, t[e]sts, g[c]ov or continue?" k; do
+while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, t[e]sts, g[c]ov, [C]allgrind or continue?" k; do
     echo
     if [ "$k" = "q" ]; then
         break;
@@ -60,6 +60,15 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
         sed -r 's/\.(cpp|h)$/.\1.gcov/' "$hdesdir/dodev.vim" > "$hdesdir/dodev_gcov.vim"
         gvim -p -geometry 212x90+0+0 -c "so $hdesdir/dodev_gcov.vim"&
         cd $hdesdir/bwatest
+    elif [ "$k" = "C" ]; then
+        $hdesdir/tst ${ref}.fa.gz -c -C -m ${KL} -L ${RL}
+        sleep 5s # callgrind.out.* now written?
+        cg=$(ls -1rt callgrind.out.* | tail -n 1)
+        callgrind_annotate $cg
+        for f in *.cpp *.h; do
+          callgrind_annotate $cg $f > ${f}.dump
+        done
+        kcachegrind $cg
     elif [ "$k" = "t" ]; then
         touch $hdesdir/fa.cpp
         ($hdesdir/bwatest/run -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;

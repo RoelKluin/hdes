@@ -8,9 +8,9 @@ die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
 }
-USAGE="$0 [-g] [-c|--clean] [-p|--part] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] [-v|--valgrind] [-l|--leak-check] fasta.gz"
+USAGE="$0 [-g] [-c|--clean] [-C|--callgrind] [-p|--part] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] [-v|--valgrind] [-l|--leak-check] fasta.gz"
 
-TEMP=`getopt -o m:L:pcvlg --long make:,length:,clean,part,valgrind,leak-check:gdb -n "$0" -- "$@"`
+TEMP=`getopt -o m:L:pcCvlg --long make:,length:,clean,callgrind,part,valgrind,leak-check:gdb -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
@@ -28,6 +28,7 @@ while true; do
     -p|--part) PART=1;;
     -g|--gdb) PRE="gdb --args";;
     -c|--clean) CLEAN=1;;
+    -C|--callgrind) [ -z "$PRE" ] && PRE="valgrind --tool=callgrind";;
     -v|--valgrind) [ -z "$PRE" ] && PRE=valgrind;;
     -l|--leak-check) PRE="valgrind --leak-check=full";;
     -- ) shift; break;;
