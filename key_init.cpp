@@ -159,7 +159,7 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
     EPQ(len != h->end, "End position does not match given in header %u <=> %u (given ignored)",
             len, h->end);
-    kc->bnd->back().ke = kc->kct_l;
+    kc->bnd->back().e = len + 2;
     kc->totNts += len + kc->bnd->back().corr;
     EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }

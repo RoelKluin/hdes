@@ -76,24 +76,18 @@ seq_next(struct keyseq_t &seq)
 
 #define DEBUG 1
 
-#define is_no_end_k(kc, b, k) (k - kc->kct < (*b.it).ke)
-
 #define prev_pos(kc, b) (b2pos_of(kc->kct[kc->contxt_idx[b.prev]]))
 
 #define after_prev(kc, b) (b.prev != NO_K ? prev_pos(kc, b) + 2: (*b.it).s)
 
-#define kepos(kc, it) (b2pos_of(kc->kct[(*it).ke]))
-
-#define last_kepos(kc) (b2pos_of(kc->kct[kc->bnd->back().ke]))
-
-#define in_scope(kc, b, k) (after_prev(kc, b) - (is_no_end_k(kc, b, k) ?\
-        (b2pos_of(*k) - ((kc)->extension << 1)) : kepos(kc, b.it)))
+#define in_scope(kc, b, k) (after_prev(kc, b) - (b2pos_of(*k) < (*b.it).e ?\
+        (b2pos_of(*k) - ((kc)->extension << 1)) : (*b.it).e))
 
 packed_struct Mantra { // not yet covered by unique keys
-    uint32_t ho;
-    uint32_t s; // start pos
+    uint32_t ho;   // which contig
+    uint32_t s;    // start pos
     uint32_t corr; // 'real' position correction
-    uint32_t ke; // offset to end k of mantra
+    uint32_t e;    // end of mantra
 };
 
 /* TODO:
@@ -170,6 +164,7 @@ static inline uint32_t
 b2pos_of(uint32_t C k)
 {
     NB(k != NO_K);
+    NB(k != 0);
     return _b2pos_of(k);
 }
 

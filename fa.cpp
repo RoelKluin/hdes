@@ -87,12 +87,10 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
 {
     NB(b.it != kc->bnd->end());
     if (b.prev != NO_K) { // not at mantra start
-        C uint32_t ke = (*b.it).ke;
-        (*b.it).ke = kc->contxt_idx[b.prev];
 
-        kc->bnd->insert(b.it, *b.it);     // copy of current
-        // mantra became two smaller ranges.
-        (*b.it).ke = ke;
+        Mantra copy = *b.it;
+        (*b.it).e = b2pos_of(kc->kct[kc->contxt_idx[b.prev]]);
+        kc->bnd->insert(b.it, copy);
     }
     (*b.it).s = b2pos_of(*k) + 2;
     //GDB:mantra1
@@ -146,6 +144,8 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
 static inline uint32_t *
 move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t pend)
 {
+    NB(*contxt_idx != NO_K);
+    NB(*contxt_idx < kc->kct_l);
     uint32_t *k = kc->kct + *contxt_idx;
     print_seq(&seq);
 
@@ -163,8 +163,9 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
         // 1st occurance;
         ++kc->uqct;    // unique or decremented later.
 
-        if (k - kc->kct >= (*b.it).ke) // XXX: falsie?
+        if (b2pos_of(*k) >= (*b.it).e) {
             EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
+        }
 
         *k = seq.p; // set new pos and strand, unset dupbit
         if (b.tgtk != k) {
@@ -190,9 +191,6 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
-    /*keyseq_t seq = { .p = after_prev(kc, b) };
-    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s); // already increments seq.p
-    NB(*contxt_idx != NO_K);*/
     keyseq_t seq = {0};
     uint32_t *contxt_idx = kc->contxt_idx;
     if (b.prev != NO_K) {
@@ -208,15 +206,16 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
         seq.p = (*b.it).s;
         contxt_idx += build_ndx_kct(kc, seq, b.s);
     }
-
+    NB(*contxt_idx < kc->kct_l);
     NB(*contxt_idx != NO_K);
+
     while (contxt_idx) //GDB
         contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend);
 
     return seq;
 }
 
-static uint32_t *
+static uint32_t*
 process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
     int scope = in_scope(kc, b, thisk);
@@ -236,26 +235,26 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    keyseq_t seq = move_uniq(kc, b, is_no_end_k(kc, b, thisk) ? b2pos_of(*thisk) - 2 : kepos(kc, b.it));
+    uint32_t tp = b2pos_of(*thisk);
+    keyseq_t seq = move_uniq(kc, b, tp < (*b.it).e ? tp - 2 : (*b.it).e);
 
     seq.p = b2pos_of(seq.p);
     get_next_nt_seq(b.s, seq);
     contxt_idx = get_kct(kc, seq, 0);
 
-    if (thisk - kc->kct != (*b.it).ke - 1) { //excise just one unique
+    if (tp != (*b.it).e - 2) { //excise just one unique
 
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
         buf_grow_ks(kc, b, &thisk, NULL);
         kc->kct[kc->kct_l] = *thisk;
-
-        *contxt_idx = kc->kct_l;
-        C uint32_t ke = (*b.it).ke;
-        (*b.it).ke = ++kc->kct_l;
-        kc->bnd->insert(b.it, *b.it);
-        (*b.it).ke = ke;
-        (*b.it).s = b2pos_of(*thisk) + 2;
+        *contxt_idx = kc->kct_l++;
         *thisk ^= *thisk;//
+
+        Mantra copy = *b.it;
+        copy.s = tp + 2;
+        (*b.it).e = tp;
+        kc->bnd->insert(b.it, copy);
     }
     b.prev = contxt_idx - kc->contxt_idx;//GDB:2
     return thisk;
@@ -281,14 +280,13 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
                 *b.tgtk = *k;
                 *k ^= *k;//
             }
+            if (b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
+                (*b.it).e = b2pos_of(*b.tgtk);
+
+                ++b.it;
+                NB(b.it != kc->bnd->end());
+            }
             ++b.tgtk;
-            if (k - kc->kct != (*b.it).ke) // no mantra end
-                continue;
-
-            (*b.it).ke = b.tgtk - kc->kct - 1;
-
-            if (++b.it == kc->bnd->end())
-                break;
         }
         *hkoffs = b.tgtk - kc->kct;
         b.s += h->len;
@@ -304,6 +302,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
     }
     kc->kct_l = b.tgtk - kc->kct;
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    //GDB:after k_compression
 }
 
 static Hdr*
@@ -328,7 +327,7 @@ moveto_hdr(kct_t *kc, Bnd &b, Hdr* h)
  * isolated and ordered on extension, contig and position.
  *
  */
-static int
+static void
 ext_uq_iter(kct_t *kc)
 {
     uint32_t *k = kc->kct;
@@ -341,7 +340,6 @@ ext_uq_iter(kct_t *kc)
     };
     uint32_t skctl = kc->kct_l;
     Hdr* h = kc->h;
-    // dna ^ rc => ndx; ndxct[ndx] => kct => pos (regardless of whether uniq: s[pos] => dna and rc)
 
     do {
         while (h - kc->h != (*b.it).ho) {
@@ -352,43 +350,27 @@ ext_uq_iter(kct_t *kc)
         b.prev = NO_K;
         uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
-        if ((*b.it).ke > kc->hkoffs[kc->h_l-1]) {
-            EPR("// uniq as end of mantra region");
-            while (k - kc->kct < *hkoffs && b2pos_of(*k) < b2pos_of(kc->kct[(*b.it).ke])) {
-                if (IS_UQ(k)) //GDB:UQ1
-                    k = process_mantra(kc, b, k);
-                ++k;
-            }
-        } else {
-            NB(k - kc->kct <= *hkoffs);
-            while (k - kc->kct != (*b.it).ke) {
+        NB(k - kc->kct <= *hkoffs);
+        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*b.it).e) {
 
-                if (IS_UQ(k)) //GDB:UQ2
-                    k = process_mantra(kc, b, k);
-                ++k;
-            }
+            if (IS_UQ(k)) //GDB:UQ1
+                k = process_mantra(kc, b, k);
+
+            ++k;
         }
 
-        uint32_t end = (*b.it).ke == *hkoffs ? h->end : b2pos_of(*k);
+        uint32_t end = (k - kc->kct == *hkoffs ? h->end : b2pos_of(*k)) - 2;
         // check whether last uniq was adjoining end
         if (end < (*b.it).s + (kc->extension << 1)) {
             excise(kc, b, &k);
             b.it = kc->bnd->erase(b.it);
         } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
             excise(kc, b, &k);
-            if (b.prev != NO_K)
-                (*b.it).ke = kc->contxt_idx[b.prev];
-            else
-                (*b.it).ke = b.tgtk - kc->kct;
+            (*b.it).e = b2pos_of(kc->kct[kc->contxt_idx[b.prev]]);
             ++b.it;
         } else {
 
             move_uniq(kc, b, end);
-
-            if (end == h->end)
-                (*b.it).ke = b.tgtk - kc->kct;
-            else if (b.prev != NO_K)
-                (*b.it).ke = kc->contxt_idx[b.prev];
 
             ++b.it;
         }
@@ -398,8 +380,6 @@ ext_uq_iter(kct_t *kc)
     } while (b.it != kc->bnd->end());
 
     k_compression(kc, b, k);
-
-    return 0;
 }
 
 static int
@@ -410,7 +390,7 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
         kc->iter = 0;
         do { // until no no more new uniques
             kc->uqct = 0;
-            _EVAL(ext_uq_iter(kc));
+            ext_uq_iter(kc);
             EPR("observed %u excised in iteration %u, extension %u\n",
                 kc->uqct, ++kc->iter, kc->extension);
         } while (kc->uqct > 0);

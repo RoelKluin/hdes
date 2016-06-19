@@ -70,7 +70,7 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
         __WRITE_VAL(val, fhout)
         val = (*b).corr;
         __WRITE_VAL(val, fhout)
-        val = (*b).ke;
+        val = (*b).e;
         __WRITE_VAL(val, fhout)
     }
 
@@ -109,7 +109,7 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
         __READ_VAL(m.ho, fhin)
         __READ_VAL(m.s, fhin)
         __READ_VAL(m.corr, fhin)
-        __READ_VAL(m.ke, fhin)
+        __READ_VAL(m.e, fhin)
         kc->bnd->push_front(m);
     }
 

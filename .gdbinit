@@ -114,7 +114,6 @@ end
 #tb key_init.cpp:190
 #break_re '_addtoseq(kc->s, seq.t); // kc->s_l grows here' 'key_init.cpp' 'tbreak'
 #commands
-#    silent
 #    call print_seq(&seq, KEY_WIDTH)
 #    call print_seq(&seq, KEY_WIDTH)
 #    call print_seq(&seq, KEY_WIDTH)
@@ -181,7 +180,6 @@ end
 #b fa.cpp:157
 break_re 'while (contxt_idx) //GDB' 'fa.cpp' 'tbreak'
 commands
-#    silent
     pkct kc->kct + *contxt_idx
     print show_mantras(kc, b.it)
 #    wa seq.dna
@@ -247,14 +245,12 @@ end
 
 break_re '//GDB:2$' 'fa.cpp' 'break'
 commands
-#    silent
     pkct thisk
     run_until
 end
 
 break_re '//GDB:move$' 'fa.cpp' 'break'
 commands
-#    silent
     printf "^^^---moved up\n"
     pkct k
     run_until
@@ -263,7 +259,6 @@ end
 #break shrink_mantra
 break_re '//GDB:mantra1$' 'fa.cpp' 'break'
 commands
-#    silent
     print show_mantras(kc, b.it)
     run_until
 end
@@ -278,7 +273,6 @@ end
 
 break_re '//GDB:next mantra$' 'fa.cpp' 'break'
 commands
-#    silent
     printf "next mantra\n"
     pkct k
     print show_mantras(kc, b.it)
@@ -307,20 +301,11 @@ end
 
 break_re '//GDB:UQ1$' 'fa.cpp' 'break'
 commands
-#    silent
-    call print_posseq(b.s, *k, KEY_WIDTH)
-    if ~*k & DUP_BIT
-        printf "uniq----^^^\n"
-    end
-    run_until
-end
-
-break_re '//GDB:UQ2$' 'fa.cpp' 'break'
-commands
-#    silent
-    call print_posseq(b.s, *k, KEY_WIDTH)
-    if ~*k & DUP_BIT
-        printf "uniQ----^^^\n"
+    if *k
+        call print_posseq(b.s, *k, KEY_WIDTH)
+        if ~*k & DUP_BIT
+            printf "uniq----^^^\n"
+        end
     end
     run_until
 end
@@ -335,7 +320,6 @@ end
 
 break_re '// also update header$' 'fa.cpp' 'break'
 commands
-#    silent
     printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*b.it).ho
     if (*b.it).ho != kc->h_l - 1
         printf "2bit sequence offset became %u:\t", b.s + kc->h[(*b.it).ho]->len - kc->s
@@ -349,7 +333,6 @@ end
 
 break_re 'kc->uqct = k - b.tgtk;' 'fa.cpp' 'break'
 commands
-#    silent
     pkct k
     print show_mantras(kc, b.it)
     run_until
@@ -357,8 +340,6 @@ end
 
 break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
 commands
-#    silent
-    #b ext_uq_iter
     pkct kc->kct + kc->kct_l
     print show_mantras(kc, b.it)
     run_until
@@ -366,12 +347,25 @@ end
 
 break_re '//GDB:BUG$' 'fa.cpp' 'break'
 commands
-#    silent
-    #b ext_uq_iter
     p/x k[-1]
     run_until
 end
 
+break_re 'k_compression(kc, b, k);' 'fa.cpp' 'break'
+commands
+    print "before k_compression():"
+    pkct k
+    print show_mantras(kc, b.it)
+    run_until
+end
+
+break_re '//GDB:after k_compression$' 'fa.cpp' 'break'
+commands
+    print "after k_compression():"
+    pkct k
+    print show_mantras(kc, b.it)
+    run_until
+end
 
 
 #########################################################################################

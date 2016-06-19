@@ -22,14 +22,11 @@ show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
     std::list<Mantra>::iterator it = kc->bnd->begin();
     if (it != kc->bnd->end()) {
         do {
-            uint32_t ke = (*it).ke;
             while (h - kc->h != (*it).ho)
                 ++h;
-            //EPR("%s",  ke != kc->hkoffs[h - kc->h] ? "kepos(kc, it) - 2" : "h->end");
-            uint32_t end = ke != kc->hkoffs[h - kc->h] ? kepos(kc, it) - 2 : h->end;
 
-            EPR("[%u%c]:\t>%s (%u+)%u - %u\t(ke:%u)", j++, it==here?'*':' ',
-                    kc->id + h->ido, (*it).corr, (*it).s >>1, end >> 1, ke);
+            EPR("[%u%c]:\t>%s (%u+)%u - %u", j++, it==here?'*':' ',
+                    kc->id + h->ido, (*it).corr, (*it).s >>1, (*it).e >> 1);
         } while (++it != kc->bnd->end());
     } else {
         EPR("[ entirely mapable ]");
