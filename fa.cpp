@@ -70,6 +70,26 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
     }
 }
 
+// if kct grows, pointers *thisk, k, b.tgtk b.prev become invalid
+static void
+buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
+{
+    if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
+        uint32_t ok1, ok3, ok4;
+
+        ok1 = b.tgtk - kc->kct;
+        ok3 = *k1 - kc->kct;
+        ok4 = k2 ? *k2 - kc->kct : ~0u;
+        uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
+        if_ever (t == NULL)
+            raise(SIGTRAP);
+        kc->kct = t;
+        b.tgtk = t + ok1;
+        *k1 = t + ok3;
+        if (ok4 != ~0u) *k2 = t + ok4;
+    }
+}
+
 /*
  * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
@@ -96,24 +116,46 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
     //GDB:mantra1
 }
 
-// if kct grows, pointers *thisk, k, b.tgtk b.prev become invalid
 static void
-buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
+k_compression(kct_t *kc, Bnd &b, uint32_t *k)
 {
-    if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
-        uint32_t ok1, ok3, ok4;
+    Hdr* h = kc->h;
+    b.s = kc->s;
+    b.it = kc->bnd->begin();
+    uint32_t *hkoffs = kc->hkoffs + kc->h_l;
+    // put uniqs and 1st excised back in array (recompression)
+    while(1) {
+        for (;k - kc->kct < *hkoffs; ++k) {
 
-        ok1 = b.tgtk - kc->kct;
-        ok3 = *k1 - kc->kct;
-        ok4 = k2 ? *k2 - kc->kct : ~0u;
-        uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
-        if_ever (t == NULL)
-            raise(SIGTRAP);
-        kc->kct = t;
-        b.tgtk = t + ok1;
-        *k1 = t + ok3;
-        if (ok4 != ~0u) *k2 = t + ok4;
+            if (*k == 0)
+                continue;
+
+            if (k != b.tgtk) {
+                keyseq_t seq = {.p = *k };
+                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
+                *b.tgtk = *k;
+                *k ^= *k;//
+            }
+            if (b.it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
+                (*b.it).e = b2pos_of(*b.tgtk);
+                ++b.it;
+            }
+            ++b.tgtk;
+        }
+        *hkoffs = b.tgtk - kc->kct;
+        b.s += h->len;
+        if(++h == kc->h + kc->h_l) {
+            h = kc->h;
+            b.s = kc->s;
+        }
+        if (hkoffs == &kc->kct_l)
+            break;
+
+        if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
+            hkoffs = &kc->kct_l;
     }
+    kc->kct_l = b.tgtk - kc->kct;
+    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
 }
 
 static inline uint32_t *
@@ -244,59 +286,6 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
     }
     b.prev = contxt_idx - kc->contxt_idx;//GDB:2
     return thisk;
-}
-
-static void
-k_compression(kct_t *kc, Bnd &b, uint32_t *k)
-{
-    Hdr* h = kc->h;
-    b.s = kc->s;
-    b.it = kc->bnd->begin();
-    uint32_t *hkoffs = kc->hkoffs + kc->h_l;
-    // put uniqs and 1st excised back in array (recompression)
-    while(1) {
-        for (;k - kc->kct < *hkoffs; ++k) {
-
-            if (*k == 0)
-                continue;
-
-            if (k != b.tgtk) {
-                keyseq_t seq = {.p = *k };
-                kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
-                *b.tgtk = *k;
-                *k ^= *k;//
-            }
-            if (b.it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
-                (*b.it).e = b2pos_of(*b.tgtk);
-                ++b.it;
-            }
-            ++b.tgtk;
-        }
-        *hkoffs = b.tgtk - kc->kct;
-        b.s += h->len;
-        if(++h == kc->h + kc->h_l) {
-            h = kc->h;
-            b.s = kc->s;
-        }
-        if (hkoffs == &kc->kct_l)
-            break;
-
-        if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
-            hkoffs = &kc->kct_l;
-    }
-    kc->kct_l = b.tgtk - kc->kct;
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-}
-
-static Hdr*
-moveto_hdr(kct_t *kc, Bnd &b, Hdr* h)
-{
-    if (b.it == kc->bnd->end())
-        return NULL;
-    while (h != kc->h + (*b.it).ho)
-        b.s += h++->len;
-
-    return h;
 }
 
 /*
