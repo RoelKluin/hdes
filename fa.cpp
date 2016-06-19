@@ -89,7 +89,7 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
     if (b.prev != NO_K) { // not at mantra start
 
         Mantra copy = *b.it;
-        (*b.it).e = b2pos_of(kc->kct[kc->contxt_idx[b.prev]]);
+        (*b.it).e = prev_pos(kc, b);
         kc->bnd->insert(b.it, copy);
     }
     (*b.it).s = b2pos_of(*k) + 2;
@@ -281,8 +281,8 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
             if (b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
                 (*b.it).e = b2pos_of(*b.tgtk);
 
-                ++b.it;
-                NB(b.it != kc->bnd->end());
+                if (++b.it == kc->bnd->end())
+                    break;
             }
             ++b.tgtk;
         }
@@ -364,7 +364,7 @@ ext_uq_iter(kct_t *kc)
             b.it = kc->bnd->erase(b.it);
         } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1) + 2) {
             excise(kc, b, &k);
-            (*b.it).e = b2pos_of(kc->kct[kc->contxt_idx[b.prev]]);
+            (*b.it).e = prev_pos(kc, b);
             ++b.it;
         } else {
 
