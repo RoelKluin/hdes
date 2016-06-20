@@ -183,8 +183,8 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
     return contxt_idx;
 }
 
-static inline uint32_t *
-move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t pend)
+static inline void
+move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
 {
     NB(*contxt_idx != NO_K);
     NB(*contxt_idx < kc->kct_l);
@@ -219,14 +219,6 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C uint32_t
 
         NB(b.tgtk <= kc->kct + kc->kct_l);
     }
-    seq.p = b2pos_of(seq.p);
-    if (seq.p == pend)
-        return NULL;
-
-    get_next_nt_seq(b.s, seq);
-    contxt_idx = get_kct(kc, seq, 1);
-    seq.p += 2;
-    return contxt_idx;
 }
 
 static keyseq_t
@@ -234,11 +226,18 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
     keyseq_t seq = {.p = after_prev(kc, b)};
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
+    seq.p = b2pos_of(seq.p);
     NB(*contxt_idx < kc->kct_l);
     NB(*contxt_idx != NO_K);
+    NB(seq.p <= pend);
 
-    while (contxt_idx)
-        contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB
+    while (seq.p != pend) {
+        move_uniq_one(kc, b, seq, contxt_idx); //GDB
+        get_next_nt_seq(b.s, seq);
+        contxt_idx = get_kct(kc, seq, 1);
+        seq.p = b2pos_of(seq.p) + 2;
+    }
+    move_uniq_one(kc, b, seq, contxt_idx);
 
     return seq;
 }
@@ -264,7 +263,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
     // from prev to p, add position if pending and reevaluate dupbit
 
     uint32_t tp = b2pos_of(*k);
-    keyseq_t seq = move_uniq(kc, b, tp < (*b.it).e ? tp - 2 : (*b.it).e);
+    keyseq_t seq = move_uniq(kc, b, tp - 2);
 
     seq.p = b2pos_of(seq.p);
     get_next_nt_seq(b.s, seq);

@@ -176,7 +176,7 @@ define handle_non_uniques
 end
 
 #b fa.cpp:157
-break_re 'contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB' 'fa.cpp' 'tbreak'
+break_re 'move_uniq_one(kc, b, seq, contxt_idx); //GDB' 'fa.cpp' 'tbreak'
 commands
     pkct kc->kct + *contxt_idx
     print show_mantras(kc, b.it)
@@ -186,7 +186,7 @@ commands
 #        pseq
 #        run_until
 #    end
-    break_re 'contxt_idx = move_uniq_one(kc, b, seq, contxt_idx, pend); //GDB' 'fa.cpp' 'break'
+    break_re 'move_uniq_one(kc, b, seq, contxt_idx); //GDB' 'fa.cpp' 'break'
     commands
 #        wa seq.dna
 #        commands
