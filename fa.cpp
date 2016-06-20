@@ -244,26 +244,26 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 }
 
 static uint32_t*
-process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
+process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 {
-    int scope = in_scope(kc, b, thisk);
+    int scope = in_scope(kc, b, k);
     uint32_t *contxt_idx = NULL;
 
     if (scope >= 0) { // a 2nd uniq
-        shrink_mantra(kc, b, thisk);
+        shrink_mantra(kc, b, k);
         // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
-        excise(kc, b, &thisk);
-        contxt_idx = excise_one(kc, b, &thisk, thisk);
+        excise(kc, b, &k);
+        contxt_idx = excise_one(kc, b, &k, k);
 
         NB(contxt_idx != NULL);
         b.prev = contxt_idx - kc->contxt_idx;//GDB:moved
         EPR("previously moved were %u", b.moved);
-        return thisk;
+        return k;
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
 
-    uint32_t tp = b2pos_of(*thisk);
+    uint32_t tp = b2pos_of(*k);
     keyseq_t seq = move_uniq(kc, b, tp < (*b.it).e ? tp - 2 : (*b.it).e);
 
     seq.p = b2pos_of(seq.p);
@@ -274,10 +274,10 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
 
         EPR("only one uniq isolated from mantra");
         ++b.moved; //namely last uniq.
-        buf_grow_ks(kc, b, &thisk, NULL);
-        kc->kct[kc->kct_l] = *thisk;
+        buf_grow_ks(kc, b, &k, NULL);
+        kc->kct[kc->kct_l] = *k;
         *contxt_idx = kc->kct_l++;
-        *thisk ^= *thisk;//
+        *k ^= *k;//
 
         Mantra copy = *b.it;
         (*b.it).s = tp + 2;
@@ -285,7 +285,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *thisk)
         kc->bnd->insert(b.it, copy);
     }
     b.prev = contxt_idx - kc->contxt_idx;//GDB:2
-    return thisk;
+    return k;
 }
 
 /*

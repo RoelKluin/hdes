@@ -237,13 +237,13 @@ break_re '//GDB:moved' 'fa.cpp' 'break'
 commands
 #   silent
     printf "\nThese were moved to kct end.\n"
-    pkct thisk
+    pkct k
     run_until
 end
 
 break_re '//GDB:2$' 'fa.cpp' 'break'
 commands
-    pkct thisk
+    pkct k
     run_until
 end
 
@@ -279,7 +279,7 @@ end
 
 
 #break reached_boundary
-#break_re 'b.moved = b.tgtk - thisk + 1;$' 'fa.cpp' 'break'
+#break_re 'b.moved = b.tgtk - k + 1;$' 'fa.cpp' 'break'
 #commands
 #    #silent
 #    pkct
@@ -329,13 +329,6 @@ commands
     run_until
 end
 
-break_re 'kc->kct_l = skctl;' 'fa.cpp' 'break'
-commands
-    pkct kc->kct + kc->kct_l
-    print show_mantras(kc, b.it)
-    run_until
-end
-
 break_re '//GDB:BUG$' 'fa.cpp' 'break'
 commands
     p/x k[-1]
@@ -356,12 +349,22 @@ while $i < $bpnum
 end
 
 set $i = $bpnum
-python break_re_py('//GDBt$', 'fa.cpp', 'break', 1)
+python break_re_py('//GDBm', 'fa.cpp', 'break', 1)
 while $i < $bpnum
     set $i = $i + 1
     commands $i
-        printf "\tat:%s:%u\n", __FILE__, __LINE__
-        call print_kct(kc, b, thisk)
+        silent
+        printf "\t=>\tat:%s:%u\n", __FILE__, __LINE__
+    end
+end
+
+
+set $i = $bpnum
+python break_re_py('//m', 'fa.cpp', 'break', 1)
+while $i < $bpnum
+    set $i = $i + 1
+    commands $i
+        silent
         print show_mantras(kc, b.it)
         run_until
     end
