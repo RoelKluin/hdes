@@ -168,137 +168,10 @@ end
 
 
 
-define handle_non_uniques
-    #bt 2
-    #printf "prev:%u\tseq.p:%u\tpend:%u\text-1:%u\t", prev, seq.p, pend, kc->ext + 1
-    pseq
-    run_until
-end
 
-#b fa.cpp:157
-break_re 'move_uniq_one(kc, b, seq, contxt_idx); //GDB' 'fa.cpp' 'tbreak'
+break_re '//~ uniq$' 'fa.cpp' 'break'
 commands
-    pkct kc->kct + *contxt_idx
-    print show_mantras(kc, b.it)
-#    wa seq.dna
-#    commands
-#        #silent
-#        pseq
-#        run_until
-#    end
-    break_re 'move_uniq_one(kc, b, seq, contxt_idx); //GDB' 'fa.cpp' 'break'
-    commands
-#        wa seq.dna
-#        commands
-#            #silent
-#            pseq
-#            run_until
-#        end
-#        #silent
-        handle_non_uniques
-    end
-    handle_non_uniques
-end
-
-#b fa.cpp:251
-#break_re '/NB(hdr_end_k(kc, h) >= b.tgtk);' 'fa.cpp' 'break'
-#commands
-#    #silent
-#    printf "uniq at\t%u\n", *k >> 1
-#    run_until
-#end
-
-#b fa.cpp:201
-#
-## if the assigned break was 1:
-#
-#command 1
-#pdna seq 3 '\n'
-#p seq.p + (s - kc->s)
-#end
-
-#b fa.cpp:216
-#break next_mantra
-#break_re '// update assembly' 'fa.cpp' 'break'
-#commands
-#    #silent
-#    printf "boundary update:\n"
-#    run_until
-#end
-
-break_re '//GDB:1$' 'fa.cpp' 'break'
-commands
-#   silent
-    pdna seq.dna ','
-    run_until
-end
-
-break_re '//GDB:moved' 'fa.cpp' 'break'
-commands
-#   silent
-    printf "\nThese were moved to kct end.\n"
-    pkct k
-    run_until
-end
-
-break_re '//GDB:2$' 'fa.cpp' 'break'
-commands
-    pkct k
-    run_until
-end
-
-break_re '//GDB:move$' 'fa.cpp' 'break'
-commands
-    printf "^^^---moved up\n"
-    pkct k
-    run_until
-end
-
-#break shrink_mantra
-break_re '//GDB:mantra1$' 'fa.cpp' 'break'
-commands
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-#break reached_boundary
-#break_re '//GDB:mantra2$' 'fa.cpp' 'break'
-#commands
-#    #silent
-#    print show_mantras(kc, b.it)
-#    run_until
-#end
-
-break_re '//GDB:next mantra$' 'fa.cpp' 'break'
-commands
-    printf "next mantra\n"
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-
-#break reached_boundary
-#break_re 'b.moved = b.tgtk - k + 1;$' 'fa.cpp' 'break'
-#commands
-#    #silent
-#    pkct
-#    run_until
-#end
-
-#break next_mantra if b.prev == 0
-
-#define reached_boundary
-#    bt 1
-#    info locals
-#end
-#break_re '// GDB$' 'fa.cpp' 'break' 'reached_boundary'
-
-###########################################################################
-# ext_uq_iter()
-
-break_re '//GDB:UQ1$' 'fa.cpp' 'break'
-commands
+    silent
     if *k
         call print_posseq(b.s, *k, KEY_WIDTH)
         if ~*k & DUP_BIT
@@ -308,16 +181,9 @@ commands
     run_until
 end
 
-break_re '// check whether last uniq was adjoining end' 'fa.cpp' 'break'
+break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
-    printf "new hdr\n"
-    pkct k
-    print show_mantras(kc, b.it)
-    run_until
-end
-
-break_re '// also update header$' 'fa.cpp' 'break'
-commands
+    silent
     printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*b.it).ho
     if (*b.it).ho != kc->h_l - 1
         printf "2bit sequence offset became %u:\t", b.s + kc->h[(*b.it).ho]->len - kc->s
@@ -329,56 +195,55 @@ commands
     run_until
 end
 
-break_re '//GDB:BUG$' 'fa.cpp' 'break'
-commands
-    p/x k[-1]
-    run_until
+
+define list_1
+    set listsize 1
+    list
+    set listsize 10
 end
 
-
-set $i = $bpnum
-python break_re_py('//GDBk$', 'fa.cpp', 'break', 1)
-while $i < $bpnum
-    set $i = $i + 1
-    commands $i
-        printf "\tat:%s:%u\n", __FILE__, __LINE__
-        call print_kct(kc, b, k)
-        print show_mantras(kc, b.it)
-        run_until
-    end
-end
-
-set $i = $bpnum
-python break_re_py('//GDBm', 'fa.cpp', 'break', 1)
-while $i < $bpnum
-    set $i = $i + 1
-    commands $i
+define break_commands
+    commands $arg0
         silent
-        printf "\t=>\tat:%s:%u\n", __FILE__, __LINE__
+        printf "%s:", __FILE__
+        list_1
+            print show_mantras(kc, b.it)
+        c
     end
 end
+python break_re_py2('//M;', 'fa.cpp', 'break', 1)
 
-
-set $i = $bpnum
-python break_re_py('//m', 'fa.cpp', 'break', 1)
-while $i < $bpnum
-    set $i = $i + 1
-    commands $i
+define break_commands
+    commands $arg0
         silent
-        print show_mantras(kc, b.it)
-        run_until
+        printf "%s:", __FILE__
+        list_1
+            call print_kct(kc, b, k)
+        c
     end
 end
+python break_re_py2('//K;', 'fa.cpp', 'break', 1)
 
-set $i = $bpnum
-python break_re_py('//GDBm', 'fa.cpp', 'break', 1)
-while $i < $bpnum
-    set $i = $i + 1
-    commands $i
+define break_commands
+    commands $arg0
         silent
-        printf "\t=>\tat:%s:%u\n", __FILE__, __LINE__
+        printf "%s:", __FILE__
+        list_1
+            call print_kct(kc, b, k)
+            print show_mantras(kc, b.it)
+        c
     end
 end
+python break_re_py2('//B;', 'fa.cpp', 'break', 1)
+
+
+#TODO:
+# branch analysis:
+# store if/for/(do-)while branch taken info, print if taken first n times. (not taken is difficult)
+
+#TODO:
+# parse line and print all variables here. (i.e. before execution)
+
 
 #########################################################################################
 # mapping

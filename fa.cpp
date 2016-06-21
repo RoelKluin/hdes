@@ -113,7 +113,6 @@ shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
         kc->bnd->insert(b.it, copy);
     }
     (*b.it).s = b2pos_of(*k) + 2;
-    //GDB:mantra1
 }
 
 static void
@@ -168,7 +167,7 @@ excise_one(kct_t *kc, Bnd &b, uint32_t **thisk, uint32_t *k)
     kc->kct[kc->kct_l] = seq.p = *k;
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
     *k ^= *k;//
-    *contxt_idx = kc->kct_l++;//GDB:1
+    *contxt_idx = kc->kct_l++;
     ++b.moved;
     return contxt_idx;
 }
@@ -213,7 +212,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
             NB(*k);
             *b.tgtk = *k;
             *k ^= *k;//
-            *contxt_idx = b.tgtk - kc->kct;//GDB:move
+            *contxt_idx = b.tgtk - kc->kct;//K; moved up
         }
         ++b.tgtk;
 
@@ -232,7 +231,7 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
     NB(seq.p <= pend);
 
     while (seq.p != pend) {
-        move_uniq_one(kc, b, seq, contxt_idx); //GDB
+        move_uniq_one(kc, b, seq, contxt_idx);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq, 1);
         seq.p = b2pos_of(seq.p) + 2;
@@ -255,9 +254,9 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
         contxt_idx = excise_one(kc, b, &k, k);
 
         NB(contxt_idx != NULL);
-        b.prev = contxt_idx - kc->contxt_idx;//GDB:moved
+        b.prev = contxt_idx - kc->contxt_idx;
         EPR("previously moved were %u", b.moved);
-        return k;
+        return k;//B; 2nd uniq, mantra shrunk & excision
     }
     // prev to pend are uniques, not in scope. between uniqs are
     // from prev to p, add position if pending and reevaluate dupbit
@@ -269,10 +268,9 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
     get_next_nt_seq(b.s, seq);
     contxt_idx = get_kct(kc, seq, 0);
 
-    if (tp != (*b.it).e - 2) { //excise just one unique
+    if (tp != (*b.it).e - 2) { // excise just one unique
 
-        EPR("only one uniq isolated from mantra");
-        ++b.moved; //namely last uniq.
+        ++b.moved;
         buf_grow_ks(kc, b, &k, NULL);
         kc->kct[kc->kct_l] = *k;
         *contxt_idx = kc->kct_l++;
@@ -281,9 +279,9 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
         Mantra copy = *b.it;
         (*b.it).s = tp + 2;
         copy.e = tp;
-        kc->bnd->insert(b.it, copy);
+        kc->bnd->insert(b.it, copy); //B; only one uniq isolated from mantra
     }
-    b.prev = contxt_idx - kc->contxt_idx;//GDB:2
+    b.prev = contxt_idx - kc->contxt_idx;
     return k;
 }
 
@@ -314,7 +312,7 @@ ext_uq_iter(kct_t *kc)
 
     do {
         while (h - kc->h != (*b.it).ho) {
-            // also update header
+            //~ also update header
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             b.s += h++->len;
         }
@@ -324,7 +322,7 @@ ext_uq_iter(kct_t *kc)
         NB(k - kc->kct <= *hkoffs);
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*b.it).e) {
 
-            if (IS_UQ(k)) //GDB:UQ1
+            if (IS_UQ(k)) //~ uniq
                 k = process_mantra(kc, b, k);
 
             ++k;
@@ -346,12 +344,11 @@ ext_uq_iter(kct_t *kc)
             ++b.it;
         }
         *hkoffs = b.tgtk - kc->kct;
-        //GDB:next mantra
 
-    } while (b.it != kc->bnd->end());
+    } while (b.it != kc->bnd->end());//B; next region
 
-    k_compression(kc, b, k);//GDBk
-    NB(skctl == kc->kct_l); //GDBk
+    k_compression(kc, b, k);
+    NB(skctl == kc->kct_l);//B;
 }
 
 static int
