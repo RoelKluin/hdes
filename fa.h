@@ -80,8 +80,8 @@ seq_next(struct keyseq_t &seq)
 
 #define after_prev(kc, b) (b.prev != NO_K ? prev_pos(kc, b) + 2: (*b.it).s)
 
-#define in_scope(kc, b, k) (after_prev(kc, b) - (b2pos_of(*k) < (*b.it).e ?\
-        (b2pos_of(*k) - ((kc)->extension << 1)) : (*b.it).e))
+#define in_scope(kc, b, k, ext) (after_prev(kc, b) - (b2pos_of(*k) < (*b.it).e ?\
+        (b2pos_of(*k) - ext) : (*b.it).e))
 
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t ho;   // which contig
@@ -144,7 +144,7 @@ struct kct_t {
 
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hkoffs_l, h_l, uqct;
-    unsigned readlength, iter, extension;
+    unsigned readlength, iter;
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
     // could be possible to move bnd here.
 };

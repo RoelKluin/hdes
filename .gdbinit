@@ -218,7 +218,7 @@ define break_commands
         silent
         printf "%s:", __FILE__
         list_1
-            call print_kct(kc, b, k)
+        call print_kct(kc, b, k)
         c
     end
 end
@@ -229,12 +229,21 @@ define break_commands
         silent
         printf "%s:", __FILE__
         list_1
-            call print_kct(kc, b, k)
-            print show_mantras(kc, b.it)
+        call print_kct(kc, b, k)
+        print show_mantras(kc, b.it)
         c
     end
 end
 python break_re_py2('//B;', 'fa.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        pseq
+        c
+    end
+end
+python break_re_py2('//P;', 'fa.cpp', 'break', 1)
 
 
 #TODO:

@@ -164,12 +164,13 @@ excise_one(kct_t *kc, Bnd &b, uint32_t **thisk, uint32_t *k)
     NB(k < kc->kct + kc->kct_l);
     buf_grow_ks(kc, b, thisk, &k);
     NB(k != kc->kct + kc->kct_l);
+    //*k &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
     kc->kct[kc->kct_l] = seq.p = *k;
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
     *k ^= *k;//
     *contxt_idx = kc->kct_l++;
     ++b.moved;
-    return contxt_idx;
+    return contxt_idx;//P;
 }
 
 static uint32_t *
@@ -207,7 +208,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
         if (b2pos_of(*k) >= (*b.it).e)
             EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
 
-        *k = seq.p; // set new pos and strand, unset dupbit
+        *k = seq.p; // set new pos and strand, unset dupbit XXX:Invalid write of size 4
         if (b.tgtk != k) {
             NB(*k);
             *b.tgtk = *k;
@@ -242,9 +243,9 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 }
 
 static uint32_t*
-process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
+process_mantra(kct_t *kc, Bnd &b, uint32_t *k, uint32_t ext)
 {
-    int scope = in_scope(kc, b, k);
+    int scope = in_scope(kc, b, k, ext);
     uint32_t *contxt_idx = NULL;
 
     if (scope >= 0) { // a 2nd uniq
@@ -270,7 +271,6 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
 
     if (tp != (*b.it).e - 2) { // excise just one unique
 
-        ++b.moved;
         buf_grow_ks(kc, b, &k, NULL);
         kc->kct[kc->kct_l] = *k;
         *contxt_idx = kc->kct_l++;
@@ -279,7 +279,8 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
         Mantra copy = *b.it;
         (*b.it).s = tp + 2;
         copy.e = tp;
-        kc->bnd->insert(b.it, copy); //B; only one uniq isolated from mantra
+        kc->bnd->insert(b.it, copy);
+        ++b.moved; //B; only one uniq isolated from mantra
     }
     b.prev = contxt_idx - kc->contxt_idx;
     return k;
@@ -297,7 +298,7 @@ process_mantra(kct_t *kc, Bnd &b, uint32_t *k)
  *
  */
 static void
-ext_uq_iter(kct_t *kc)
+ext_uq_iter(kct_t *kc, uint32_t ext)
 {
     uint32_t *k = kc->kct;
     Bnd b = {
@@ -320,20 +321,20 @@ ext_uq_iter(kct_t *kc)
         uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
         NB(k - kc->kct <= *hkoffs);
+        // NB b.it may change. cannot pre-store (*b.it).e.
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*b.it).e) {
 
             if (IS_UQ(k)) //~ uniq
-                k = process_mantra(kc, b, k);
+                k = process_mantra(kc, b, k, ext);
 
             ++k;
         }
 
-        uint32_t end = k - kc->kct == *hkoffs ? h->end : b2pos_of(*k);
-        // check whether last uniq was adjoining end
-        if (end < (*b.it).s + (kc->extension << 1)) {
+        uint32_t end = (*b.it).e - 2;
+        if ((*b.it).s + ext >= end) {
             excise(kc, b, &k);
             b.it = kc->bnd->erase(b.it);
-        } else if (b.prev != NO_K && end < prev_pos(kc, b) + (kc->extension << 1)) {
+        } else if (b.prev != NO_K && prev_pos(kc, b) + ext >= end) {
             excise(kc, b, &k);
             (*b.it).e = prev_pos(kc, b);
             ++b.it;
@@ -355,13 +356,14 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res = -ENOMEM;
-    for (kc->extension = 0; kc->extension != kc->readlength - KEY_WIDTH + 1; ++kc->extension) {
+    uint32_t end = (kc->readlength - KEY_WIDTH + 1) << 1;
+    for (uint32_t ext = 0; ext != end; ext += 2) {
         kc->iter = 0;
         do { // until no no more new uniques
             kc->uqct = 0;
-            ext_uq_iter(kc);
+            ext_uq_iter(kc, ext);
             EPR("observed %u excised in iteration %u, extension %u\n",
-                kc->uqct, ++kc->iter, kc->extension);
+                kc->uqct, ++kc->iter, ext);
         } while (kc->uqct > 0);
     }
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
