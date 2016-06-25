@@ -169,7 +169,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
-    h->end = seq.p - 2;
+    h->end = seq.p;
     EPR(">%s:s len:%u", kc->id + h->ido, h->len);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);
@@ -223,6 +223,7 @@ case 'G':   seq.t &= 0x3;
                 if (i-- == KEY_WIDTH - 1) { // key after header/stretch to be rebuilt
                     NB(h != NULL);
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
+                        NB((seq.p & 1) == 0);
                         end_pos(kc, h, seq.p);
                         corr += kc->bnd->back().corr;
                         kc->bnd->push_back({.ho = h - kc->h, .s = seq.p + NT_WIDTH});
