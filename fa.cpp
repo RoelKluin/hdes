@@ -257,11 +257,12 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
         .s = kc->s,
         .moved = 0,
     };
-    uint32_t skctl = kc->kct_l;
-    Hdr* h = kc->h;//B; initial state
     std::list<Mantra>::iterator it = kc->bnd->begin();
+    Hdr* h = kc->h;//B; initial state
+    uint32_t skctl = kc->kct_l;//B; initial state
 
     do {
+        NB(h - kc->h <= (*it).ho);
         while (h - kc->h != (*it).ho) {
             //~ also update header
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
@@ -269,7 +270,7 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
         }
         uint32_t* hkoffs = kc->hkoffs + (*it).ho;
 
-        NB(k - kc->kct <= *hkoffs);
+        //k - kc->kct <= *hkoffs: may be untrue after key excision.
         uint32_t end = (*it).e;
 
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
