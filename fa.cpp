@@ -258,22 +258,25 @@ ext_uq_iter(kct_t *kc, unsigned ext)
         .moved = 0,
     };
     std::list<Mantra>::iterator it = kc->bnd->begin();
-    Hdr* h = kc->h;//B; initial state
+    Hdr* h = kc->h;
     unsigned skctl = kc->kct_l;//B; initial state
-    uint32_t* hkoffs = kc->hkoffs + (*it).ho;
+    uint32_t* hkoffs = kc->hkoffs;
 
     do {
         NB(h - kc->h <= (*it).ho);
         while (h - kc->h != (*it).ho) {
             //~ also update header
+            *hkoffs++ = b.tgtk - kc->kct;
+            unsigned t = hkoffs - kc->hkoffs;
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-            hkoffs = kc->hkoffs + (*it).ho;
+            hkoffs = kc->hkoffs + t;
             b.s += h++->len;
             b.fk = k - kc->kct;
         }
+        NB(hkoffs == kc->hkoffs + (*it).ho);
 
         //k - kc->kct <= *hkoffs: may be untrue after key excision.
-        unsigned end = (*it).e;
+        unsigned end = (*it).e;//B; next region
 
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
 
@@ -290,7 +293,6 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 ++k;
             } else {
                 it = kc->bnd->erase(it);
-                *hkoffs = b.tgtk - kc->kct;
             }
             k = excise(kc, b, k);
         } else {
@@ -305,11 +307,13 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 ++k;
             } else {
                 ++it;
-                *hkoffs = b.tgtk - kc->kct;
             }
         }
 
-    } while (it != kc->bnd->end());//B; next region
+    } while (it != kc->bnd->end());
+
+    while (hkoffs != kc->hkoffs + kc->h_l)
+        *hkoffs++ = b.tgtk - kc->kct;
 
     k_compression(kc, b, k);
     NB(skctl == kc->kct_l);//B; final state

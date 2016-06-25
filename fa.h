@@ -110,6 +110,7 @@ struct Hdr {
 struct Bnd {
     uint32_t *tgtk;
     uint8_t* s;
+    uint32_t fk;
     uint32_t moved;
 };
 
