@@ -156,11 +156,11 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
 }
 
 static inline uint32_t *
-excise_one(kct_t *kc, Bnd &b, uint32_t **thisk, uint32_t *k)
+excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
 {
     keyseq_t seq = {0};
     NB(k < kc->kct + kc->kct_l);
-    buf_grow_ks(kc, b, thisk, &k);
+    buf_grow_ks(kc, b, &thisk, &k);
     NB(k != kc->kct + kc->kct_l);
     //*k &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
     kc->kct[kc->kct_l] = seq.p = *k;
@@ -168,17 +168,15 @@ excise_one(kct_t *kc, Bnd &b, uint32_t **thisk, uint32_t *k)
     *k ^= *k;//
     *contxt_idx = kc->kct_l++;
     ++b.moved;
-    return contxt_idx;//P;
+    return thisk;//P;
 }
 
 static uint32_t *
-excise(kct_t *kc, Bnd &b, uint32_t **thisk)
+excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
-    uint32_t *contxt_idx = NULL;
-    for (uint32_t *k = b.tgtk + b.moved; k < *thisk; ++k)
-        contxt_idx = excise_one(kc, b, thisk, k);
-
-    return contxt_idx;
+    for (uint32_t *k = b.tgtk + b.moved; k < thisk; ++k)
+        thisk = excise_one(kc, b, thisk, k);
+    return thisk;
 }
 
 static inline void
@@ -262,16 +260,17 @@ ext_uq_iter(kct_t *kc, unsigned ext)
     std::list<Mantra>::iterator it = kc->bnd->begin();
     Hdr* h = kc->h;//B; initial state
     unsigned skctl = kc->kct_l;//B; initial state
+    uint32_t* hkoffs = kc->hkoffs + (*it).ho;
 
     do {
         NB(h - kc->h <= (*it).ho);
         while (h - kc->h != (*it).ho) {
             //~ also update header
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+            hkoffs = kc->hkoffs + (*it).ho;
             b.s += h++->len;
             b.fk = k - kc->kct;
         }
-        uint32_t* hkoffs = kc->hkoffs + (*it).ho;
 
         //k - kc->kct <= *hkoffs: may be untrue after key excision.
         unsigned end = (*it).e;
@@ -293,7 +292,7 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 it = kc->bnd->erase(it);
                 *hkoffs = b.tgtk - kc->kct;
             }
-            excise(kc, b, &k);
+            k = excise(kc, b, k);
         } else {
             move_uniq(kc, b, (*it).s, end - 2, ext);
             if (end != (*it).e) {
@@ -302,6 +301,7 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 copy.e = end;
                 (*it).s = end + 2;
                 kc->bnd->insert(it, copy);
+                k = excise_one(kc, b, k, k);
                 ++k;
             } else {
                 ++it;
