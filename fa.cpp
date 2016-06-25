@@ -79,7 +79,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
     }
 }
 
-// if kct grows, pointers *thisk, k, b.tgtk b.prev become invalid
+// if kct grows, pointers *thisk, k, b.tgtk become invalid
 static void
 buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 {
@@ -111,18 +111,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
  *
  * while the no. regions can grow, the total no. sequence decreases, hence: shrink.
  */
-static void
-shrink_mantra(kct_t *kc, Bnd &b, uint32_t C*C k)
-{
-    NB(b.it != kc->bnd->end());
-    if (b.prev != NO_K) { // not at mantra start
 
-        Mantra copy = *b.it;
-        (*b.it).e = prev_pos(kc, b);
-        kc->bnd->insert(b.it, copy);
-    }
-    (*b.it).s = b2pos_of(*k) + 2;
-}
 
 static void
 k_compression(kct_t *kc, Bnd &b, uint32_t *k)
@@ -214,9 +203,6 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
         // 1st occurance;
         ++kc->uqct;    // unique or decremented later.
 
-        if (b2pos_of(*k) >= (*b.it).e)
-            EPR("// a position is pending for %u'th, first was excised", seq.p>>1);
-
         *k = seq.p; // set new pos and strand, unset dupbit XXX:Invalid write of size 4
         if (b.tgtk != k) {
             NB(*k);
@@ -233,7 +219,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
 static keyseq_t
 move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
 {
-    keyseq_t seq = {.p = after_prev(kc, b)};
+    keyseq_t seq = {.p = (*b.it).s};
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
     seq.p = b2pos_of(seq.p);
     NB(*contxt_idx < kc->kct_l);
@@ -269,7 +255,6 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
     Bnd b = {
         .tgtk = k,
         .s = kc->s,
-        .prev = NO_K,
         .moved = 0,
         .it = kc->bnd->begin()
     };
@@ -282,7 +267,6 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             b.s += h++->len;
         }
-        b.prev = NO_K;
         uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
         NB(k - kc->kct <= *hkoffs);
