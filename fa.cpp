@@ -84,7 +84,7 @@ static void
 buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 {
     if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
-        uint32_t ok1, ok3, ok4;
+        unsigned ok1, ok3, ok4;
 
         ok1 = b.tgtk - kc->kct;
         ok3 = *k1 - kc->kct;
@@ -182,7 +182,7 @@ excise(kct_t *kc, Bnd &b, uint32_t **thisk)
 }
 
 static inline void
-move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
+move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned ext)
 {
     NB(*contxt_idx != NO_K);
     NB(*contxt_idx < kc->kct_l);
@@ -192,8 +192,9 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
     if (k < b.tgtk) {
         // second occurance
 
-        if (~*k & DUP_BIT) {
-            // no dup after all
+        // after &&: do not set dupbit if previous key was within read scope (a cornercase)
+        if ((~*k & DUP_BIT) &&
+                (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))) {
 
             *k |= DUP_BIT;
             --kc->uqct;
@@ -217,7 +218,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
 }
 
 static keyseq_t
-move_uniq(kct_t *kc, Bnd &b, C uint32_t start, C uint32_t pend)
+move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend, C unsigned ext)
 {
     keyseq_t seq = {.p = start};
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
@@ -227,12 +228,12 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t start, C uint32_t pend)
     NB(seq.p <= pend);
 
     while (seq.p != pend) {
-        move_uniq_one(kc, b, seq, contxt_idx);
+        move_uniq_one(kc, b, seq, contxt_idx, ext);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq, 1);
         seq.p = b2pos_of(seq.p) + 2;
     }
-    move_uniq_one(kc, b, seq, contxt_idx);
+    move_uniq_one(kc, b, seq, contxt_idx, ext);
 
     return seq;
 }
@@ -249,17 +250,18 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t start, C uint32_t pend)
  *
  */
 static void
-ext_uq_iter(kct_t *kc, uint32_t ext)
+ext_uq_iter(kct_t *kc, unsigned ext)
 {
     uint32_t *k = kc->kct;
     Bnd b = {
         .tgtk = k,
         .s = kc->s,
+        .fk = k - kc->kct,
         .moved = 0,
     };
     std::list<Mantra>::iterator it = kc->bnd->begin();
     Hdr* h = kc->h;//B; initial state
-    uint32_t skctl = kc->kct_l;//B; initial state
+    unsigned skctl = kc->kct_l;//B; initial state
 
     do {
         NB(h - kc->h <= (*it).ho);
@@ -267,11 +269,12 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
             //~ also update header
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             b.s += h++->len;
+            b.fk = k - kc->kct;
         }
         uint32_t* hkoffs = kc->hkoffs + (*it).ho;
 
         //k - kc->kct <= *hkoffs: may be untrue after key excision.
-        uint32_t end = (*it).e;
+        unsigned end = (*it).e;
 
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
 
@@ -292,7 +295,7 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
             }
             excise(kc, b, &k);
         } else {
-            move_uniq(kc, b, (*it).s, end - 2);
+            move_uniq(kc, b, (*it).s, end - 2, ext);
             if (end != (*it).e) {
                 //if (end + 2 != (*it).e) {
                 Mantra copy = *it;
@@ -316,8 +319,8 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res = -ENOMEM;
-    uint32_t end = (kc->readlength - KEY_WIDTH + 1) << 1;
-    for (uint32_t ext = 0; ext != end; ext += 2) {
+    unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
+    for (unsigned ext = 0; ext != end; ext += 2) {
         kc->iter = 0;
         do { // until no no more new uniques
             kc->uqct = 0;
