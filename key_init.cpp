@@ -224,9 +224,9 @@ case 'G':   seq.t &= 0x3;
                     NB(h != NULL);
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
-                        end_pos(kc, h, seq.p);
+                        end_pos(kc, h, seq.p - 2);
                         corr += kc->bnd->back().corr;
-                        kc->bnd->push_back({.ho = h - kc->h, .s = seq.p + NT_WIDTH});
+                        kc->bnd->push_back({.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2});
                     }
                     kc->bnd->back().corr += corr;
                     corr = 0;
