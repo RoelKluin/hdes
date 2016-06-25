@@ -45,11 +45,28 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
     EPR("");
     Hdr* h = kc->h;
     uint8_t *s = kc->s;
+    std::list<Mantra>::iterator it = kc->bnd->begin();
     uint32_t* hkoffs = kc->hkoffs;
 
     for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
+        if (it != kc->bnd->end()) {
+            while (h - kc->h != (*it).ho)
+                s += h++->len;
+            hkoffs = kc->hkoffs + (*it).ho;
+        } else {
+            if (h - kc->h != kc->h_l - 1) {
+                s += h++->len;
+            } else {
+                ++i; // increase extension nr.
+                h = kc->h;
+                s = kc->s;
+            }
+            if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
+                hkoffs = &kc->kct_l;
+        }
+
         while (k - kc->kct < *hkoffs) {
-            char c = k!=tk?((b.prev == NO_K || k!=kc->kct + kc->contxt_idx[b.prev])?(k!=b.tgtk?' ':'t'):'p'):'k';
+            char c = k!=tk?(k!=b.tgtk?' ':'t'):'k';
             EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
@@ -57,16 +74,8 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 EPR("(removed)");
             ++k;
         }
-        // ensure we continue printing if this contig was not yet finished (for debugging)
-        if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
-           hkoffs = &kc->kct_l;
-        if (h == kc->h + kc->h_l - 1) {
-            h = kc->h;
-            s = kc->s;
-            ++i; // increase extenion nr.
-        } else {
-            s += h++->len;
-        }
+        if (it != kc->bnd->end())
+            ++it;
     }
 }
 
