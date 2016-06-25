@@ -111,7 +111,6 @@ struct Bnd {
     uint32_t *tgtk;
     uint8_t* s;
     uint32_t moved;
-    std::list<Mantra>::iterator it;
 };
 
 struct kct_t {

@@ -100,7 +100,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 }
 
 /*
- * b.it contains ranges per contig for sequence not yet be mappable, but may become so.
+ * kc->bnd contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
  * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
  * shrinks (here).
@@ -118,7 +118,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
 {
     Hdr* h = kc->h;
     b.s = kc->s;
-    b.it = kc->bnd->begin();
+    std::list<Mantra>::iterator it = kc->bnd->begin();
     uint32_t *hkoffs = kc->hkoffs + kc->h_l;
     // put uniqs and 1st excised back in array (recompression)
     while(1) {
@@ -133,9 +133,9 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *k)
                 *b.tgtk = *k;
                 *k ^= *k;//
             }
-            if (b.it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*b.it).e) { // mantra end
-                (*b.it).e = b2pos_of(*b.tgtk);
-                ++b.it;
+            if (it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*it).e) { // mantra end
+                (*it).e = b2pos_of(*b.tgtk);
+                ++it;
             }
             ++b.tgtk;
         }
@@ -217,9 +217,9 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx)
 }
 
 static keyseq_t
-move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
+move_uniq(kct_t *kc, Bnd &b, C uint32_t start, C uint32_t pend)
 {
-    keyseq_t seq = {.p = (*b.it).s};
+    keyseq_t seq = {.p = start};
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
     seq.p = b2pos_of(seq.p);
     NB(*contxt_idx < kc->kct_l);
@@ -256,21 +256,21 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
         .tgtk = k,
         .s = kc->s,
         .moved = 0,
-        .it = kc->bnd->begin()
     };
     uint32_t skctl = kc->kct_l;
     Hdr* h = kc->h;//B; initial state
+    std::list<Mantra>::iterator it = kc->bnd->begin();
 
     do {
-        while (h - kc->h != (*b.it).ho) {
+        while (h - kc->h != (*it).ho) {
             //~ also update header
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             b.s += h++->len;
         }
-        uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
+        uint32_t* hkoffs = kc->hkoffs + (*it).ho;
 
         NB(k - kc->kct <= *hkoffs);
-        uint32_t end = (*b.it).e;
+        uint32_t end = (*it).e;
 
         while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
 
@@ -281,33 +281,34 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
             ++k;
         }
 
-        if ((*b.it).s + ext >= end) {
-            if (end != (*b.it).e) {
-                (*b.it).s = end + 2;
+        if ((*it).s + ext >= end) {
+            if (end != (*it).e) {
+                (*it).s = end + 2;
                 ++k;
             } else {
-                b.it = kc->bnd->erase(b.it);
+                it = kc->bnd->erase(it);
                 *hkoffs = b.tgtk - kc->kct;
             }
             excise(kc, b, &k);
         } else {
-            move_uniq(kc, b, end - 2);
-            if (end != (*b.it).e) {
-                Mantra copy = *b.it;
-                copy.e = b2pos_of(*k);
-                (*b.it).s = b2pos_of(*k) + 2;
-                kc->bnd->insert(b.it, copy);
+            move_uniq(kc, b, (*it).s, end - 2);
+            if (end != (*it).e) {
+                //if (end + 2 != (*it).e) {
+                Mantra copy = *it;
+                copy.e = end;
+                (*it).s = end + 2;
+                kc->bnd->insert(it, copy);
                 ++k;
             } else {
-                ++b.it;
+                ++it;
                 *hkoffs = b.tgtk - kc->kct;
             }
         }
 
-    } while (b.it != kc->bnd->end());//B; next region
+    } while (it != kc->bnd->end());//B; next region
 
     k_compression(kc, b, k);
-    NB(skctl == kc->kct_l);//B;
+    NB(skctl == kc->kct_l);//B; final state
 }
 
 static int

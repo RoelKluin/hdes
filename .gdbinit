@@ -184,10 +184,10 @@ end
 break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
     silent
-    printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*b.it).ho
-    if (*b.it).ho != kc->h_l - 1
-        printf "2bit sequence offset became %u:\t", b.s + kc->h[(*b.it).ho]->len - kc->s
-        call print_dna(b.s[kc->h[(*b.it).ho]->len], '.', 4)
+    printf "stored offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho
+    if (*it).ho != kc->h_l
+        printf "2bit sequence offset became %u:\t", b.s + kc->h[(*it).ho]->len - kc->s
+        call print_dna(b.s[kc->h[(*it).ho]->len], '.', 4)
         printf "..\n"
     else
         printf "(looping)\n"
@@ -207,7 +207,7 @@ define break_commands
         silent
         printf "%s:", __FILE__
         list_1
-            print show_mantras(kc, b.it)
+            print show_mantras(kc, it)
         c
     end
 end
@@ -230,7 +230,7 @@ define break_commands
         printf "%s:", __FILE__
         list_1
         call print_kct(kc, b, k)
-        print show_mantras(kc, b.it)
+        print show_mantras(kc, it)
         c
     end
 end
