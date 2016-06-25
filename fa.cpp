@@ -242,50 +242,6 @@ move_uniq(kct_t *kc, Bnd &b, C uint32_t pend)
     return seq;
 }
 
-static uint32_t*
-process_mantra(kct_t *kc, Bnd &b, uint32_t *k, uint32_t ext)
-{
-    int scope = in_scope(kc, b, k, ext);
-    uint32_t *contxt_idx = NULL;
-
-    if (scope >= 0) { // a 2nd uniq
-        shrink_mantra(kc, b, k);
-        // The distance between b.tgtk and k may have grown by excised 1st kcts (beside uniq).
-        excise(kc, b, &k);
-        contxt_idx = excise_one(kc, b, &k, k);
-
-        NB(contxt_idx != NULL);
-        b.prev = contxt_idx - kc->contxt_idx;
-        EPR("previously moved were %u", b.moved);
-        return k;//B; 2nd uniq, mantra shrunk & excision
-    }
-    // prev to pend are uniques, not in scope. between uniqs are
-    // from prev to p, add position if pending and reevaluate dupbit
-
-    uint32_t tp = b2pos_of(*k);
-    keyseq_t seq = move_uniq(kc, b, tp - 2);
-
-    seq.p = b2pos_of(seq.p);
-    get_next_nt_seq(b.s, seq);
-    contxt_idx = get_kct(kc, seq, 0);
-
-    if (tp != (*b.it).e - 2) { // excise just one unique
-
-        buf_grow_ks(kc, b, &k, NULL);
-        kc->kct[kc->kct_l] = *k;
-        *contxt_idx = kc->kct_l++;
-        *k ^= *k;//
-
-        Mantra copy = *b.it;
-        (*b.it).s = tp + 2;
-        copy.e = tp;
-        kc->bnd->insert(b.it, copy);
-        ++b.moved; //B; only one uniq isolated from mantra
-    }
-    b.prev = contxt_idx - kc->contxt_idx;
-    return k;
-}
-
 /*
  * Called for extensions 1+, primary uniques were already determined upon reading the fasta.
  * secondary uniques arise when all but one key are already covered by primary unique keys.
@@ -309,7 +265,7 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
         .it = kc->bnd->begin()
     };
     uint32_t skctl = kc->kct_l;
-    Hdr* h = kc->h;
+    Hdr* h = kc->h;//B; initial state
 
     do {
         while (h - kc->h != (*b.it).ho) {
@@ -321,30 +277,39 @@ ext_uq_iter(kct_t *kc, uint32_t ext)
         uint32_t* hkoffs = kc->hkoffs + (*b.it).ho;
 
         NB(k - kc->kct <= *hkoffs);
-        // NB b.it may change. cannot pre-store (*b.it).e.
-        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*b.it).e) {
+        uint32_t end = (*b.it).e;
 
-            if (IS_UQ(k)) //~ uniq
-                k = process_mantra(kc, b, k, ext);
+        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
 
+            if (IS_UQ(k)) { //~ uniq
+                end = b2pos_of(*k);
+                break;
+            }
             ++k;
         }
 
-        uint32_t end = (*b.it).e - 2;
         if ((*b.it).s + ext >= end) {
+            if (end != (*b.it).e) {
+                (*b.it).s = end + 2;
+                ++k;
+            } else {
+                b.it = kc->bnd->erase(b.it);
+                *hkoffs = b.tgtk - kc->kct;
+            }
             excise(kc, b, &k);
-            b.it = kc->bnd->erase(b.it);
-        } else if (b.prev != NO_K && prev_pos(kc, b) + ext >= end) {
-            excise(kc, b, &k);
-            (*b.it).e = prev_pos(kc, b);
-            ++b.it;
         } else {
-
-            move_uniq(kc, b, end);
-
-            ++b.it;
+            move_uniq(kc, b, end - 2);
+            if (end != (*b.it).e) {
+                Mantra copy = *b.it;
+                copy.e = b2pos_of(*k);
+                (*b.it).s = b2pos_of(*k) + 2;
+                kc->bnd->insert(b.it, copy);
+                ++k;
+            } else {
+                ++b.it;
+                *hkoffs = b.tgtk - kc->kct;
+            }
         }
-        *hkoffs = b.tgtk - kc->kct;
 
     } while (b.it != kc->bnd->end());//B; next region
 
