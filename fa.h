@@ -135,7 +135,7 @@ struct kct_t {
     std::list<Mantra>* bnd;
 
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, uqct;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, ct;
     unsigned readlength, iter;
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
     // could be possible to move bnd here.

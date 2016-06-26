@@ -195,12 +195,12 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
                 (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))) {
 
             *k |= DUP_BIT;
-            --kc->uqct;
+            --kc->ct;
         }
     } else {
 
         // 1st occurance;
-        ++kc->uqct;    // unique or decremented later.
+        ++kc->ct;    // unique or decremented later.
 
         *k = seq.p; // set new pos and strand, unset dupbit XXX:Invalid write of size 4
         if (b.tgtk != k) {
@@ -327,11 +327,11 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
     for (unsigned ext = 0; ext != end; ext += 2) {
         kc->iter = 0;
         do { // until no no more new uniques
-            kc->uqct = 0;
+            kc->ct = 0;
             ext_uq_iter(kc, ext);
-            EPR("observed %u excised in iteration %u, extension %u\n",
-                kc->uqct, ++kc->iter, ext);
-        } while (kc->uqct > 0);
+            EPR("observed %u potential in iteration %u, extension %u\n",
+                kc->ct, ++kc->iter, ext >> 1);
+        } while (kc->ct > 0);
     }
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");

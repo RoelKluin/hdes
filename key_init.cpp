@@ -216,7 +216,7 @@ case 'G':   seq.t &= 0x3;
                 } else if (!(kc->kct[*n] & DUP_BIT)) {
 
                     kc->kct[*n] |= DUP_BIT;   // mark it as dup
-                    --kc->uqct;
+                    --kc->ct;
                 }
                 seq.p = b2pos_of(seq.p);
             } else {
@@ -257,8 +257,8 @@ default:    if (isspace(seq.t))
         }
     }
     res = finish_contig(kc, h, seq);
-    kc->uqct += kc->kct_l;
-    fprintf(stderr, "Initial unique keys: %u / %u\n", kc->uqct, kc->kct_l);
+    kc->ct += kc->kct_l;
+    fprintf(stderr, "Initial unique keys: %u / %u\n", kc->ct, kc->kct_l);
 err:
     return res;
 }

@@ -1,4 +1,4 @@
->A    5    +-- 1 single unique AAC, two way adjoining
+>A   5    +-- 1 single unique AAC, two way adjoining
 NAAAACCC
 >B   5    0      5    +-- no primary unique, ACC secondary unique secondary unique TTT, two way adjoining, with N's
 ACCCCCCCGGGNNAATTTAANNNNNNN
