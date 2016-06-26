@@ -187,8 +187,8 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
         // second occurance
 
         // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-        if ((~*k & DUP_BIT) &&
-                (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))) {
+        if ((~*k & DUP_BIT)/* &&
+                (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))*/) {
 
             *k |= DUP_BIT;
             --kc->ct;
