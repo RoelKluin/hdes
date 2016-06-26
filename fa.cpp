@@ -35,6 +35,7 @@ free_kc(kct_t *kc)
     buf_free(kc->kct);
     buf_free(kc->h);
     buf_free(kc->hkoffs);
+    buf_free(kc->ext_iter);
     buf_free(kc->contxt_idx);
 }
 
@@ -114,45 +115,40 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 
 
 static void
-k_compression(kct_t *kc, Bnd &b, uint32_t *k)
+k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 {
+    unsigned t = hkoffs - kc->hkoffs;
+    buf_grow_add(kc->hkoffs, 1ul, 0, b.tgtk - kc->kct);
+    hkoffs = kc->hkoffs + t;
+    while (hkoffs != kc->hkoffs + kc->h_l)
+        *hkoffs++ = b.tgtk - kc->kct;
+
     Hdr* h = kc->h;
     b.s = kc->s;
-    std::list<Mantra>::iterator it = kc->bnd->begin();
-    uint32_t *hkoffs = kc->hkoffs + kc->h_l;
-    // put uniqs and 1st excised back in array (recompression)
-    while(1) {
-        for (;k - kc->kct < *hkoffs; ++k) {
 
-            if (*k == 0)
-                continue;
-
+    while (k - kc->kct != kc->kct_l) {
+        NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
+        while (k - kc->kct == *hkoffs) {
+            if (h - kc->h != kc->h_l - 1) {
+                b.s += h++->len;
+            } else {
+                h = kc->h;
+                b.s = kc->s;
+            }
+            *hkoffs++ = b.tgtk - kc->kct;
+        }
+        if (*k) {
             if (k != b.tgtk) {
-                keyseq_t seq = {.p = *k };
+                keyseq_t seq = {.p = b2pos_of(*k) };
                 kc->contxt_idx[build_ndx_kct(kc, seq, b.s, 0)] = b.tgtk - kc->kct;
                 *b.tgtk = *k;
                 *k ^= *k;//
             }
-            if (it != kc->bnd->end() && b2pos_of(*b.tgtk) >= (*it).e) { // mantra end
-                (*it).e = b2pos_of(*b.tgtk);
-                ++it;
-            }
             ++b.tgtk;
         }
-        *hkoffs = b.tgtk - kc->kct;
-        b.s += h->len;
-        if(++h == kc->h + kc->h_l) {
-            h = kc->h;
-            b.s = kc->s;
-        }
-        if (hkoffs == &kc->kct_l)
-            break;
-
-        if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
-            hkoffs = &kc->kct_l;
+        ++k;
     }
-    kc->kct_l = b.tgtk - kc->kct;
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    *hkoffs = kc->kct_l = b.tgtk - kc->kct;
 }
 
 static inline uint32_t *
@@ -312,18 +308,16 @@ ext_uq_iter(kct_t *kc, unsigned ext)
 
     } while (it != kc->bnd->end());
 
-    while (hkoffs != kc->hkoffs + kc->h_l)
-        *hkoffs++ = b.tgtk - kc->kct;
-
-    k_compression(kc, b, k);
+    k_compression(kc, b, hkoffs, k);//K;
     NB(skctl == kc->kct_l);//B; final state
 }
 
 static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
-    int res = -ENOMEM;
+    int res;
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
+    kc->ext_iter = buf_init(kc->ext_iter, 1);
     for (unsigned ext = 0; ext != end; ext += 2) {
         kc->iter = 0;
         do { // until no no more new uniques

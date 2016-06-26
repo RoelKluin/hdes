@@ -122,6 +122,7 @@ struct kct_t {
                    // this ndx or surroundings that do result in an ndx that does occur.
 
     uint32_t* kct;
+    uint32_t* ext_iter; // iterations per extension
                    // non occurant are initally set to NO_K. see Extension below.
     Hdr* h;
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
@@ -135,9 +136,9 @@ struct kct_t {
     std::list<Mantra>* bnd;
 
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, ct;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, ext_iter_l, ct;
     unsigned readlength, iter;
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m, ext_iter_m;
     // could be possible to move bnd here.
 };
 
