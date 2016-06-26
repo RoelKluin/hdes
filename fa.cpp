@@ -40,7 +40,7 @@ free_kc(kct_t *kc)
 }
 
 static void
-print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
+print_kct(kct_t *kc, Bnd &b, uint32_t* tk, uint32_t C*C until = NULL)
 {
     unsigned i = 0;
     EPR("");
@@ -73,6 +73,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk)
                 print_posseq(s, *k);
             else
                 EPR("(removed)");
+            NB(k != until, "%u", k - kc->kct);
             ++k;
         }
         if (it != kc->bnd->end())
@@ -117,9 +118,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 static void
 k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 {
-    unsigned t = hkoffs - kc->hkoffs;
-    buf_grow_add(kc->hkoffs, 1ul, 0, b.tgtk - kc->kct);
-    hkoffs = kc->hkoffs + t;
+    NB(hkoffs <= kc->hkoffs + kc->h_l);
     while (hkoffs != kc->hkoffs + kc->h_l)
         *hkoffs++ = b.tgtk - kc->kct;
 
@@ -148,7 +147,9 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
         }
         ++k;
     }
-    *hkoffs = kc->kct_l = b.tgtk - kc->kct;
+    kc->kct_l = b.tgtk - kc->kct;
+    while (hkoffs != kc->hkoffs + kc->hkoffs_l)
+        *hkoffs++ = kc->kct_l;
 }
 
 static inline uint32_t *
@@ -164,7 +165,7 @@ excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
     *k ^= *k;//
     *contxt_idx = kc->kct_l++;
     ++b.moved;
-    return thisk;//P;
+    return thisk;//S;
 }
 
 static uint32_t *
@@ -181,21 +182,19 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
     NB(*contxt_idx != NO_K);
     NB(*contxt_idx < kc->kct_l);
     uint32_t *k = kc->kct + *contxt_idx;
-    print_seq(&seq);
-
     if (k < b.tgtk) {
-        // second occurance
-
+        //O; second+ occurance (may still be in scope)
         // after &&: do not set dupbit if previous key was within read scope (a cornercase)
         if ((~*k & DUP_BIT)/* &&
                 (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))*/) {
+            //P; no dup after all
 
             *k |= DUP_BIT;
             --kc->ct;
         }
     } else {
 
-        // 1st occurance;
+        //O; 1st occurance
         ++kc->ct;    // unique or decremented later.
 
         *k = seq.p; // set new pos and strand, unset dupbit XXX:Invalid write of size 4
@@ -284,6 +283,7 @@ ext_uq_iter(kct_t *kc, unsigned ext)
         }
 
         if ((*it).s + ext >= end) {
+            //P; in scope of start. excision
             if (end != (*it).e) {
                 (*it).s = end + 2;
                 ++k;
@@ -292,9 +292,11 @@ ext_uq_iter(kct_t *kc, unsigned ext)
             }
             k = excise(kc, b, k);
         } else {
+            //P; out of scope.
             move_uniq(kc, b, (*it).s, end - 2, ext);
             if (end != (*it).e) {
                 //if (end + 2 != (*it).e) {
+                //P; mantra split
                 Mantra copy = *it;
                 copy.e = end;
                 (*it).s = end + 2;
@@ -302,14 +304,22 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 k = excise_one(kc, b, k, k);
                 ++k;
             } else {
+                //P; alt
                 ++it;
             }
         }
 
     } while (it != kc->bnd->end());
 
-    k_compression(kc, b, hkoffs, k);//K;
-    NB(skctl == kc->kct_l);//B; final state
+    unsigned t = hkoffs - kc->hkoffs;
+
+    while (h - kc->h != kc->h_l) {
+        buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+        ++h;
+    }
+    k_compression(kc, b, kc->hkoffs + t, k);//K;
+
+    NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
 }
 
 static int
@@ -320,15 +330,20 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
     kc->ext_iter = buf_init(kc->ext_iter, 1);
     for (unsigned ext = 0; ext != end; ext += 2) {
         kc->iter = 0;
-        do { // until no no more new uniques
-            kc->ct = 0;
-            ext_uq_iter(kc, ext);
-            EPR("observed %u potential in iteration %u, extension %u\n",
-                kc->ct, ++kc->iter, ext >> 1);
-        } while (kc->ct > 0);
+        if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
+            do { // until no no more new uniques
+                kc->ct = 0;
+                ext_uq_iter(kc, ext);
+                EPR("observed %u potential in iteration %u, extension %u\n",
+                    kc->ct, ++kc->iter, ext >> 1);
+            } while (kc->ct > 0);
+        }
+        EPR("----[ end of extension %u ]-------", ext >> 1);
+        buf_grow_add(kc->ext_iter, 1ul, 0, kc->iter);
     }
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
+    res = 0;
 err:
     return res;
 }

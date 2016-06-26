@@ -166,8 +166,30 @@ end
 #################################################################
 # fa.cpp
 
+define list_1
+    set listsize 1
+    list
+    set listsize 10
+end
 
+define break_commands
+    commands $arg0
+        silent
+        list_1
+        c
+    end
+end
+python break_re_py2('//P;', 'fa.cpp', 'break', 1)
 
+define break_commands
+    commands $arg0
+        silent
+        call print_seq(&seq, KEY_WIDTH)
+        list_1
+        c
+    end
+end
+python break_re_py2('//O; .* occurance', 'fa.cpp', 'break', 1);
 
 break_re '//~ uniq$' 'fa.cpp' 'break'
 commands
@@ -184,7 +206,7 @@ end
 break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
     silent
-    printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho
+    printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho - 1
     if (*it).ho != kc->h_l
         printf "2bit sequence offset became %u:\t", b.s + kc->h[(*it).ho]->len - kc->s
         call print_dna(b.s[kc->h[(*it).ho]->len], '.', 4)
@@ -195,12 +217,6 @@ commands
     run_until
 end
 
-
-define list_1
-    set listsize 1
-    list
-    set listsize 10
-end
 
 define break_commands
     commands $arg0
@@ -218,7 +234,7 @@ define break_commands
         silent
         printf "%s:", __FILE__
         list_1
-        call print_kct(kc, b, k)
+        call print_kct(kc, b, k, 0)
         c
     end
 end
@@ -229,7 +245,7 @@ define break_commands
         silent
         printf "%s:", __FILE__
         list_1
-        call print_kct(kc, b, k)
+        call print_kct(kc, b, k, 0)
         print show_mantras(kc, it)
         c
     end
@@ -243,7 +259,7 @@ define break_commands
         c
     end
 end
-python break_re_py2('//P;', 'fa.cpp', 'break', 1)
+python break_re_py2('//S;', 'fa.cpp', 'break', 1)
 
 
 #TODO:
