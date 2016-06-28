@@ -171,8 +171,9 @@ excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
 static uint32_t *
 excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
-    for (uint32_t *k = b.tgtk + b.moved; k < thisk; ++k)
-        thisk = excise_one(kc, b, thisk, k);
+    for (uint32_t *k = b.tgtk; k < thisk; ++k)
+        if (*k)
+            thisk = excise_one(kc, b, thisk, k);
     return thisk;
 }
 
