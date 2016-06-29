@@ -38,9 +38,9 @@ end
 define pkct
     #bt
     if $argc != 0
-        call print_kct(kc, b, $arg0)
+        call print_kct(kc, b, $arg0, 0)
     else
-        call print_kct(kc, b, 0)
+        call print_kct(kc, b, 0, 0)
     end
 end
 

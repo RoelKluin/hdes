@@ -11,14 +11,17 @@ mode=valgrind
 
 FASTAS=($(ls -1 runtests/*.fa))
 for i in $(seq 0 $((${#FASTAS[@]}-1))); do
-  echo -e "$i)\t${FASTAS[${i}]}"
+    echo -e "$(echo -n $i | perl -n -e 'print chr($_+48)'))\t${FASTAS[${i}]}"
 done
 echo
 read -n 1 -p "select file [q]uit or all (return)" ask;
 if [ "$ask" == "q" ]; then
    exit 0;
-elif [[ "$ask" =~ ^[0-9]+$ ]]; then
-  FASTAS=("${FASTAS[${ask}]}")
+else
+    ask=$(echo -n ${ask}| perl -n -e 'print (ord($_)-48)')
+    if [[ $ask -le ${#FASTAS[@]} ]]; then
+        FASTAS=("${FASTAS[$ask]}")
+    fi
 fi
 echo
 
