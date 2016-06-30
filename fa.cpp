@@ -198,7 +198,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
         //O; 1st occurance
         ++kc->ct;    // unique or decremented later.
 
-        *k = seq.p; // set new pos and strand, unset dupbit XXX:Invalid write of size 4
+        *k = seq.p; // set new pos and strand, unset dupbit
         if (b.tgtk != k) {
             NB(*k);
             *b.tgtk = *k;
@@ -272,55 +272,44 @@ ext_uq_iter(kct_t *kc, unsigned ext)
         NB(hkoffs == kc->hkoffs + (*it).ho);
 
         //k - kc->kct <= *hkoffs: may be untrue after key excision.
-        unsigned end = (*it).e;//B; next region
+        //B; next region
 
-        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < end) {
+        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*it).e) {
 
             if (IS_UQ(k)) { //~ uniq
-                end = b2pos_of(*k);
-                break;
-            }
-            ++k;
-        }
-
-        if ((*it).s + ext >= end) {
-            //P; in scope of start. excision
-            if (end != (*it).e) {
-                (*it).s = end + 2;
-                ++k;
-            } else {
-                it = kc->bnd->erase(it);
-            }
-            k = excise(kc, b, k);
-        } else {
-            //P; out of scope.
-            move_uniq(kc, b, (*it).s, end - 2, ext);
-            if (end != (*it).e) {
-                if (end + 2 != (*it).e) { // TODO: prevent insert / erase; but also + ext?
-                    //P; mantra split
+                unsigned end = b2pos_of(*k);
+                if ((*it).s + ext >= end) {
+                    //P; in scope of start; excision
+                    (*it).s = end + 2;
+                    ++k;
+                    k = excise(kc, b, k);
+                    --k;
+                } else {
+                    //P; out of scope.
+                    move_uniq(kc, b, (*it).s, end - 2, ext);
                     Mantra copy = *it;
                     copy.e = end;
                     (*it).s = end + 2;
                     kc->bnd->insert(it, copy);
                     k = excise_one(kc, b, k, k);
-                    ++k;
-                } else {
-                    (*it).e = end;
-                    k = excise_one(kc, b, k, k);
-                    ++k;
-                    k = excise(kc, b, k);
-                    ++it;
                 }
-            } else {
-                //P; alt
-                ++it;
             }
+            ++k;
+        }
+
+        if ((*it).s + ext >= (*it).e) {
+            //P; in scope of start; excision
+            it = kc->bnd->erase(it);
+            k = excise(kc, b, k);
+        } else {
+            //P; alt
+            move_uniq(kc, b, (*it).s, (*it).e - 2, ext);
+            ++it;
         }
 
     } while (it != kc->bnd->end());
 
     unsigned t = hkoffs - kc->hkoffs;
-
     while (h - kc->h != kc->h_l) {
         buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
         ++h;
