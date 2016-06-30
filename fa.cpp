@@ -296,14 +296,21 @@ ext_uq_iter(kct_t *kc, unsigned ext)
             //P; out of scope.
             move_uniq(kc, b, (*it).s, end - 2, ext);
             if (end != (*it).e) {
-                //if (end + 2 != (*it).e) {
-                //P; mantra split
-                Mantra copy = *it;
-                copy.e = end;
-                (*it).s = end + 2;
-                kc->bnd->insert(it, copy);
-                k = excise_one(kc, b, k, k);
-                ++k;
+                if (end + 2 != (*it).e) { // TODO: prevent insert / erase; but also + ext?
+                    //P; mantra split
+                    Mantra copy = *it;
+                    copy.e = end;
+                    (*it).s = end + 2;
+                    kc->bnd->insert(it, copy);
+                    k = excise_one(kc, b, k, k);
+                    ++k;
+                } else {
+                    (*it).e = end;
+                    k = excise_one(kc, b, k, k);
+                    ++k;
+                    k = excise(kc, b, k);
+                    ++it;
+                }
             } else {
                 //P; alt
                 ++it;
