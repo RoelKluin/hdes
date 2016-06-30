@@ -96,14 +96,13 @@ document break_re
 	Syntax: break_re <match> <file> <break|tbreak>
 end
 
-
+set $dbg=9
 
 define run_until
-#    if kc->extension == 0 || kc->iter == 0
-        c
-#    else
-#        bt 1
-#    end
+    if kc->iter != 0
+        set $dbg=9
+    end
+    c
 end
 
 
@@ -155,28 +154,59 @@ commands
     c
 end
 
-break_re 'kc->uqct += kc->kct_l;' 'key_init.cpp' 'tbreak'
+break_re 'kc->ct += kc->kct_l;' 'key_init.cpp' 'tbreak'
 commands
     silent
-    print show_mantras(kc, kc->bnd->begin())
+    if $dbg > 6
+        print show_mantras(kc, kc->bnd->begin())
+    end
     run_until
 end
 
 
 #################################################################
-# fa.cpp
+# fa.cpp: print definitions
 
-define list_1
-    set listsize 1
-    list
-    set listsize 10
+define dbg_whereat
+    if $dbg > 4
+        set listsize 1
+        list
+        set listsize 10
+    end
 end
+
+define dbg_pseq
+    if $dbg > $arg0
+        call print_seq(&seq, KEY_WIDTH)
+    end
+end
+
+define dbg_print
+    if $dbg > $arg0
+        printf $arg1
+    end
+end
+
+define dbg_kct
+    if $dbg > $arg0
+        call print_kct(kc, b, k, 0)
+    end
+end
+
+define dbg_mantras
+    if $dbg > $arg0
+        print show_mantras(kc, it)
+    end
+end
+
+#################################################################
+# fa.cpp: debug print locations
 
 define break_commands
     commands $arg0
         silent
-        list_1
-        c
+        dbg_whereat
+        run_until
     end
 end
 python break_re_py2('//P;', 'fa.cpp', 'break', 1)
@@ -184,9 +214,9 @@ python break_re_py2('//P;', 'fa.cpp', 'break', 1)
 define break_commands
     commands $arg0
         silent
-        call print_seq(&seq, KEY_WIDTH)
-        list_1
-        c
+        dbg_pseq 6
+        #dbg_whereat
+        run_until
     end
 end
 python break_re_py2('//O; .* occurance', 'fa.cpp', 'break', 1);
@@ -195,9 +225,15 @@ break_re '//~ uniq$' 'fa.cpp' 'break'
 commands
     silent
     if *k
-        call print_posseq(b.s, *k, KEY_WIDTH)
         if ~*k & DUP_BIT
-            printf "uniq----^^^\n"
+            if $dbg > 5
+                call print_posseq(b.s, *k, KEY_WIDTH)
+            end
+            dbg_print 5 "uniq----^^^\n"
+        else
+            if $dbg > 6
+                call print_posseq(b.s, *k, KEY_WIDTH)
+            end
         end
     end
     run_until
@@ -206,13 +242,13 @@ end
 break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
     silent
-    printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho - 1
-    if (*it).ho != kc->h_l
+    if $dbg > 0
+        printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho - 1
+    end
+    if $dbg > 1
         printf "2bit sequence offset became %u:\t", b.s + kc->h[(*it).ho]->len - kc->s
         call print_dna(b.s[kc->h[(*it).ho]->len], '.', 4)
         printf "..\n"
-    else
-        printf "(looping)\n"
     end
     run_until
 end
@@ -221,10 +257,9 @@ end
 define break_commands
     commands $arg0
         silent
-        printf "%s:", __FILE__
-        list_1
-            print show_mantras(kc, it)
-        c
+        dbg_whereat
+        dbg_mantras 7
+        run_until
     end
 end
 python break_re_py2('//M;', 'fa.cpp', 'break', 1)
@@ -232,10 +267,9 @@ python break_re_py2('//M;', 'fa.cpp', 'break', 1)
 define break_commands
     commands $arg0
         silent
-        printf "%s:", __FILE__
-        list_1
-        call print_kct(kc, b, k, 0)
-        c
+        dbg_whereat
+        dbg_kct 8
+        run_until
     end
 end
 python break_re_py2('//K;', 'fa.cpp', 'break', 1)
@@ -243,11 +277,10 @@ python break_re_py2('//K;', 'fa.cpp', 'break', 1)
 define break_commands
     commands $arg0
         silent
-        printf "%s:", __FILE__
-        list_1
-        call print_kct(kc, b, k, 0)
-        print show_mantras(kc, it)
-        c
+        dbg_whereat
+        dbg_kct 8
+        dbg_mantras 7
+        run_until
     end
 end
 python break_re_py2('//B;', 'fa.cpp', 'break', 1)
@@ -255,8 +288,10 @@ python break_re_py2('//B;', 'fa.cpp', 'break', 1)
 define break_commands
     commands $arg0
         silent
-        pseq
-        c
+        if $dbg > 6
+            pseq
+        end
+        run_until
     end
 end
 python break_re_py2('//S;', 'fa.cpp', 'break', 1)
