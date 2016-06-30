@@ -73,6 +73,7 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk, uint32_t C*C until = NULL)
                 print_posseq(s, *k);
             else
                 EPR("(removed)");
+
             NB(k != until, "%u", k - kc->kct);
             ++k;
         }
@@ -144,6 +145,8 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
                 *k ^= *k;//
             }
             ++b.tgtk;
+            if (b.moved)
+                --b.moved;
         }
         ++k;
     }
@@ -152,6 +155,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
         *hkoffs++ = kc->kct_l;
 }
 
+// keys between two uniqs.
 static inline uint32_t *
 excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
 {
@@ -171,12 +175,21 @@ excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
 static uint32_t *
 excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
-    for (uint32_t *k = b.tgtk; k < thisk; ++k)
-        if (*k)
+    // FIXME: calculate exact b.moved.
+    uint32_t *k = b.tgtk + b.moved;
+    while (*k == 0) {
+        ++k;
+        ++b.moved;
+    }
+    for (; k < thisk; ++k) {
+        if (*k) {
             thisk = excise_one(kc, b, thisk, k);
+        }
+    }
     return thisk;
 }
 
+//keys not in scope of unique
 static inline void
 move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned ext)
 {
@@ -197,7 +210,6 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
 
         //O; 1st occurance
         ++kc->ct;    // unique or decremented later.
-
         *k = seq.p; // set new pos and strand, unset dupbit
         if (b.tgtk != k) {
             NB(*k);
@@ -206,6 +218,8 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
             *contxt_idx = b.tgtk - kc->kct;//K; moved up
         }
         ++b.tgtk;
+        if (b.moved)
+            --b.moved;
 
         NB(b.tgtk <= kc->kct + kc->kct_l);
     }
@@ -287,6 +301,12 @@ ext_uq_iter(kct_t *kc, unsigned ext)
                 } else {
                     //P; out of scope.
                     move_uniq(kc, b, (*it).s, end - 2, ext);
+                    if (end + 2 == (*it).e) { //prevent insertion & removal, + ext?
+                        (*it).e = end;
+                        ++k;
+                        k = excise(kc, b, k);
+                        break;
+                    }
                     Mantra copy = *it;
                     copy.e = end;
                     (*it).s = end + 2;
@@ -301,7 +321,7 @@ ext_uq_iter(kct_t *kc, unsigned ext)
             //P; in scope of start; excision
             it = kc->bnd->erase(it);
             k = excise(kc, b, k);
-        } else {
+        } else if (b2pos_of(*k) != (*it).e){
             //P; alt
             move_uniq(kc, b, (*it).s, (*it).e - 2, ext);
             ++it;
