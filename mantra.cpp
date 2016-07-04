@@ -9,25 +9,32 @@
  *         Author:  Roel Kluin,
  */
 
-#include <list>
 #include "fa.h"
 
 int
-show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here)
+show_mantras(kct_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at)
 {
     unsigned j = 0;
 
     EPR("-- Mantras --");
-    Hdr* h = kc->h;
-    std::list<Mantra>::iterator it = kc->bnd->begin();
-    if (it != kc->bnd->end()) {
-        do {
-            while (h - kc->h != (*it).ho)
+    if (obnd_l) {
+        Hdr* h = kc->h;
+        Mantra* bnd = kc->bnd_l ? kc->bnd : at;
+        while (bnd != obnd + obnd_l) {
+
+            NB (h - kc->h <= bnd->ho);
+            while (h - kc->h != bnd->ho)
                 ++h;
 
-            EPR("[%u%c]:\t>%s (%u+)%u - %u", j++, it==here?'*':' ',
-                    kc->id + h->ido, (*it).corr, (*it).s >>1, (*it).e >> 1);
-        } while (++it != kc->bnd->end());
+            EPR("[%u%c]:\t>%s (%u+)%u - %u", j++, bnd==at?'*':' ',
+                    kc->id + h->ido, bnd->corr, bnd->s >>1, bnd->e >> 1);
+
+            if (++bnd == kc->bnd + kc->bnd_l) {
+                bnd = at;
+                if (bnd - obnd == obnd_l)
+                    break;
+            }
+        }
     } else {
         EPR("[ entirely mapable ]");
     }

@@ -12,8 +12,6 @@
 #include <ctype.h> // isspace()
 #include <unordered_map>
 #include <string>
-#include <setjmp.h>
-#include <cmocka.h> // TODO: unit testing
 
 char*
 get_header_part(char *s, ensembl_part tgt)
@@ -89,7 +87,7 @@ static inline void
 set_header_type(kct_t*C kc, Hdr* h, int type, uint32_t corr)
 {
     h->p_l = type;
-    kc->bnd->back().corr = corr;
+    kc->bnd[kc->bnd_l-1].corr = corr;
 }
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
@@ -117,7 +115,9 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
-        kc->bnd->push_back({.ho = h - kc->h, .s=NT_WIDTH});
+
+        buf_grow(kc->bnd, 1ul, 0);
+        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH};
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -131,16 +131,17 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had at least one KEY_WIDTH of sequence
-        if (endpos != kc->bnd->back().s) {
+        if (endpos != kc->bnd[kc->bnd_l-1].s) {
             if (res != NR && res != META) {
-                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd->back().corr);
+                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd[kc->bnd_l-1].corr);
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
                 return h;
             }
 
             // correction propagation Not thoroughly checked yet...
-            uint32_t corr = kc->bnd->back().corr - endpos; // start of current is added later.
-            kc->bnd->push_back({.ho = h - kc->h, .s= NT_WIDTH, .corr=corr});
+            uint32_t corr = kc->bnd[kc->bnd_l-1].corr - endpos; // start of current is added later.
+            buf_grow(kc->bnd, 1ul, 0);
+            kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH, .corr=corr};
         }
     }
 
@@ -159,8 +160,8 @@ end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
     EPQ(len != h->end, "End position does not match given in header %u <=> %u (given ignored)",
             len, h->end);
-    kc->bnd->back().e = len + 2;
-    kc->totNts += len + kc->bnd->back().corr;
+    kc->bnd[kc->bnd_l-1].e = len + 2;
+    kc->totNts += len + kc->bnd[kc->bnd_l-1].corr;
     EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }
 
@@ -190,7 +191,6 @@ fa_kc(kct_t* kc, struct gzfh_t* fhin)
     int res;
     Hdr* h = NULL;
     keyseq_t seq = {0};
-    kc->bnd = new std::list<Mantra>();
     Hdr_umap lookup;
     set_readfunc(fhin, &g, &gc);
 
@@ -225,10 +225,11 @@ case 'G':   seq.t &= 0x3;
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
                         end_pos(kc, h, seq.p - 2);
-                        corr += kc->bnd->back().corr;
-                        kc->bnd->push_back({.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2});
+                        corr += kc->bnd[kc->bnd_l-1].corr;
+                        buf_grow(kc->bnd, 1ul, 0);
+                        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2};
                     }
-                    kc->bnd->back().corr += corr;
+                    kc->bnd[kc->bnd_l-1].corr += corr;
                     corr = 0;
                 }
             }
@@ -273,6 +274,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
     kc->s = buf_init(kc->s, 8);
     kc->h = buf_init(kc->h, 1);
     kc->hkoffs = buf_init(kc->hkoffs, 1);
+    kc->bnd = buf_init(kc->bnd, 8);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = NO_K;

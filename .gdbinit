@@ -35,15 +35,6 @@ document pbuf
 	Syntax: pbuf <buffer> <offset>
 end
 
-define pkct
-    #bt
-    if $argc != 0
-        call print_kct(kc, b, $arg0, 0)
-    else
-        call print_kct(kc, b, 0, 0)
-    end
-end
-
 define pdna
     if $argc != 2
         help pdna
@@ -158,7 +149,7 @@ break_re 'kc->ct += kc->kct_l;' 'key_init.cpp' 'tbreak'
 commands
     silent
     if $dbg > 6
-        print show_mantras(kc, kc->bnd->begin())
+        print show_mantras(kc, 0, 0, kc->bnd)
     end
     run_until
 end
@@ -189,13 +180,13 @@ end
 
 define dbg_kct
     if $dbg > $arg0
-        call print_kct(kc, b, k, 0)
+        call print_kct(kc, bnd, b, k)
     end
 end
 
 define dbg_mantras
     if $dbg > $arg0
-        print show_mantras(kc, it)
+        print show_mantras(kc, b.obnd, b.obnd_l, bnd)
     end
 end
 
@@ -243,11 +234,11 @@ break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
     silent
     if $dbg > 0
-        printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, (*it).ho - 1
+        printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, bnd->ho - 1
     end
     if $dbg > 1
-        printf "2bit sequence offset became %u:\t", b.s + kc->h[(*it).ho]->len - kc->s
-        call print_dna(b.s[kc->h[(*it).ho]->len], '.', 4)
+        printf "2bit sequence offset became %u:\t", b.s + kc->h[bnd->ho]->len - kc->s
+        call print_dna(b.s[kc->h[bnd->ho]->len], '.', 4)
         printf "..\n"
     end
     run_until

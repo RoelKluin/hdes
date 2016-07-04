@@ -72,6 +72,7 @@ static void handler(int sig) {
 
 // continue debugging after assertion failure.
 // http://stackoverflow.com/questions/1721543/continue-to-debug-after-failed-assertion-on-linux#1721575
+#if DEBUG > 0
 #define NB(cond, ...) \
 do {\
     if_ever (!(cond)) { \
@@ -79,6 +80,9 @@ do {\
         raise(SIGTRAP);\
     }\
 } while(0)
+#else
+#define NB(cond, ...) (cond)
+#endif
 
 #define ASSERT(cond, action, ...) \
 do {\
@@ -87,15 +91,6 @@ do {\
         action;\
     }\
 } while(0)
-
-#define IFOUT(cond, ...) \
-do {\
-    if (cond) { \
-        EPR(__VA_ARGS__);\
-        goto out;\
-    }\
-} while(0)
-
 
 #define _ACTION0(fun, msg, ...)\
 do {\
@@ -124,14 +119,14 @@ do {\
     buf##_l = 0;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
     if_ever (__t == NULL)\
-        raise(SIGTRAP);\
+        raise(SIGTERM);\
     __t;\
 })
 #define buf_init_m(buf, m) ({\
     buf##_l = 0;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
     if_ever (__t == NULL)\
-        raise(SIGTRAP);\
+        raise(SIGTERM);\
     __t;\
 })
 
@@ -139,18 +134,22 @@ do {\
     buf##_m = sz;\
     decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << buf##_m);\
     if_ever (__t == NULL)\
-        raise(SIGTRAP);\
+        raise(SIGTERM);\
     __t;\
 })
 
-#define buf_grow_m(buf, step, m, shft) \
+#define buf_realloc(buf, m) \
 do {\
-if (((buf##_l + step) >> shft) >= (1ul << m)) {\
     decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
     if_ever (__t == NULL)\
-        raise(SIGTRAP);\
+        raise(SIGTERM);\
     buf = __t;\
-}\
+} while(0)
+
+#define buf_grow_m(buf, step, m, shft) \
+do {\
+    if (((buf##_l + step) >> shft) >= (1ul << m))\
+        buf_realloc(buf, m);\
 } while(0)
 
 #define buf_grow(buf, step, shft) buf_grow_m(buf, step, buf##_m, shft)
@@ -303,5 +302,4 @@ print_ndx(uint32_t dna)
   + ((unsigned long)B8(db3)<<8) \
   + B8(dlsb))
 
-#define DEBUG 1
 #endif // RK_UTIL_H

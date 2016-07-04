@@ -14,7 +14,7 @@ endif
 CFLAGS=		-c -Wall -Wextra -Wno-unused-label -Wno-unused-function -Wno-missing-field-initializers $(OPT) -std=gnu++11 -fdiagnostics-color=always -I./${EXTERNAL_ZLIB}
 #CXXFLAGS += --analyze -Xanalyzer -analyzer-output=text
 AR=		ar
-VERSION=	0.019
+VERSION=	0.020
 LOBJS=
 PROG=		uqct
 INCLUDES=

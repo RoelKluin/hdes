@@ -57,22 +57,11 @@ save_boundaries(struct gzfh_t* fhout, kct_t* kc)
     // 1: buffer sizes
     __WRITE_VAL(kc->h_l, fhout)
     __WRITE_VAL(kc->id_l, fhout)
-    val = kc->bnd->size();
-    __WRITE_VAL(val, fhout)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, fhout, kc->id_l)
 
-    for(std::list<Mantra>::iterator b = kc->bnd->begin(); b != kc->bnd->end(); ++b) {
-        val = (*b).ho;
-        __WRITE_VAL(val, fhout)
-        val = (*b).s;
-        __WRITE_VAL(val, fhout)
-        val = (*b).corr;
-        __WRITE_VAL(val, fhout)
-        val = (*b).e;
-        __WRITE_VAL(val, fhout)
-    }
+    __WRITE_LMPTR(kc->bnd, fhout)
 
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
@@ -98,20 +87,11 @@ load_boundaries(struct gzfh_t* fhin, kct_t* kc)
     // 1: buffer sizes
     __READ_VAL(kc->h_l, fhin) // header size: how many contigs (and uniq regions, fhin)
     __READ_VAL(kc->id_l, fhin)
-    __READ_VAL(blen, fhin)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, fhin, kc->id_l)
-    kc->bnd = new std::list<Mantra>();
 
-    while (blen--) {
-        Mantra m = {0};
-        __READ_VAL(m.ho, fhin)
-        __READ_VAL(m.s, fhin)
-        __READ_VAL(m.corr, fhin)
-        __READ_VAL(m.e, fhin)
-        kc->bnd->push_front(m);
-    }
+    __READ_LMPTR(kc->bnd, fhin)
 
     kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {

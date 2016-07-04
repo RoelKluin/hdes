@@ -9,27 +9,13 @@
  *         Author:  Roel Kluin,
  */
 #include <stdlib.h> // realloc()
-#include <ctype.h> // isspace()
-#include <stdio.h> // fprintf(), fseek();
-#include <limits.h> //INT_MAX
-#include <sys/types.h>
-#include <unistd.h>
-#include <assert.h>
-#include <math.h>
-#include <set>
-#include <algorithm> // swap
-#include <setjmp.h>
-#include <cmocka.h> // TODO: unit testing
-//#include <stack>
-//#include <glib.h>
-//#include <pcre.h>
 #include "fa.h"
 #include "b6.h"
 
 void
 free_kc(kct_t *kc)
 {
-    delete kc->bnd;
+    buf_free(kc->bnd);
     buf_free(kc->id);
     buf_free(kc->s);
     buf_free(kc->kct);
@@ -40,20 +26,20 @@ free_kc(kct_t *kc)
 }
 
 static void
-print_kct(kct_t *kc, Bnd &b, uint32_t* tk, uint32_t C*C until = NULL)
+print_kct(kct_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
 {
     unsigned i = 0;
     EPR("");
     Hdr* h = kc->h;
     uint8_t *s = kc->s;
-    std::list<Mantra>::iterator it = kc->bnd->begin();
+    Mantra* bnd = kc->bnd_l ? kc->bnd : at;
     uint32_t* hkoffs = kc->hkoffs;
 
     for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
-        if (it != kc->bnd->end()) {
-            while (h - kc->h != (*it).ho)
+        if (bnd != b.obnd + b.obnd_l) {
+            while (h - kc->h != bnd->ho)
                 s += h++->len;
-            hkoffs = kc->hkoffs + (*it).ho;
+            hkoffs = kc->hkoffs + bnd->ho;
         } else {
             if (h - kc->h != kc->h_l - 1) {
                 s += h++->len;
@@ -74,11 +60,10 @@ print_kct(kct_t *kc, Bnd &b, uint32_t* tk, uint32_t C*C until = NULL)
             else
                 EPR("(removed)");
 
-            NB(k != until, "%u", k - kc->kct);
             ++k;
         }
-        if (it != kc->bnd->end())
-            ++it;
+        if (bnd != b.obnd + b.obnd_l && ++bnd == kc->bnd + kc->bnd_l)
+            bnd = at;
     }
 }
 
@@ -103,7 +88,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 }
 
 /*
- * kc->bnd contains ranges per contig for sequence not yet be mappable, but may become so.
+ * b.obnd contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
  * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
  * shrinks (here).
@@ -119,6 +104,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
 static void
 k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 {
+
     NB(hkoffs <= kc->hkoffs + kc->h_l);
     while (hkoffs != kc->hkoffs + kc->h_l)
         *hkoffs++ = b.tgtk - kc->kct;
@@ -191,7 +177,7 @@ excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 
 //keys not in scope of unique
 static inline void
-move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned ext)
+move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, Mantra* bnd, uint32_t *contxt_idx)
 {
     NB(*contxt_idx != NO_K);
     NB(*contxt_idx < kc->kct_l);
@@ -199,8 +185,8 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
     if (k < b.tgtk) {
         //O; second+ occurance (may still be in scope)
         // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-        if ((~*k & DUP_BIT)/* &&
-                (k - kc->kct < b.fk || b2pos_of(*k) + ext < b2pos_of(seq.p))*/) {
+        if ((~*k & DUP_BIT)/* && FIXME: issue in GE:8
+                (k - kc->kct < b.fk || b2pos_of(*k) + b.ext < b2pos_of(seq.p))*/) {
             //P; no dup after all
 
             *k |= DUP_BIT;
@@ -226,8 +212,9 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, uint32_t *contxt_idx, C unsigned
 }
 
 static keyseq_t
-move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend, C unsigned ext)
+move_uniq(kct_t *kc, Mantra* bnd, Bnd &b, C unsigned pend)
 {
+    C unsigned start = bnd->s;
     keyseq_t seq = {.p = start};
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
     seq.p = b2pos_of(seq.p);
@@ -236,12 +223,12 @@ move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend, C unsigned ext)
     NB(seq.p <= pend);
 
     while (seq.p != pend) {
-        move_uniq_one(kc, b, seq, contxt_idx, ext);
+        move_uniq_one(kc, b, seq, bnd, contxt_idx);
         get_next_nt_seq(b.s, seq);
         contxt_idx = get_kct(kc, seq, 1);
         seq.p = b2pos_of(seq.p) + 2;
     }
-    move_uniq_one(kc, b, seq, contxt_idx, ext);
+    move_uniq_one(kc, b, seq, bnd, contxt_idx);
 
     return seq;
 }
@@ -258,78 +245,89 @@ move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend, C unsigned ext)
  *
  */
 static void
-ext_uq_iter(kct_t *kc, unsigned ext)
+ext_uq_iter(kct_t *kc, Bnd &b)
 {
     uint32_t *k = kc->kct;
-    Bnd b = {
-        .tgtk = k,
-        .s = kc->s,
-        .fk = k - kc->kct,
-        .moved = 0,
-    };
-    std::list<Mantra>::iterator it = kc->bnd->begin();
-    Hdr* h = kc->h;
-    unsigned skctl = kc->kct_l;//B; initial state
-    uint32_t* hkoffs = kc->hkoffs;
+    uint32_t *hkoffs = kc->hkoffs;
+    Mantra *bnd = kc->bnd;
+    Hdr *h = kc->h;
+    unsigned skctl = kc->kct_l;
+
+    kc->bnd = b.obnd; // buffer will be reused
+    b.obnd = bnd; // swap b.obnd and kc->bnd.
+    b.obnd_l = kc->bnd_l;
+    b.obnd_m = kc->bnd_m;
+
+    unsigned t = b.obnd_l;
+    t = kroundup32(t);
+    kc->bnd_m = __builtin_ctz(t) + 1;
+    kc->bnd_l = 0;
+
+    buf_realloc(kc->bnd, kc->bnd_m);
+    //bnd = b.obnd; (already)
+
+    b.tgtk = k;
+    b.s = kc->s;
+    b.fk = k - kc->kct;
+    b.moved = 0;//B; initial state
 
     do {
-        NB(h - kc->h <= (*it).ho);
-        while (h - kc->h != (*it).ho) {
+        NB(h - kc->h <= bnd->ho);
+        while (h - kc->h != bnd->ho) {
             //~ also update header
             *hkoffs++ = b.tgtk - kc->kct;
-            unsigned t = hkoffs - kc->hkoffs;
+            t = hkoffs - kc->hkoffs;
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             hkoffs = kc->hkoffs + t;
             b.s += h++->len;
             b.fk = k - kc->kct;
+            EPR0(".");
         }
-        NB(hkoffs == kc->hkoffs + (*it).ho);
+        NB(hkoffs == kc->hkoffs + bnd->ho);
 
         //k - kc->kct <= *hkoffs: may be untrue after key excision.
         //B; next region
 
-        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < (*it).e) {
+        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < bnd->e) {
 
             if (IS_UQ(k)) { //~ uniq
                 unsigned end = b2pos_of(*k);
-                if ((*it).s + ext >= end) {
+                if (bnd->s + b.ext >= end) {
                     //P; in scope of start; excision
-                    (*it).s = end + 2;
+                    bnd->s = end + 2;
                     ++k;
                     k = excise(kc, b, k);
                     --k;
                 } else {
                     //P; out of scope.
-                    move_uniq(kc, b, (*it).s, end - 2, ext);
-                    if (end + 2 == (*it).e) { //prevent insertion & removal, + ext?
-                        (*it).e = end;
+                    move_uniq(kc, bnd, b, end - 2);
+                    if (end + 2 == bnd->e) { //prevent insertion & removal, + b.ext?
+                        bnd->e = end;
                         ++k;
                         k = excise(kc, b, k);
                         break;
                     }
-                    Mantra copy = *it;
+                    Mantra copy = *bnd;
                     copy.e = end;
-                    (*it).s = end + 2;
-                    kc->bnd->insert(it, copy);
+                    buf_grow_add(kc->bnd, 1ul, 0, copy);
+                    bnd->s = end + 2;
                     k = excise_one(kc, b, k, k);
                 }
             }
             ++k;
         }
 
-        if ((*it).s + ext >= (*it).e) {
-            //P; in scope of start; excision
-            it = kc->bnd->erase(it);
+        if (bnd->s + b.ext >= bnd->e) {
+            //P; in scope of start; excision (no bnd copy from b.obnd to kc->bnd)
             k = excise(kc, b, k);
-        } else if (b2pos_of(*k) != (*it).e){
+        } else if (b2pos_of(*k) != bnd->e){
             //P; alt
-            move_uniq(kc, b, (*it).s, (*it).e - 2, ext);
-            ++it;
+            move_uniq(kc, bnd, b, bnd->e - 2);
+            buf_grow_add(kc->bnd, 1ul, 0, *bnd); //XXX: SIGSEGV
         }
+    } while (++bnd != b.obnd + b.obnd_l);
 
-    } while (it != kc->bnd->end());
-
-    unsigned t = hkoffs - kc->hkoffs;
+    t = hkoffs - kc->hkoffs;
     while (h - kc->h != kc->h_l) {
         buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
         ++h;
@@ -343,25 +341,28 @@ static int
 extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
 {
     int res;
+    Bnd b = {0};
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
     kc->ext_iter = buf_init(kc->ext_iter, 1);
-    for (unsigned ext = 0; ext != end; ext += 2) {
+    for (b.ext = 0; b.ext != end; b.ext += 2) {
         kc->iter = 0;
         if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
             do { // until no no more new uniques
                 kc->ct = 0;
-                ext_uq_iter(kc, ext);
+                ext_uq_iter(kc, b);
                 EPR("observed %u potential in iteration %u, extension %u\n",
-                    kc->ct, ++kc->iter, ext >> 1);
+                    kc->ct, ++kc->iter, b.ext >> 1);
             } while (kc->ct > 0);
         }
-        EPR("----[ end of extension %u ]-------", ext >> 1);
+        EPR("----[ end of extension %u ]-------", b.ext >> 1);
         buf_grow_add(kc->ext_iter, 1ul, 0, kc->iter);
     }
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
+
     res = 0;
 err:
+    free(b.obnd);
     return res;
 }
 

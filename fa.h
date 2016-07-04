@@ -12,10 +12,9 @@
 #ifndef RK_FA_H
 #define RK_FA_H
 #include <errno.h> // ENOMEM
-#include <list>
-#include <queue>
+#include <string.h>
 #include "seq.h"
-#include "klib/khash.h"
+//#include "klib/khash.h"
 #include "gz.h"
 #include "b6.h"
 
@@ -24,8 +23,6 @@
 // in kct_convert(), all next NTs are put in a single buffer and kcts are
 // converted to 2bit indices to their respective next Nts: Below this bit.
 //#define BIG_SHFT 36
-#define ORIENT_SHFT 36
-#define SAME_CT_SHFT 37
 
 // stored position is one-based to ensure a bit is set
 // this is the kct offset: can be 0.
@@ -54,7 +51,7 @@ seq_next(struct keyseq_t &seq)
 #define get_kct(kc, seq, with_orient) ({\
     get_ndx(seq, with_orient);\
     NB(seq.t < KEYNT_BUFSZ);\
-    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_K);\
+    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_K, "%u, %u/%u", seq.t, kc->contxt_idx[seq.t], kc->kct_l);\
     kc->contxt_idx + seq.t;\
 })
 
@@ -74,27 +71,12 @@ seq_next(struct keyseq_t &seq)
         ++(buf ## _l);\
     } while(0)
 
-#define DEBUG 1
-
 packed_struct Mantra { // not yet covered by unique keys
     uint32_t ho;   // which contig
     uint32_t s;    // start pos
     uint32_t corr; // 'real' position correction
     uint32_t e;    // end of mantra
 };
-
-/* TODO:
-// a region of sequence, not yet covered by unique keys
-packed_struct Mantra {
-    uint64_t s, e;  // 2bit start and end positions of a mantra.
-};
-
-// section of sequence without ambiguous nucleotides
-struct Assembly
-{
-    std::list<Mantra> mantra;
-    uint64_t corr;  // correction needed to get from 2bit position to 'real' position.
-};*/
 
 // ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 enum ensembl_part {ID, SEQTYPE, IDTYPE,
@@ -109,9 +91,11 @@ struct Hdr {
 
 struct Bnd {
     uint32_t *tgtk;
+    Mantra* obnd;
     uint8_t* s;
-    uint32_t fk;
-    uint32_t moved;
+    unsigned fk; //
+    unsigned obnd_l, obnd_m;
+    unsigned moved, ext;
 };
 
 struct kct_t {
@@ -133,12 +117,12 @@ struct kct_t {
                    // with this extension. If a key is found to be incorrect, One or more
                    // mismatches must have occurred within this key, + extension n.
                    // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
-    std::list<Mantra>* bnd;
+    Mantra* bnd;
 
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, ext_iter_l, ct;
+    uint32_t id_l, kct_l, hkoffs_l, h_l, ext_iter_l, ct, bnd_l;
     unsigned readlength, iter;
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m, ext_iter_m;
+    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m, ext_iter_m, bnd_m;
     // could be possible to move bnd here.
 };
 
@@ -169,7 +153,7 @@ b2pos_of(uint32_t C k)
 
 
 #define build_ndx_kct(kc, seq, s, ...) ({\
-    NB((b2pos_of(seq.p) >> 3) <= kc->s_l, "%u >= %u!!", (b2pos_of(seq.p) >> 3), kc->s_l);\
+    /*NB((b2pos_of(seq.p) >> 3) <= kc->s_l, "%u >= %u!!", (b2pos_of(seq.p) >> 3), kc->s_l);*/\
     _build_ndx_kct(seq, s, ##__VA_ARGS__);\
 })
 
@@ -189,9 +173,7 @@ int ammend_kc(struct gzfh_t*, kct_t*);
 int map_fq_se(struct seqb2_t*, char C*C);
 
 // mantra.cpp
-int show_mantras(kct_t C*C kc, std::list<Mantra>::iterator here);
-int insert_mantra(kct_t *C kc, Hdr* h);
-void pot_mantra_end(kct_t *C kc, Hdr *C h, C uint32_t dna, C uint32_t b2pos);
+int show_mantras(kct_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at);
 #endif // RK_FA_H
 
 
