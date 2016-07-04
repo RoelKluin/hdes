@@ -131,8 +131,6 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
                 *k ^= *k;//
             }
             ++b.tgtk;
-            if (b.moved)
-                --b.moved;
         }
         ++k;
     }
@@ -161,17 +159,9 @@ excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
 static uint32_t *
 excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
-    // FIXME: calculate exact b.moved.
-    uint32_t *k = b.tgtk + b.moved;
-    while (*k == 0) {
-        ++k;
-        ++b.moved;
-    }
-    for (; k < thisk; ++k) {
-        if (*k) {
-            thisk = excise_one(kc, b, thisk, k);
-        }
-    }
+    for (uint32_t *k = b.tgtk + b.moved; k < thisk; ++k)
+        thisk = excise_one(kc, b, thisk, k);
+
     return thisk;
 }
 
@@ -204,7 +194,7 @@ move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, Mantra* bnd, uint32_t *contxt_id
             *contxt_idx = b.tgtk - kc->kct;//K; moved up
         }
         ++b.tgtk;
-        if (b.moved)
+        if (b.moved && b.tgtk[b.moved - 1])
             --b.moved;
 
         NB(b.tgtk <= kc->kct + kc->kct_l);
@@ -323,7 +313,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
         } else if (b2pos_of(*k) != bnd->e){
             //P; alt
             move_uniq(kc, bnd, b, bnd->e - 2);
-            buf_grow_add(kc->bnd, 1ul, 0, *bnd); //XXX: SIGSEGV
+            buf_grow_add(kc->bnd, 1ul, 0, *bnd);
         }
     } while (++bnd != b.obnd + b.obnd_l);
 
