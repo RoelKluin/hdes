@@ -129,7 +129,7 @@ struct kct_t {
 #define b2pos_of(k) ({\
     NB(k != NO_K);\
     NB(k != 0, "%s:%i", __FILE__, __LINE__);\
-    _b2pos_of(k);\
+    ((k) & B2POS_MASK);\
 })
 
 #define hdr_end_k(kc, h) ({\

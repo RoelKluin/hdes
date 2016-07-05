@@ -69,21 +69,20 @@ print_kct(kct_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
 
 // if kct grows, pointers *thisk, k, b.tgtk become invalid
 static void
-buf_grow_ks(kct_t *kc, Bnd &b, uint32_t **k1, uint32_t **k2)
+buf_grow_ks(kct_t *kc, Bnd &b, unsigned add, uint32_t **k)
 {
-    if ((kc->kct_l + 1) >= (1ul << kc->kct_m)) {
-        unsigned ok1, ok3, ok4;
+    if ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
+        EPR("buf_grow_ks grew");
+        unsigned ok1, ok2;
 
-        ok1 = b.tgtk - kc->kct;
-        ok3 = *k1 - kc->kct;
-        ok4 = k2 ? *k2 - kc->kct : ~0u;
+        ok1 = *k - kc->kct;
+        ok2 = b.tgtk - kc->kct;
         uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
         if_ever (t == NULL)
             raise(SIGTRAP);
         kc->kct = t;
-        b.tgtk = t + ok1;
-        *k1 = t + ok3;
-        if (ok4 != ~0u) *k2 = t + ok4;
+        *k = t + ok1;
+        b.tgtk = t + ok2;
     }
 }
 
@@ -140,29 +139,25 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 }
 
 // keys between two uniqs.
-static inline uint32_t *
-excise_one(kct_t *kc, Bnd &b, uint32_t *thisk, uint32_t *k)
+static inline void
+excise_one(kct_t *kc, Bnd &b, uint32_t *k)
 {
     keyseq_t seq = {0};
     NB(k < kc->kct + kc->kct_l);
-    buf_grow_ks(kc, b, &thisk, &k);
     NB(k != kc->kct + kc->kct_l);
     //*k &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
     kc->kct[kc->kct_l] = seq.p = *k;
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s, 0);
     *k ^= *k;//
     *contxt_idx = kc->kct_l++;
-    ++b.moved;
-    return thisk;//S;
+    ++b.moved;//S;
 }
 
-static uint32_t *
+static void
 excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 {
     for (uint32_t *k = b.tgtk + b.moved; k < thisk; ++k)
-        thisk = excise_one(kc, b, thisk, k);
-
-    return thisk;
+        excise_one(kc, b, k);
 }
 
 //keys not in scope of unique. hot
@@ -286,7 +281,8 @@ ext_uq_iter(kct_t *kc, Bnd &b)
                     //P; in scope of start; excision
                     bnd->s = end + 2;
                     ++k;
-                    k = excise(kc, b, k);
+                    buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
+                    excise(kc, b, k);
                     --k;
                 } else {
                     //P; out of scope.
@@ -294,14 +290,16 @@ ext_uq_iter(kct_t *kc, Bnd &b)
                     if (end + 2 == bnd->e) { //k; prevent insertion & removal, + b.ext?
                         bnd->e = end;
                         ++k;
-                        k = excise(kc, b, k);
+                        buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
+                        excise(kc, b, k);
                         break;
                     }
                     Mantra copy = *bnd;
                     copy.e = end;
                     buf_grow_add(kc->bnd, 1ul, 0, copy);
                     bnd->s = end + 2;
-                    k = excise_one(kc, b, k, k);
+                    buf_grow_ks(kc, b, 1, &k);
+                    excise_one(kc, b, k);
                 }
             }
             ++k;
@@ -309,8 +307,9 @@ ext_uq_iter(kct_t *kc, Bnd &b)
 
         if (bnd->s + b.ext >= bnd->e) {
             //P; in scope of start; excision (no bnd copy from b.obnd to kc->bnd)
-            k = excise(kc, b, k);
-        } else if (b2pos_of(*k) != bnd->e){
+            buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
+            excise(kc, b, k);
+        } else if (b2pos_of(*k) != bnd->e) { //XXX: hg19: assertion '*k != 0' failed
             //P; alt
             move_uniq(kc, b, bnd->s, bnd->e - 2);
             buf_grow_add(kc->bnd, 1ul, 0, *bnd);//K;
