@@ -7,7 +7,7 @@ die() {
 }
 USAGE="$0 [-B] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] fasta.gz"
 
-TEMP=`getopt -o m:L:B --long make:length:use-bwa -n "$0" -- "$@"`
+TEMP=`getopt -o gm:L:B --long make:length:use-bwa -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
@@ -15,11 +15,13 @@ eval set -- "$TEMP"
 
 USEBWA=
 MAKE=
+PRE=
 LENGTH=51
 while true; do
   case "$1" in
     -m|--make) MAKE="$2"; shift;;
     -B|--use-bwa) USEBWA=1;;
+    -g) PRE="gdb --args";;
     -L|--length) LENGTH="$2"; shift;;
     -- ) shift; break;;
     * ) break;;
@@ -45,8 +47,8 @@ BA="${BA}.uqct"
 
 # compile
 if [ -n "$(find $hdesdir/* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
-  echo $hdesdir/tst ${F} -c -m ${MAKE}
-  $hdesdir/tst ${F} -c -m ${MAKE}
+  echo $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
+  $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
 else
   cd $hdesdir;
   make clean
@@ -59,8 +61,9 @@ if [ -f ${BA}.bam ]; then
   mv ${BA}.bam ${BA}_prev.bam
 fi
 
-time (cat ${BN}.1.hdr.sam
-$hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l 51) |
+echo -e "Running\n$PRE $hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH} | .."
+
+$PRE $hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH} |
 $samtools view -Sub - |
 $samtools sort -m 2000000000 - ${BA}
 

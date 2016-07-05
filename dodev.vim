@@ -6,10 +6,8 @@ winc r
 44sp fa.cpp
 tabnew fa.cpp
 vs key_init.cpp
-tabnew fq.cpp
-vs fq.h
-winc r
-44sp fq.cpp
+tabnew fa.h
+vs fa.cpp
 tabnew b6.cpp
 vs b6.h
 tabnew gz.cpp
@@ -24,10 +22,10 @@ tabnew map.cpp
 vs 
 winc r
 44sp map.h
-tabnew test.sh
-vs 
+tabnew fq.cpp
+vs fq.h
 winc r
-44sp test.sh
+44sp fq.cpp
 "tabnew seq.cpp
 "vs seq.h
 "winc r
@@ -64,8 +62,23 @@ tabnew .gdbinit
 vs fa.cpp
 tabnew dodev
 vs dodev.vim
+
 tabnew runtests/KW3_RL5_no2.fa
+60sp runtests/KW3_RL5_no3.fa
+40sp runtests/KW3_RL4_no1.fa
+20sp runtests/KW1_RL2_no2.fa
+10sp runtests/KW1_RL2_no1.fa
+vs runtests/KW5_RL7_no2.fa
+winc r
+wincmd j
+vs runtests/KW5_RL7_no1.fa
+winc r
+wincmd j
+vs runtests/KW3_RL5_no4.fa
+winc r
+wincmd j
 vs runtests/KW3_RL5_no1.fa
+
 "winc r
 "44sp dodev
 "tabnew BUGS

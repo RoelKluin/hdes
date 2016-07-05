@@ -205,7 +205,9 @@ python break_re_py2('//P;', 'fa.cpp', 'break', 1)
 define break_commands
     commands $arg0
         silent
-        dbg_pseq 6
+        if $dbg > 6
+            call print_dna(dna, '\n', KEY_WIDTH)
+        end
         #dbg_whereat
         run_until
     end

@@ -149,7 +149,6 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
         // ensembl coords are 1-based, we use 0-based.
         set_header_type(kc, h, res, atoi(kc->id + part[START]) - 1);
     } else { //TODO: hash lookup from fai
-        EPR("\nWARNING: non-ensembl reference.");
         set_header_type(kc, h, UNKNOWN_HDR, 0);
     }
     return h;
@@ -158,11 +157,8 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 static inline void
 end_pos(kct_t*C kc, Hdr* h, uint32_t len)
 {
-    EPQ(len != h->end, "End position does not match given in header %u <=> %u (given ignored)",
-            len, h->end);
     kc->bnd[kc->bnd_l-1].e = len + 2;
     kc->totNts += len + kc->bnd[kc->bnd_l-1].corr;
-    EPR("processed %u(%lu) Nts for %s", len >> 1, kc->totNts, kc->id + h->ido);
 }
 
 static inline int
@@ -174,6 +170,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
     EPR(">%s:s len:%u", kc->id + h->ido, h->len);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     end_pos(kc, h, seq.p);
+    EPR("processed %u(%lu) Nts for %s", seq.p >> 1, kc->totNts, kc->id + h->ido);
     return 0;
 }
 

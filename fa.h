@@ -32,7 +32,7 @@
 
 #define IS_DUP(k) ({\
     decltype(*(k)) __t = *(k);\
-    NB(b2pos_of(__t) >= (KEY_WIDTH - 1) && __t != NO_K);\
+    NB(_b2pos_of(__t) >= (KEY_WIDTH - 1) && __t != NO_K);\
     __t & DUP_BIT;\
 })
 #define IS_UQ(k)       (IS_DUP(k) == 0ul)
@@ -83,8 +83,7 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
 struct Hdr {
-    uint32_t len, end;  // 2bit length of this contig, TODO use only end - requires frames in
-                        // per contig to build keys
+    uint32_t len, end;  // 2bit length of this contig
     uint32_t ido;     // id contains offset to kc->id character for the header ID.
     uint8_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
@@ -99,16 +98,17 @@ struct Bnd {
 };
 
 struct kct_t {
+    Hdr* h;        // headers
     char* id;      // characters of headers
+
     uint8_t* s;    // all needed 2bit sequences in order (excluding Ns).
-    uint32_t* contxt_idx;
+    uint32_t* contxt_idx; // strand independent k-mer to kct index.
                    // Later we may want to point to a combination in the non-observed for edits to
                    // this ndx or surroundings that do result in an ndx that does occur.
-
-    uint32_t* kct;
-    uint32_t* ext_iter; // iterations per extension
                    // non occurant are initally set to NO_K. see Extension below.
-    Hdr* h;
+    uint32_t* kct; // contains first occurrant position, strand and dupbit if not yet uniq.
+
+    uint32_t* ext_iter; // iterations per extension
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
                       // per extension per contig.
 
@@ -126,24 +126,11 @@ struct kct_t {
     // could be possible to move bnd here.
 };
 
-// TODO: pos rshift may not be necessary.
-static inline uint32_t
-b2pos_of(kct_t C*C kc, uint32_t C*C k)
-{
-    NB(k - kc->kct < kc->kct_l);
-    NB(k - kc->kct >= 0);
-    NB(*k != NO_K);
-
-    return _b2pos_of(*k);
-}
-
-static inline uint32_t
-b2pos_of(uint32_t C k)
-{
-    NB(k != NO_K);
-    NB(k != 0);
-    return _b2pos_of(k);
-}
+#define b2pos_of(k) ({\
+    NB(k != NO_K);\
+    NB(k != 0, "%s:%i", __FILE__, __LINE__);\
+    _b2pos_of(k);\
+})
 
 #define hdr_end_k(kc, h) ({\
     uint32_t __koffs = (kc)->hkoffs[(h) - (kc)->h];\

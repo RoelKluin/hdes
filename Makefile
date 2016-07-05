@@ -22,7 +22,7 @@ SUBDIRS=	.
 OBJS=		b6.o
 EXTERNAL_ZLIB=zlib-1.2.8/
 LIBS=		-L. -L./zlib-1.2.8/
-DEBUG=		-g #-pg --coverage -rdynamic
+DEBUG=		-g #-fprofile-arcs -pg --coverage -rdynamic
 SOURCES=	gz.cpp b6.cpp seq.cpp mantra.cpp map.cpp indexio.cpp key_init.cpp \
 		fa.cpp fq.cpp main.cpp
 DEFINES+=	-DPROGRAM_NAME=\"$(PROG)\" -DPROGRAM_VERSION=\"$(VERSION)\" # -DKEY_LENGTH=11
@@ -56,7 +56,7 @@ libuqct.a:$(OBJS)
 		$(AR) -csr $@ $(OBJS)
 
 coverage:
-	$(GCOV) -b $(SOURCES)
+	$(GCOV) -r -b $(SOURCES)
 cleartest:
 	pwd;rm runtests/*.2b runtests/*.nn runtests/*.bd runtests/*.ub runtests/*.kc runtests/*.uq
 clean:

@@ -59,6 +59,8 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
         make coverage
         sed -r 's/\.(cpp|h)$/.\1.gcov/' "$hdesdir/dodev.vim" > "$hdesdir/dodev_gcov.vim"
         gvim -p -geometry 212x90+0+0 -c "so $hdesdir/dodev_gcov.vim"&
+        lcov --capture --directory $hdesdir --output-file $hdesdir/lcov/coverage.info
+        genhtml $hdesdir/lcov/coverage.info --output-directory lcov
         cd $hdesdir/bwatest
     elif [ "$k" = "C" ]; then
         $hdesdir/tst ${ref}.fa.gz -c -C -m ${KL} -L ${RL}

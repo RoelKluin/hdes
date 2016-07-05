@@ -165,62 +165,63 @@ excise(kct_t *kc, Bnd &b, uint32_t *thisk)
     return thisk;
 }
 
-//keys not in scope of unique
-static inline void
-move_uniq_one(kct_t *kc, Bnd &b, keyseq_t &seq, Mantra* bnd, uint32_t *contxt_idx)
+//keys not in scope of unique. hot
+static void
+move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
 {
-    NB(*contxt_idx != NO_K);
-    NB(*contxt_idx < kc->kct_l);
-    uint32_t *k = kc->kct + *contxt_idx;
-    if (k < b.tgtk) {
-        //O; second+ occurance (may still be in scope)
-        // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-        if ((~*k & DUP_BIT)/* && FIXME: issue in GE:8
-                (k - kc->kct < b.fk || b2pos_of(*k) + b.ext < b2pos_of(seq.p))*/) {
-            //P; no dup after all
+    unsigned dna = 0, rc = 0, t, key_complete = start - 2, p = start - NT_WIDTH;
+    do { // build key
+        t = (b.s[p>>3] >> (p&6)) & 3;
+        rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
+        dna = t << KEYNT_TOP | dna >> 2;
+        p += 2;
+    } while (p != key_complete);
 
-            *k |= DUP_BIT;
-            --kc->ct;
-        }
-    } else {
+    do {
+        t = (b.s[p>>3] >> (p&6)) & 3;
+        rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
+        dna = t << KEYNT_TOP | dna >> 2;
 
-        //O; 1st occurance
-        ++kc->ct;    // unique or decremented later.
-        *k = seq.p; // set new pos and strand, unset dupbit
-        if (b.tgtk != k) {
-            NB(*k);
+        // build complement independent index
+        unsigned dev = dna ^ rc;
+        t = dev & -dev;           /* isolate deviant bit */
+        unsigned ori = !((t | !t) & dna); /* for palindromes: have to set one. was devbit set? */
+        t = dna ^ (-ori & dev); /* dna or rc dependent on devbit */
+        dev = t & KEYNT_BUFSZ;
+        t ^= (-!!(t & KEYNT_BUFSZ)) & SNDX_TRUNC_MASK; /*shorten index by one */
+
+        p += 2;
+        uint32_t *k = kc->kct + kc->contxt_idx[t];
+        if (k > b.tgtk) {
+            //O; 1st occurance
+            ++kc->ct;    // unique or decremented later.
+            *k = p | ori;      // set new pos and strand, unset dupbit
+
             *b.tgtk = *k;
             *k ^= *k;//
-            *contxt_idx = b.tgtk - kc->kct;//K; moved up
+            kc->contxt_idx[t] = b.tgtk - kc->kct;
+            if (b.tgtk[b.moved])
+                --b.moved;
+
+            ++b.tgtk;
+        } else if (k < b.tgtk) {
+            //O; second+ occurance (may still be in scope)
+            // after &&: do not set dupbit if previous key was within read scope (a cornercase)
+            if ((~*k & DUP_BIT) && (k - kc->kct < b.fk || b2pos_of(*k) + b.ext < p)) {
+                //P; no dup after all
+
+                *k |= DUP_BIT;
+                --kc->ct;
+            }
+        } else {
+
+            //O; also 1st occurance
+            ++kc->ct;    // unique or decremented later.
+            *k = p | ori;      // set new pos and strand, unset dupbit
+
+            ++b.tgtk;
         }
-        ++b.tgtk;
-        if (b.moved && b.tgtk[b.moved - 1])
-            --b.moved;
-
-        NB(b.tgtk <= kc->kct + kc->kct_l);
-    }
-}
-
-static keyseq_t
-move_uniq(kct_t *kc, Mantra* bnd, Bnd &b, C unsigned pend)
-{
-    C unsigned start = bnd->s;
-    keyseq_t seq = {.p = start};
-    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, b.s);// already increments seq.p
-    seq.p = b2pos_of(seq.p);
-    NB(*contxt_idx < kc->kct_l);
-    NB(*contxt_idx != NO_K);
-    NB(seq.p <= pend);
-
-    while (seq.p != pend) {
-        move_uniq_one(kc, b, seq, bnd, contxt_idx);
-        get_next_nt_seq(b.s, seq);
-        contxt_idx = get_kct(kc, seq, 1);
-        seq.p = b2pos_of(seq.p) + 2;
-    }
-    move_uniq_one(kc, b, seq, bnd, contxt_idx);
-
-    return seq;
+    } while (p != pend);
 }
 
 /*
@@ -249,7 +250,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
     b.obnd_m = kc->bnd_m;
 
     unsigned t = b.obnd_l;
-    t = kroundup32(t);
+    kroundup32(t);
     kc->bnd_m = __builtin_ctz(t) + 1;
     kc->bnd_l = 0;
 
@@ -271,7 +272,6 @@ ext_uq_iter(kct_t *kc, Bnd &b)
             hkoffs = kc->hkoffs + t;
             b.s += h++->len;
             b.fk = k - kc->kct;
-            EPR0(".");
         }
         NB(hkoffs == kc->hkoffs + bnd->ho);
 
@@ -290,8 +290,8 @@ ext_uq_iter(kct_t *kc, Bnd &b)
                     --k;
                 } else {
                     //P; out of scope.
-                    move_uniq(kc, bnd, b, end - 2);
-                    if (end + 2 == bnd->e) { //prevent insertion & removal, + b.ext?
+                    move_uniq(kc, b, bnd->s, end - 2);
+                    if (end + 2 == bnd->e) { //k; prevent insertion & removal, + b.ext?
                         bnd->e = end;
                         ++k;
                         k = excise(kc, b, k);
@@ -312,8 +312,8 @@ ext_uq_iter(kct_t *kc, Bnd &b)
             k = excise(kc, b, k);
         } else if (b2pos_of(*k) != bnd->e){
             //P; alt
-            move_uniq(kc, bnd, b, bnd->e - 2);
-            buf_grow_add(kc->bnd, 1ul, 0, *bnd);
+            move_uniq(kc, b, bnd->s, bnd->e - 2);
+            buf_grow_add(kc->bnd, 1ul, 0, *bnd);//K;
         }
     } while (++bnd != b.obnd + b.obnd_l);
 
