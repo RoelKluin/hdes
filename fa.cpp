@@ -167,13 +167,12 @@ static void
 move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
 {
     unsigned dna = 0, rc = 0, t, key_complete = start - 2, p = start - NT_WIDTH;
-    do { // build key
+    while (p != key_complete) { // build key
         t = (b.s[p>>3] >> (p&6)) & 3;
         rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
         dna = t << KEYNT_TOP | dna >> 2;
         p += 2;
-    } while (p != key_complete);
-
+    }
     do {
         t = (b.s[p>>3] >> (p&6)) & 3;
         rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
