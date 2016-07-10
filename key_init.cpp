@@ -24,7 +24,7 @@ get_header_part(char *s, ensembl_part tgt)
 
 #define ENS_HDR_PARTCT 10
 static int
-parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
+parse_header_parts(key_t* kc, void* g, int (*gc) (void*), uint32_t* part)
 {
     int p = ID;
     part[p] = kc->id_l;
@@ -84,7 +84,7 @@ parse_header_parts(kct_t* kc, void* g, int (*gc) (void*), uint32_t* part)
 }
 
 static inline void
-set_header_type(kct_t*C kc, Hdr* h, int type, uint32_t corr)
+set_header_type(key_t*C kc, Hdr* h, int type, uint32_t corr)
 {
     h->p_l = type;
     kc->bnd[kc->bnd_l-1].corr = corr;
@@ -96,7 +96,7 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
-new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint32_t endpos)
+new_header(key_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint32_t endpos)
 {
     uint32_t part[ENS_HDR_PARTCT] = {0};
     int res = parse_header_parts(kc, g, gc, part);
@@ -155,14 +155,14 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 }
 
 static inline void
-end_pos(kct_t*C kc, uint32_t len)
+end_pos(key_t*C kc, uint32_t len)
 {
     kc->bnd[kc->bnd_l-1].e = len + 2;
     kc->totNts += len + kc->bnd[kc->bnd_l-1].corr;
 }
 
 static inline int
-finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
+finish_contig(key_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
@@ -178,7 +178,7 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
  * store per key whether it occurred multiple times the last position.
  */
 static int
-fa_kc(kct_t* kc, struct gzfh_t* fhin)
+fa_kc(key_t* kc, struct gzfh_t* fhin)
 {
     void* g;
     int (*gc) (void*);
@@ -261,7 +261,7 @@ err:
 }
 
 int
-fa_read(struct gzfh_t* fh, kct_t* kc)
+fa_read(struct gzfh_t* fh, key_t* kc)
 {
     int res = -ENOMEM;
 

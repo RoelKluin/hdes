@@ -13,7 +13,7 @@
 #include "b6.h"
 
 void
-free_kc(kct_t *kc)
+free_kc(key_t *kc)
 {
     buf_free(kc->bnd);
     buf_free(kc->id);
@@ -26,7 +26,7 @@ free_kc(kct_t *kc)
 }
 
 static void
-print_kct(kct_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
+print_kct(key_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
 {
     unsigned i = 0;
     EPR("");
@@ -69,7 +69,7 @@ print_kct(kct_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
 
 // if kct grows, pointers *thisk, k, b.tgtk become invalid
 static void
-buf_grow_ks(kct_t *kc, Bnd &b, unsigned add, uint32_t **k)
+buf_grow_ks(key_t *kc, Bnd &b, unsigned add, uint32_t **k)
 {
     while ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
         EPR("buf_grow_ks grew");
@@ -103,7 +103,7 @@ buf_grow_ks(kct_t *kc, Bnd &b, unsigned add, uint32_t **k)
 
 
 static void
-k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
+k_compression(key_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 {
 
     NB(hkoffs <= kc->hkoffs + kc->h_l);
@@ -142,7 +142,7 @@ k_compression(kct_t *kc, Bnd &b, uint32_t *hkoffs, uint32_t *k)
 
 // keys between two uniqs.
 static inline void
-excise_one(kct_t *kc, Bnd &b, uint32_t *k)
+excise_one(key_t *kc, Bnd &b, uint32_t *k)
 {
     keyseq_t seq = {0};
     NB(k < kc->kct + kc->kct_l);
@@ -156,7 +156,7 @@ excise_one(kct_t *kc, Bnd &b, uint32_t *k)
 }
 
 static void
-excise(kct_t *kc, Bnd &b, uint32_t *thisk)
+excise(key_t *kc, Bnd &b, uint32_t *thisk)
 {
     for (uint32_t *k = b.tgtk + b.moved; k < thisk; ++k)
         excise_one(kc, b, k);
@@ -164,7 +164,7 @@ excise(kct_t *kc, Bnd &b, uint32_t *thisk)
 
 //keys not in scope of unique. hot
 static void
-move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
+move_uniq(key_t *kc, Bnd &b, C unsigned start, C unsigned pend)
 {
     unsigned dna = 0, rc = 0, t, key_complete = start - 2, p = start - NT_WIDTH;
     while (p != key_complete) { // build key
@@ -233,7 +233,7 @@ move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
  *
  */
 static void
-ext_uq_iter(kct_t *kc, Bnd &b)
+ext_uq_iter(key_t *kc, Bnd &b)
 {
     uint32_t *k = kc->kct;
     uint32_t *hkoffs = kc->hkoffs;
@@ -323,7 +323,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
 }
 
 static int
-extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
+extd_uniqbnd(key_t *kc, struct gzfh_t *fhout)
 {
     int res;
     Bnd b = {0};
@@ -356,7 +356,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 {
     int len, res = -ENOMEM;
     char file[1024];
-    kct_t kc = {0};
+    key_t kc = {0};
     kc.readlength = readlength;
     unsigned mode;
 

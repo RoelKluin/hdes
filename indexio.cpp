@@ -46,7 +46,7 @@
         return -EFAULT;
 
 int
-save_boundaries(struct gzfh_t* fhout, kct_t* kc)
+save_boundaries(struct gzfh_t* fhout, key_t* kc)
 {
     int res = -EFAULT;
     ASSERT(fhout->fp == NULL, goto err);
@@ -76,7 +76,7 @@ err:
 }
 
 int
-load_boundaries(struct gzfh_t* fhin, kct_t* kc)
+load_boundaries(struct gzfh_t* fhin, key_t* kc)
 {
     int res;
     kc->id = NULL;
@@ -103,7 +103,7 @@ err:
 }
 
 int
-save_seqb2(struct gzfh_t* fhout, kct_t* kc)
+save_seqb2(struct gzfh_t* fhout, key_t* kc)
 {
     int res = -EFAULT;
     uint64_t len64;
@@ -121,7 +121,7 @@ err:
 }
 
 int
-load_seqb2(struct gzfh_t* fhin, kct_t* kc)
+load_seqb2(struct gzfh_t* fhin, key_t* kc)
 {
     int res;
     uint64_t len64;
@@ -136,7 +136,7 @@ err:
     return res;
 }
 
-int save_kc(struct gzfh_t* fhout, kct_t* kc)
+int save_kc(struct gzfh_t* fhout, key_t* kc)
 {
     uint32_t* buf = NULL;
     int res = -EFAULT;
@@ -155,7 +155,7 @@ err:
     return res;
 }
 
-int load_kc(struct gzfh_t* fhin, kct_t* kc)
+int load_kc(struct gzfh_t* fhin, key_t* kc)
 {
     int res;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
@@ -195,7 +195,7 @@ err:
     return res;
 }
 
-int ammend_kc(struct gzfh_t* fhin, kct_t* kc)
+int ammend_kc(struct gzfh_t* fhin, key_t* kc)
 {
     int res;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
