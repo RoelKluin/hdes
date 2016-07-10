@@ -49,7 +49,6 @@ int
 save_boundaries(struct gzfh_t* fhout, kct_t* kc)
 {
     int res = -EFAULT;
-    uint32_t val;
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
@@ -80,7 +79,6 @@ int
 load_boundaries(struct gzfh_t* fhin, kct_t* kc)
 {
     int res;
-    uint32_t blen;
     kc->id = NULL;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
     res = -EFAULT;
@@ -173,7 +171,6 @@ int load_kc(struct gzfh_t* fhin, kct_t* kc)
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
         kc->contxt_idx[i] = kc->kct_l;
 
-    uint32_t i = 0;
     uint8_t *s = kc->s;
 
     for (uint64_t i=0ul; i != kc->kct_l; ++i) {

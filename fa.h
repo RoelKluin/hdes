@@ -127,8 +127,7 @@ struct kct_t {
 };
 
 #define b2pos_of(k) ({\
-    NB(k != NO_K);\
-    NB(k != 0, "%s:%i", __FILE__, __LINE__);\
+    NB(k >= NT_WIDTH, "b2pos_of() %s:%i", __FILE__, __LINE__);\
     ((k) & B2POS_MASK);\
 })
 
@@ -140,7 +139,8 @@ struct kct_t {
 
 
 #define build_ndx_kct(kc, seq, s, ...) ({\
-    /*NB((b2pos_of(seq.p) >> 3) <= kc->s_l, "%u >= %u!!", (b2pos_of(seq.p) >> 3), kc->s_l);*/\
+    NB(seq.p >= NT_WIDTH && (b2pos_of(seq.p) >> 3) <= kc->s_l,\
+            "build_ndx_kct() %s:%i\tb2pos:%x?", __FILE__, __LINE__, seq.p);\
     _build_ndx_kct(seq, s, ##__VA_ARGS__);\
 })
 

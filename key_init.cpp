@@ -155,7 +155,7 @@ new_header(kct_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint
 }
 
 static inline void
-end_pos(kct_t*C kc, Hdr* h, uint32_t len)
+end_pos(kct_t*C kc, uint32_t len)
 {
     kc->bnd[kc->bnd_l-1].e = len + 2;
     kc->totNts += len + kc->bnd[kc->bnd_l-1].corr;
@@ -167,9 +167,8 @@ finish_contig(kct_t*C kc, Hdr* h, keyseq_t &seq)
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (seq.p >> 3) + !!(seq.p & 6);
     h->end = seq.p;
-    EPR(">%s:s len:%u", kc->id + h->ido, h->len);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
-    end_pos(kc, h, seq.p);
+    end_pos(kc, seq.p);
     EPR("processed %u(%lu) Nts for %s", seq.p >> 1, kc->totNts, kc->id + h->ido);
     return 0;
 }
@@ -221,7 +220,7 @@ case 'G':   seq.t &= 0x3;
                     NB(h != NULL);
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
-                        end_pos(kc, h, seq.p - 2);
+                        end_pos(kc, seq.p - 2);
                         corr += kc->bnd[kc->bnd_l-1].corr;
                         buf_grow(kc->bnd, 1ul, 0);
                         kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2};
@@ -266,7 +265,7 @@ fa_read(struct gzfh_t* fh, kct_t* kc)
 {
     int res = -ENOMEM;
 
-    kc->kct = buf_init(kc->kct, 16);
+    kc->kct = buf_init(kc->kct, 8);
     kc->id = buf_init(kc->id, 8);
     kc->s = buf_init(kc->s, 8);
     kc->h = buf_init(kc->h, 1);

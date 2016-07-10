@@ -31,8 +31,8 @@
 
 #define EPQ(d, msg, ...) if (d) { fprintf (stderr, msg "\n", ##__VA_ARGS__); }
 #define EPQ0(d, ...) if (d) { fprintf (stderr, __VA_ARGS__); }
-#define EPR(msg, ...) fprintf (stderr, msg "\n", ##__VA_ARGS__)
-#define EPR0(...) fprintf (stderr, __VA_ARGS__)
+#define EPR(msg, ...) do { fprintf (stderr, msg "\n", ##__VA_ARGS__); fflush(stderr); } while(0)
+#define EPR0(...) do { fprintf (stderr, __VA_ARGS__); fflush(stderr); } while(0)
 #define OPR(msg, ...) fprintf (stdout, msg "\n", ##__VA_ARGS__)
 #define OPR0(...) fprintf (stdout, __VA_ARGS__)
 

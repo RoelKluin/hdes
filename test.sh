@@ -341,3 +341,54 @@ time (cat ${bn}.1.hdr.sam; ../uqct ../fakeq/${bn}.1.fastq.gz ../${bn}.2b -l 51) 
 
 
 gpg -o uqct_0.017.tar.gz.gpg -c uqct_0.017.tar.gz
+
+
+got:
+addr2line -e uqct $(
+cat << EOF | sed -n -r "s/^.*\(\+(0x[0-9a-f]+)\).*$/\1/p" | tr "\n" " "
+Error: signal 11:
+./uqct(+0xa7fa)[0x56176f7857fa]
+/usr/lib/libc.so.6(+0x33310)[0x7f62d2d94310]
+./uqct(+0x7b4c)[0x56176f782b4c]
+./uqct(+0x9492)[0x56176f784492]
+./uqct(+0x2488)[0x56176f77d488]
+/usr/lib/libc.so.6(__libc_start_main+0xf1)[0x7f62d2d81741]
+./uqct(+0x25c9)[0x56176f77d5c9]
+EOF
+echo)
+/usr/include/bits/stdio2.h:98
+??:0
+/home/roel/dev/git/hdes/fa.cpp:199
+/home/roel/dev/git/hdes/fa.cpp:316
+/home/roel/dev/git/hdes/main.cpp:208
+??:?
+
+KW=16
+BASE=hg19
+RL=51
+xterm -geometry 119x99-0+0 -b 0 -e \
+        "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
+
+
+Error: signal 11:
+/home/roel/dev/git/hdes/uqct(+0xa7fa)[0x560a5bb727fa]
+/usr/lib/libc.so.6(+0x33310)[0x7f14e5fb7310]
+/home/roel/dev/git/hdes/uqct(+0x5425)[0x560a5bb6d425]
+/home/roel/dev/git/hdes/uqct(+0x3728)[0x560a5bb6b728]
+/home/roel/dev/git/hdes/uqct(+0x23f5)[0x560a5bb6a3f5]
+/usr/lib/libc.so.6(__libc_start_main+0xf1)[0x7f14e5fa4741]
+/home/roel/dev/git/hdes/uqct(+0x25c9)[0x560a5bb6a5c9]
+
+addr2line -e uqct 0xa7fa 0x33310 0x5425 0x3728 0x23f5 0xf1 0x25c9
+/usr/include/bits/stdio2.h:98
+??:0
+/home/roel/dev/git/hdes/indexio.cpp:185
+/home/roel/dev/git/hdes/map.cpp:327 (discriminator 5)
+/home/roel/dev/git/hdes/main.cpp:196
+??:0
+??:?
+
+
+By default, systemd-coredump will log the core dump including a backtrace if possible to the journal and store the core dump itself in an external file in /var/lib/systemd/coredump.
+
+

@@ -12,6 +12,8 @@
 # define RK_B6_H
 #include <stdint.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 # define BITS_PER_LONG 64
 
@@ -139,7 +141,11 @@ struct __attribute__ ((__packed__)) keyseq_t {
 static inline void
 get_next_nt_seq(uint8_t const*const s, struct keyseq_t &seq)
 {
-    if (seq.p & 1) raise(SIGTRAP);
+    if (seq.p & 1) {
+        fprintf(stderr, "get_next_nt_seq(): orient already set\n");
+        fflush(stderr);
+        raise(SIGTRAP);
+    }
     seq.t = (s[seq.p>>3] >> (seq.p&6)) & 3;
     seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
     seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
@@ -151,7 +157,6 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 
 #define build_seq(s, seq, pend)\
     do {\
-        if (p < NT_WIDTH) raise(SIGTRAP);\
         seq.p -= NT_WIDTH;\
         do {\
             get_next_nt_seq(s, seq);\
@@ -162,7 +167,11 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
 
 // if with_orient is 1, the orientation is stored in the first bit of seq.p (
 #define get_ndx(seq, do_store_orientation) ({\
-    if ((seq.p & 1) || do_store_orientation > 1) raise(SIGTRAP);\
+    if ((seq.p & 1) || do_store_orientation > 1) {\
+        fprintf(stderr, "orient already set at %s:%u\n",__FILE__,__LINE__);\
+        fflush(stderr);\
+        raise(SIGTRAP);\
+    }\
     seq.t = seq.dna ^ seq.rc;\
     seq.t &= -seq.t;                  /* isolate deviant bit */\
     seq.t |= !seq.t;                  /* for palindromes: have to set one */\
@@ -178,7 +187,11 @@ _build_ndx_kct(keyseq_t &seq, uint8_t const*const s, uint32_t with_orient = 1)
     uint32_t p = seq.p = _b2pos_of(seq.p);
     build_seq(s, seq, p);
     get_ndx(seq, with_orient);
-    if (seq.t >= KEYNT_BUFSZ) raise(SIGTRAP);
+    if (seq.t >= KEYNT_BUFSZ) {
+        fprintf(stderr, "_build_ndx_kct(): seq.t(%u) >= KEYNT_BUFSZ\n", seq.t);
+        fflush(stderr);
+        raise(SIGTRAP);
+    }
     return seq.t;
 }
 

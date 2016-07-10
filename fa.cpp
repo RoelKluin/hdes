@@ -71,15 +71,17 @@ print_kct(kct_t *kc, Mantra* at, Bnd &b, uint32_t* tk)
 static void
 buf_grow_ks(kct_t *kc, Bnd &b, unsigned add, uint32_t **k)
 {
-    if ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
+    while ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
         EPR("buf_grow_ks grew");
         unsigned ok1, ok2;
 
         ok1 = *k - kc->kct;
         ok2 = b.tgtk - kc->kct;
         uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
-        if_ever (t == NULL)
+        if_ever (t == NULL) {
+            EPR("buf_grow_ks failed");
             raise(SIGTRAP);
+        }
         kc->kct = t;
         *k = t + ok1;
         b.tgtk = t + ok2;
@@ -195,9 +197,10 @@ move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
             *b.tgtk = *k;
             *k ^= *k;//
             kc->contxt_idx[t] = b.tgtk - kc->kct;
-            if (b.tgtk[b.moved])
+            if (b.tgtk[b.moved]) {
+                NB(b.moved);
                 --b.moved;
-
+            }
             ++b.tgtk;
         } else if (k < b.tgtk) {
             //O; second+ occurance (may still be in scope)
@@ -266,6 +269,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             hkoffs = kc->hkoffs + t;
             b.s += h++->len;
+            EPR0(".");
             b.fk = k - kc->kct;
         }
         NB(hkoffs == kc->hkoffs + bnd->ho);
@@ -287,13 +291,6 @@ ext_uq_iter(kct_t *kc, Bnd &b)
                 } else {
                     //P; out of scope.
                     move_uniq(kc, b, bnd->s, end - 2);
-                    if (end + 2 == bnd->e) { //k; prevent insertion & removal, + b.ext?
-                        bnd->e = end;
-                        ++k;
-                        buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
-                        excise(kc, b, k);
-                        break;
-                    }
                     Mantra copy = *bnd;
                     copy.e = end;
                     buf_grow_add(kc->bnd, 1ul, 0, copy);
@@ -309,7 +306,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
             //P; in scope of start; excision (no bnd copy from b.obnd to kc->bnd)
             buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
             excise(kc, b, k);
-        } else if (b2pos_of(*k) != bnd->e) { //XXX: hg19: assertion '*k != 0' failed
+        } else {
             //P; alt
             move_uniq(kc, b, bnd->s, bnd->e - 2);
             buf_grow_add(kc->bnd, 1ul, 0, *bnd);//K;
