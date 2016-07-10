@@ -204,7 +204,7 @@ move_uniq(kct_t *kc, Bnd &b, C unsigned start, C unsigned pend)
         } else if (k < b.tgtk) {
             //O; second+ occurance (may still be in scope)
             // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-            if ((~*k & DUP_BIT) && (k - kc->kct < b.fk || b2pos_of(*k) + b.ext < p)) {
+            if ((~*k & DUP_BIT) && (k - kc->kct < b.fk || b2pos_of(*k) + kc->ext < p)) {
                 //P; no dup after all
 
                 *k |= DUP_BIT;
@@ -280,7 +280,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
 
             if (IS_UQ(k)) { //~ uniq
                 unsigned end = b2pos_of(*k);
-                if (bnd->s + b.ext >= end) {
+                if (bnd->s + kc->ext >= end) {
                     //P; in scope of start; excision
                     bnd->s = end + 2;
                     ++k;
@@ -301,7 +301,7 @@ ext_uq_iter(kct_t *kc, Bnd &b)
             ++k;
         }
 
-        if (bnd->s + b.ext >= bnd->e) {
+        if (bnd->s + kc->ext >= bnd->e) {
             //P; in scope of start; excision (no bnd copy from b.obnd to kc->bnd)
             buf_grow_ks(kc, b, (k - b.tgtk) - b.moved, &k);
             excise(kc, b, k);
@@ -329,18 +329,18 @@ extd_uniqbnd(kct_t *kc, struct gzfh_t *fhout)
     Bnd b = {0};
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
     kc->ext_iter = buf_init(kc->ext_iter, 1);
-    for (b.ext = 0; b.ext != end; b.ext += 2) {
-        kc->iter = 0;
+    for (kc->ext = 0; kc->ext != end; kc->ext += 2) {
+        unsigned iter = 0;
         if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
             do { // until no no more new uniques
                 kc->ct = 0;
                 ext_uq_iter(kc, b);
                 EPR("observed %u potential in iteration %u, extension %u\n",
-                    kc->ct, ++kc->iter, b.ext >> 1);
+                    kc->ct, ++iter, kc->ext >> 1);
             } while (kc->ct > 0);
         }
-        EPR("----[ end of extension %u ]-------", b.ext >> 1);
-        buf_grow_add(kc->ext_iter, 1ul, 0, kc->iter);
+        EPR("----[ end of extension %u ]-------", kc->ext >> 1);
+        buf_grow_add(kc->ext_iter, 1ul, 0, iter);
     }
     _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
     _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");

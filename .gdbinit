@@ -89,14 +89,6 @@ end
 
 set $dbg=9
 
-define run_until
-    if kc->iter != 0
-        set $dbg=9
-    end
-    c
-end
-
-
 # leave this: is for buffers.
 #tb key_init.cpp:190
 #break_re '_addtoseq(kc->s, seq.t); // kc->s_l grows here' 'key_init.cpp' 'tbreak'
@@ -151,7 +143,7 @@ commands
     if $dbg > 6
         print show_mantras(kc, 0, 0, kc->bnd)
     end
-    run_until
+    c
 end
 
 
@@ -197,7 +189,7 @@ define break_commands
     commands $arg0
         silent
         dbg_whereat
-        run_until
+        c
     end
 end
 python break_re_py2('//P;', 'fa.cpp', 'break', 1)
@@ -209,7 +201,7 @@ define break_commands
             call print_dna(dna, '\n', KEY_WIDTH)
         end
         #dbg_whereat
-        run_until
+        c
     end
 end
 python break_re_py2('//O; .* occurance', 'fa.cpp', 'break', 1);
@@ -229,7 +221,7 @@ commands
             end
         end
     end
-    run_until
+    c
 end
 
 break_re '//~ also update header$' 'fa.cpp' 'break'
@@ -243,7 +235,7 @@ commands
         call print_dna(b.s[kc->h[bnd->ho]->len], '.', 4)
         printf "..\n"
     end
-    run_until
+    c
 end
 
 
@@ -252,7 +244,7 @@ define break_commands
         silent
         dbg_whereat
         dbg_mantras 7
-        run_until
+        c
     end
 end
 python break_re_py2('//M;', 'fa.cpp', 'break', 1)
@@ -262,7 +254,7 @@ define break_commands
         silent
         dbg_whereat
         dbg_kct 8
-        run_until
+        c
     end
 end
 python break_re_py2('//K;', 'fa.cpp', 'break', 1)
@@ -273,7 +265,7 @@ define break_commands
         dbg_whereat
         dbg_kct 8
         dbg_mantras 7
-        run_until
+        c
     end
 end
 python break_re_py2('//B;', 'fa.cpp', 'break', 1)
@@ -284,7 +276,7 @@ define break_commands
         if $dbg > 6
             pseq
         end
-        run_until
+        c
     end
 end
 python break_re_py2('//S;', 'fa.cpp', 'break', 1)

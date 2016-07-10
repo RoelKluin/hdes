@@ -43,3 +43,5 @@ bwatest/snaps/
 *.fa.*
 *~
 cmocka-1.0.1*
+lcov/
+callgrind.out.*

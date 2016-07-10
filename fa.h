@@ -88,13 +88,18 @@ struct Hdr {
     uint8_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
+// variables only used while extending keys
 struct Bnd {
-    uint32_t *tgtk;
-    Mantra* obnd;
-    uint8_t* s;
-    unsigned fk; //
+    uint32_t *tgtk; // pointer to where keys are stored that have not yet become unique.
+                    // unique keys are initially removed and appended to kct, but after compression
+                    // this is undone. There may be another strategy, but it's hard to implement.
+                    // because the contig needs to remain known.
+    Mantra* obnd;   // for a new iteration old regions with mantras (kc->bnd) is swapped here.
+    uint8_t* s;     // offset of sequence for contig. first is not shifted.
+    unsigned fk;    // first key of config (only needed to recognise a same key within scope.
     unsigned obnd_l, obnd_m;
-    unsigned moved, ext;
+    unsigned moved; // offset to 1st of keys to be moved to start (the remaining non-uniques)
+                    // this occurs unless keys are not in scope.
 };
 
 struct kct_t {
@@ -105,23 +110,26 @@ struct kct_t {
     uint32_t* contxt_idx; // strand independent k-mer to kct index.
                    // Later we may want to point to a combination in the non-observed for edits to
                    // this ndx or surroundings that do result in an ndx that does occur.
-                   // non occurant are initally set to NO_K. see Extension below.
+                   // non occurant are initally set to NO_K.
+                   //
+                   // If a key is found to be incorrect, One or more mismatches must have occurred
+                   // within this key, + extension n. a 0-th (no) extension exists. If beyond
+                   // readlength we cannot be conclusive about which position is right. (TODO:
+                   // hash and storage of combination of positions?)
+
     uint32_t* kct; // contains first occurrant position, strand and dupbit if not yet uniq.
+                   // we could also store ndx for faster conversion.
 
-    uint32_t* ext_iter; // iterations per extension
+    uint32_t* ext_iter; // iterations per extension. TODO: remove iteration without keys.
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
-                      // per extension per contig.
+                        // per extension per contig.
 
-                   // ndx offset for key extensions. If a position is after this u64 of the nth
-                   // extension n u64 (but before the next, or NO_K) then the key became unique
-                   // with this extension. If a key is found to be incorrect, One or more
-                   // mismatches must have occurred within this key, + extension n.
-                   // a 0-th (no) extension exists. If beyond readlength we cannot be conclusive.
     Mantra* bnd;
 
     uint64_t s_l, totNts;
     uint32_t id_l, kct_l, hkoffs_l, h_l, ext_iter_l, ct, bnd_l;
-    unsigned readlength, iter;
+    uint32_t readlength;
+    uint32_t ext, reserved;        // current to final extension.
     uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m, ext_iter_m, bnd_m;
     // could be possible to move bnd here.
 };
