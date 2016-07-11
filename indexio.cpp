@@ -22,10 +22,6 @@
 #define __WRITE_PTR(x, fhout, l) \
     if (fhout->write(fhout, (const char*)(x), (l) * sizeof(*(x))) < 0)\
         goto err;
-#define __WRITE_LMPTR(buf, fhout)\
-    __WRITE_VAL(buf##_l, fhout)\
-    __WRITE_VAL(buf##_m, fhout)\
-    __WRITE_PTR(buf, fhout, buf##_l)
 
 #define __READ_VAL(x, fhin) \
     ASSERT(fhin->fp != NULL, return -EFAULT);\
@@ -36,13 +32,6 @@
     x = (decltype(x))malloc((l) * sizeof(*(x)));\
     ASSERT(x != NULL, return -ENOMEM);\
     if (fhin->read(fhin, (char*)x, l * sizeof(*(x))))\
-        return -EFAULT;
-#define __READ_LMPTR(buf, fhin) \
-    __READ_VAL(buf##_l, fhin)\
-    __READ_VAL(buf##_m, fhin)\
-    buf = (decltype(buf))malloc((1ul << buf##_m) * sizeof(*(buf)));\
-    ASSERT(buf != NULL, return -ENOMEM);\
-    if (fhin->read(fhin, (char*)buf, buf##_l * sizeof(*(buf))))\
         return -EFAULT;
 
 int
@@ -56,11 +45,12 @@ save_boundaries(struct gzfh_t* fhout, key_t* kc)
     // 1: buffer sizes
     __WRITE_VAL(kc->h_l, fhout)
     __WRITE_VAL(kc->id_l, fhout)
+    __WRITE_VAL(kc->bnd_l, fhout)
+    __WRITE_VAL(kc->bnd_m, fhout)
 
     // 2: next contig id's, because they are somewhat readable.
     __WRITE_PTR(kc->id, fhout, kc->id_l)
-
-    __WRITE_LMPTR(kc->bnd, fhout)
+    __WRITE_PTR(kc->bnd, fhout, kc->bnd_l)
 
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h)
     {
@@ -85,11 +75,16 @@ load_boundaries(struct gzfh_t* fhin, key_t* kc)
     // 1: buffer sizes
     __READ_VAL(kc->h_l, fhin) // header size: how many contigs (and uniq regions, fhin)
     __READ_VAL(kc->id_l, fhin)
+    __READ_VAL(kc->bnd_l, fhin)
+    __READ_VAL(kc->bnd_m, fhin)
 
     // 2: next contig id's.
     __READ_PTR(kc->id, fhin, kc->id_l)
 
-    __READ_LMPTR(kc->bnd, fhin)
+    kc->bnd = (Mantra*)malloc((1ul << kc->bnd_m) * sizeof(Mantra));
+    ASSERT(kc->bnd != NULL, return -ENOMEM);
+    if (fhin->read(fhin, (char*)kc->bnd, kc->bnd_l * sizeof(Mantra)))
+        return -EFAULT;
 
     kc->h = (Hdr*)malloc(kc->h_l * sizeof(Hdr));
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
@@ -143,9 +138,11 @@ int save_kc(struct gzfh_t* fhout, key_t* kc)
     ASSERT(fhout->fp == NULL, goto err);
     _ACTION(set_io_fh(fhout, 1), "opening %s for writing", fhout->name);
     res = -EFAULT;
-    __WRITE_LMPTR(kc->hkoffs, fhout)
-
+    __WRITE_VAL(kc->hkoffs_l, fhout)
     __WRITE_VAL(kc->kct_l, fhout)
+    __WRITE_VAL(kc->hkoffs_m, fhout)
+    __WRITE_PTR(kc->hkoffs, fhout, kc->hkoffs_l)
+
     __WRITE_PTR(kc->kct, fhout, kc->kct_l)
     res = rclose(fhout);
 err:
@@ -163,9 +160,14 @@ int load_kc(struct gzfh_t* fhin, key_t* kc)
     kc->kct = NULL;
     // 0: version number
     // 1: buffer sizes
-    __READ_LMPTR(kc->hkoffs, fhin)
-
+    __READ_VAL(kc->hkoffs_l, fhin)
     __READ_VAL(kc->kct_l, fhin)
+    __READ_VAL(kc->hkoffs_m, fhin)
+    kc->hkoffs = (uint32_t*)malloc((1ul << kc->hkoffs_m) * sizeof(uint32_t));
+    ASSERT(kc->hkoffs != NULL, return -ENOMEM);
+    if (fhin->read(fhin, (char*)kc->hkoffs, kc->hkoffs_l * sizeof(uint32_t)))
+        return -EFAULT;
+
     __READ_PTR(kc->kct, fhin, kc->kct_l);
 
     for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
