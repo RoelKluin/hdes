@@ -102,7 +102,7 @@ struct Ext_t {
                     // this occurs unless keys are not in scope.
 };
 
-struct key_t {
+struct Key_t {
     Hdr* h;        // headers
     char* id;      // characters of headers
 
@@ -152,23 +152,23 @@ struct key_t {
     _build_ndx_kct(seq, s, ##__VA_ARGS__);\
 })
 
-void free_kc(key_t* kc);
-int fa_read(struct gzfh_t*, key_t*);
+void free_kc(Key_t* kc);
+int fa_read(struct gzfh_t*, Key_t*);
 int fa_index(struct gzfh_t*, uint64_t optm, unsigned readlength);
 
-int save_seqb2(struct gzfh_t*, key_t*);
-int load_seqb2(struct gzfh_t*, key_t*);
-int save_boundaries(struct gzfh_t*, key_t*);
-int load_boundaries(struct gzfh_t*, key_t*);
+int save_seqb2(struct gzfh_t*, Key_t*);
+int load_seqb2(struct gzfh_t*, Key_t*);
+int save_boundaries(struct gzfh_t*, Key_t*);
+int load_boundaries(struct gzfh_t*, Key_t*);
 
-int save_kc(struct gzfh_t*, key_t*);
-int load_kc(struct gzfh_t*, key_t*);
-int ammend_kc(struct gzfh_t*, key_t*);
+int save_kc(struct gzfh_t*, Key_t*);
+int load_kc(struct gzfh_t*, Key_t*);
+int ammend_kc(struct gzfh_t*, Key_t*);
 
 int map_fq_se(struct seqb2_t*, char C*C);
 
 // mantra.cpp
-int show_mantras(key_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at);
+int show_mantras(Key_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at);
 #endif // RK_FA_H
 
 

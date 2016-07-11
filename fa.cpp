@@ -13,7 +13,7 @@
 #include "b6.h"
 
 void
-free_kc(key_t *kc)
+free_kc(Key_t *kc)
 {
     buf_free(kc->bnd);
     buf_free(kc->id);
@@ -26,7 +26,7 @@ free_kc(key_t *kc)
 }
 
 static void
-print_kct(key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
+print_kct(Key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
 {
     unsigned i = 0;
     EPR("");
@@ -69,7 +69,7 @@ print_kct(key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
 
 // if kct grows, pointers *thisk, k, e->tgtk become invalid
 static void
-buf_grow_ks(key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
+buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
 {
     while ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
         EPR("buf_grow_ks grew");
@@ -103,7 +103,7 @@ buf_grow_ks(key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
 
 
 static void
-k_compression(key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
+k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 {
 
     NB(hkoffs <= kc->hkoffs + kc->h_l);
@@ -142,7 +142,7 @@ k_compression(key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 
 // keys between two uniqs.
 static inline void
-excise_one(key_t *kc, Ext_t* e, uint32_t *k)
+excise_one(Key_t *kc, Ext_t* e, uint32_t *k)
 {
     keyseq_t seq = {0};
     NB(k < kc->kct + kc->kct_l);
@@ -156,7 +156,7 @@ excise_one(key_t *kc, Ext_t* e, uint32_t *k)
 }
 
 static void
-excise(key_t *kc, Ext_t* e, uint32_t *thisk)
+excise(Key_t *kc, Ext_t* e, uint32_t *thisk)
 {
     for (uint32_t *k = e->tgtk + e->moved; k < thisk; ++k)
         excise_one(kc, e, k);
@@ -165,7 +165,7 @@ excise(key_t *kc, Ext_t* e, uint32_t *thisk)
 //keys not in scope of unique. hot
 // * can we use a Ext_t.moved and move all keys if none are uniq?
 static void
-move_uniq(key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
+move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
 {
     unsigned dna = 0, rc = 0, t, key_complete = start - 2, p = start - NT_WIDTH;
     while (p != key_complete) { // build key
@@ -234,7 +234,7 @@ move_uniq(key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
  *
  */
 static void
-ext_uq_iter(key_t *kc, Ext_t* e)
+ext_uq_iter(Key_t *kc, Ext_t* e)
 {
     uint32_t *k = kc->kct;
     uint32_t *hkoffs = kc->hkoffs;
@@ -325,7 +325,7 @@ ext_uq_iter(key_t *kc, Ext_t* e)
 }
 
 static int
-extd_uniqbnd(key_t *kc, struct gzfh_t *fhout)
+extd_uniqbnd(Key_t *kc, struct gzfh_t *fhout)
 {
     int res;
     Ext_t e = {0};
@@ -336,7 +336,7 @@ extd_uniqbnd(key_t *kc, struct gzfh_t *fhout)
         if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
             do { // until no no more new uniques
                 kc->ct = 0;
-                ext_uq_iter(kc, e);
+                ext_uq_iter(kc, &e);
                 EPR("observed %u potential in iteration %u, extension %u\n",
                     kc->ct, ++iter, kc->ext >> 1);
             } while (kc->ct > 0);
@@ -349,7 +349,7 @@ extd_uniqbnd(key_t *kc, struct gzfh_t *fhout)
 
     res = 0;
 err:
-    free(e->obnd);
+    free(e.obnd);
     return res;
 }
 
@@ -358,7 +358,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 {
     int len, res = -ENOMEM;
     char file[1024];
-    key_t kc = {0};
+    Key_t kc = {0};
     kc.readlength = readlength;
     unsigned mode;
 

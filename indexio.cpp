@@ -35,7 +35,7 @@
         return -EFAULT;
 
 int
-save_boundaries(struct gzfh_t* fhout, key_t* kc)
+save_boundaries(struct gzfh_t* fhout, Key_t* kc)
 {
     int res = -EFAULT;
     ASSERT(fhout->fp == NULL, goto err);
@@ -66,7 +66,7 @@ err:
 }
 
 int
-load_boundaries(struct gzfh_t* fhin, key_t* kc)
+load_boundaries(struct gzfh_t* fhin, Key_t* kc)
 {
     int res;
     kc->id = NULL;
@@ -98,7 +98,7 @@ err:
 }
 
 int
-save_seqb2(struct gzfh_t* fhout, key_t* kc)
+save_seqb2(struct gzfh_t* fhout, Key_t* kc)
 {
     int res = -EFAULT;
     uint64_t len64;
@@ -116,7 +116,7 @@ err:
 }
 
 int
-load_seqb2(struct gzfh_t* fhin, key_t* kc)
+load_seqb2(struct gzfh_t* fhin, Key_t* kc)
 {
     int res;
     uint64_t len64;
@@ -131,7 +131,7 @@ err:
     return res;
 }
 
-int save_kc(struct gzfh_t* fhout, key_t* kc)
+int save_kc(struct gzfh_t* fhout, Key_t* kc)
 {
     uint32_t* buf = NULL;
     int res = -EFAULT;
@@ -152,7 +152,7 @@ err:
     return res;
 }
 
-int load_kc(struct gzfh_t* fhin, key_t* kc)
+int load_kc(struct gzfh_t* fhin, Key_t* kc)
 {
     int res;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);
@@ -170,34 +170,32 @@ int load_kc(struct gzfh_t* fhin, key_t* kc)
 
     __READ_PTR(kc->kct, fhin, kc->kct_l);
 
-    for (uint64_t i=0ul; i != KEYNT_BUFSZ; ++i)
-        kc->contxt_idx[i] = kc->kct_l;
+    for (uint32_t *x = kc->contxt_idx; x != kc->contxt_idx + KEYNT_BUFSZ; ++x)
+        *x = kc->kct_l;
 
     uint8_t *s = kc->s;
+    Hdr *h = kc->h;
+    uint32_t *hkoffs = kc->hkoffs;
+    for (uint32_t *k = kc->kct; k != kc->kct + kc->kct_l; ++k) {
 
-    for (uint64_t i=0ul; i != kc->kct_l; ++i) {
-
-        uint32_t *k = kc->kct + i;
-
-        // XXX: ensure the k's contigs are sorted or this won't be efficient.
-        while (k >= kc->kct + kc->hkoffs[i]) {
-            s += kc->h[i].len;
-            NB(i != kc->h_l);
-            ++i;
+        while (k >= kc->kct + *hkoffs) {
+            EPR0("loaded kcs:%s", kc->id + h->ido);
+            s += ++h->len;
+            ++hkoffs;
         }
         // construct index from sequence
         keyseq_t seq = {.p = *k};
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
-        kc->contxt_idx[ndx] = i;
+        kc->contxt_idx[ndx] = k - kc->kct;
     }
     res = 0;
 err:
     return res;
 }
 
-int ammend_kc(struct gzfh_t* fhin, key_t* kc)
+int ammend_kc(struct gzfh_t* fhin, Key_t* kc)
 {
     int res;
     _ACTION(set_io_fh(fhin, 2), "opening %s for reading", fhin->name);

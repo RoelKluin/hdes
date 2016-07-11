@@ -56,7 +56,7 @@ seqphred(uint8_t *s, int q)
 
 
 static int
-get_tid_and_pos(key_t* kc, uint64_t *pos, C unsigned bufi)
+get_tid_and_pos(Key_t* kc, uint64_t *pos, C unsigned bufi)
 {
     // FIXME: pos_t plus contig offset.
 
@@ -91,7 +91,7 @@ get_tid_and_pos(key_t* kc, uint64_t *pos, C unsigned bufi)
 }
 
 static void
-print_hdr(key_t *C kc, char C*C commandline)
+print_hdr(Key_t *C kc, char C*C commandline)
 {
     std::list<Hdr*>::iterator h;
 
@@ -106,7 +106,7 @@ print_hdr(key_t *C kc, char C*C commandline)
 
 
 static int
-fq_read(key_t* kc, seqb2_t *sb2)
+fq_read(Key_t* kc, seqb2_t *sb2)
 {
     void* g;
     int (*gc) (void*);
@@ -301,7 +301,7 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     struct gzfh_t* fhio[3] = { sb2->fh + 1, sb2->fh + 2, sb2->fh + 3};
     const char* ext[4] = {".kc",".2b",".bd",  ".uq"};
     char file[768];
-    key_t kc = {0};
+    Key_t kc = {0};
     kc.readlength = sb2->readlength;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;

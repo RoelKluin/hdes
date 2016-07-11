@@ -12,7 +12,7 @@
 #include "fa.h"
 
 int
-show_mantras(key_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at)
+show_mantras(Key_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at)
 {
     unsigned j = 0;
 
