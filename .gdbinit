@@ -172,13 +172,13 @@ end
 
 define dbg_kct
     if $dbg > $arg0
-        call print_kct(kc, bnd, b, k)
+        call print_kct(kc, bnd, e, k)
     end
 end
 
 define dbg_mantras
     if $dbg > $arg0
-        print show_mantras(kc, b.obnd, b.obnd_l, bnd)
+        print show_mantras(kc, e->obnd, e->obnd_l, bnd)
     end
 end
 
@@ -212,12 +212,12 @@ commands
     if *k
         if ~*k & DUP_BIT
             if $dbg > 5
-                call print_posseq(b.s, *k, KEY_WIDTH)
+                call print_posseq(e->s, *k, KEY_WIDTH)
             end
             dbg_print 5 "uniq----^^^\n"
         else
             if $dbg > 6
-                call print_posseq(b.s, *k, KEY_WIDTH)
+                call print_posseq(e->s, *k, KEY_WIDTH)
             end
         end
     end
@@ -228,11 +228,11 @@ break_re '//~ also update header$' 'fa.cpp' 'break'
 commands
     silent
     if $dbg > 0
-        printf "stored k offset %u for hdr %u\nnext hdr\n", b.tgtk - kc->kct, bnd->ho - 1
+        printf "stored k offset %u for hdr %u\nnext hdr\n", e->tgtk - kc->kct, bnd->ho - 1
     end
     if $dbg > 1
-        printf "2bit sequence offset became %u:\t", b.s + kc->h[bnd->ho]->len - kc->s
-        call print_dna(b.s[kc->h[bnd->ho]->len], '.', 4)
+        printf "2bit sequence offset became %u:\t", e->s + kc->h[bnd->ho]->len - kc->s
+        call print_dna(e->s[kc->h[bnd->ho]->len], '.', 4)
         printf "..\n"
     end
     c
