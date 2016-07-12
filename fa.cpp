@@ -325,7 +325,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
 }
 
 static int
-extd_uniqbnd(Key_t *kc, struct gzfh_t *fhout)
+extd_uniqbnd(Key_t *kc)
 {
     int res;
     Ext_t e = {0};
@@ -344,9 +344,6 @@ extd_uniqbnd(Key_t *kc, struct gzfh_t *fhout)
         EPR("----[ end of extension %u ]-------", kc->ext >> 1);
         buf_grow_add(kc->ext_iter, 1ul, 0, iter);
     }
-    _ACTION(save_boundaries(fhout, kc), "writing unique boundaries file");
-    _ACTION(save_kc(fhout + 3, kc), "writing unique keycounts file");
-
     res = 0;
 err:
     free(e.obnd);
@@ -357,12 +354,12 @@ int
 fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 {
     int len, res = -ENOMEM;
-    char file[1024];
+    char file[512];
     Key_t kc = {0};
     kc.readlength = readlength;
     unsigned mode;
 
-    C char *ext[7] = {".fa",  ".2b",".nn",".kc",".bd",  ".ub", ".uq"};
+    C char *ext[4] = {".fa", ".2b", ".kc", ".uq"};
 
     if (fh[0].name) {
         len = strlen(fh[0].name);
@@ -372,7 +369,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 
         len = strlen(fh[2].name);
         strncpy(fh[0].name, fh[2].name, ++len);
-        _ACTION0(reopen(fh, ext[0], ext[5]), "");
+        _ACTION0(reopen(fh, ext[0], ext[3]), ""); // .fa => .uq
     }
     NB(len < 256, "filename too long: %s", fh[0].name);
     if (fh[1].name == NULL)
@@ -380,36 +377,22 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
 
     strncpy(fh[1].name, fh[0].name, len);
 
-    if (fh[3].name == NULL)
-        fh[3].name = &file[len*2];
-
-    strncpy(fh[3].name, fh[0].name, len);
-
     kc.contxt_idx = buf_init_arr(kc.contxt_idx, KEYNT_BUFSZ_SHFT);
-    // first check whether unique boundary is ok.
+    // first check whether unique keys are there already.
     if (fh[0].fp) {
         mode = 2;
     } else {
-         _ACTION0(reopen(fh, ext[5], ext[4]), "trying to open %s instead", ext[4]);
+        _ACTION0(reopen(fh, ext[3], ext[2]), "No %s trying to open %s instead", ext[3], ext[2]); // uq => kc
         mode = fh[0].fp != NULL;
     }
-    if (mode) {
-        _ACTION(load_boundaries(fh, &kc), "loading boundary file %s", fh[0].name);
-    }
+    _ACTION0(reopen(fh + 1, ext[3], ext[1]), "%s does%s exist", ext[1], fh[1].fp ? "" : " not");
 
-    // keycount file did not exist, check twobit file.
-    _ACTION0(reopen(fh, ext[mode == 2 ? 5 : 4], ext[1]),
-                "%s does%s exist", ext[1], fh[0].fp ? "" : " not");
-    _ACTION0(reopen(fh + 1, ext[5], ext[2]), "%s does%s exist", ext[2], fh[1].fp ? "" : " not");
-    _ACTION0(reopen(fh + 3, ext[5], ext[3]), "%s does%s exist", ext[3], fh[3].fp ? "" : " not");
-
-    if (mode && fh[0].fp && fh[1].fp && fh[3].fp) {
-         _ACTION(load_seqb2(fh, &kc), "loading twobit sequence file");
-         _ACTION(load_kc(fh + 3, &kc), "loading keycounts file");
+    if (mode && fh[0].fp && fh[1].fp) {
+         _ACTION(load_seqb2(fh + 1, &kc), "loading twobit sequence file");
+         _ACTION(load_kc(fh, &kc), "loading keycounts file");
     } else {
         bool found = false;
-        for (int i=0; i != 4; ++i) {
-            if (i == 2) continue; // i.e. fasta source!
+        for (int i=0; i != 2; ++i) {
             if (fh[i].fp) {
                 if (~optm & amopt('f')) {
                     found = true;
@@ -419,20 +402,19 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
             }
         }
         if (optm & amopt('f')) {
-            rclose(fh + 3+mode);
             mode = 0;
         } else if (mode) {
             EPR("%s file present, refusing to overwrite.", ext[3+mode]);
-            found = true;
+            goto err;
         }
         if (found) goto err;
         EPR("starting from scratch.");
         _ACTION(fa_read(fh, &kc), "reading fasta");
     }
     if (mode < 2) {
-        _ACTION(reopen(fh, ext[1], ext[5]), "");
-        _ACTION(reopen(fh + 3, ext[3], ext[6]), "");
-        _ACTION(extd_uniqbnd(&kc, fh), "extending unique boundaries");
+        _ACTION(reopen(fh, ext[2], ext[3]), "");
+        _ACTION(extd_uniqbnd(&kc), "continuing kc");
+        _ACTION(save_kc(fh, &kc), "writing unique keycounts file");
     }
     EPR("All seems fine.");
 err:

@@ -297,39 +297,34 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
 {
     int res = -ENOMEM;
 
-    // 1) open keyindex, infior and strand
-    struct gzfh_t* fhio[3] = { sb2->fh + 1, sb2->fh + 2, sb2->fh + 3};
-    const char* ext[4] = {".kc",".2b",".bd",  ".uq"};
-    char file[768];
+    struct gzfh_t* fhio[2] = { sb2->fh + 1, sb2->fh + 2};
+    const char* ext[3] = {".kc",".2b", ".uq"};
+    char file[512];
     Key_t kc = {0};
     kc.readlength = sb2->readlength;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
     ASSERT(strstr(fhio[1]->name, ext[1]), return -EFAULT);
-    // TODO: first read in several reads to verify 
+    // TODO: first read in several reads to verify
 
     _ACTION(init_fq(sb2), "intializing memory");
 
-    for (int i=0; i != 3; ++i) {
+    for (int i=0; i != 2; ++i) {
         if (fhio[i]->name == NULL) {
             fhio[i]->name = &file[len*i];
             strncpy(fhio[i]->name, fhio[1]->name, len);
-            _ACTION0(reopen(fhio[i], ext[1], ext[i]), 
+            _ACTION0(reopen(fhio[i], ext[1], ext[i]),
                     "%s %s", ext[i], fhio[i]->fp ? "exists" : "does not exist");
         }
     }
-    ASSERT(fhio[0]->fp && fhio[1]->fp && fhio[2]->fp, return -EFAULT,
+    ASSERT(fhio[0]->fp && fhio[1]->fp, return -EFAULT,
             "need seqb2, keycount and unique boundary files");
     kc.contxt_idx = buf_init_arr(kc.contxt_idx, KEYNT_BUFSZ_SHFT);
     // 2) open seqb2 for verification of reads
-    // 3) open original boundaries
+    // 3) open kc
     _ACTION(load_seqb2(fhio[1], &kc), "loading twobit sequence file");
     _ACTION(load_kc(fhio[0], &kc), "loading keycounts file");
-    _ACTION(load_boundaries(fhio[2], &kc), "loading boundary file");
 
-    _ACTION(reopen(fhio[0], ext[0], ext[3]), "");
-    _ACTION(ammend_kc(fhio[0], &kc), "ammending keycounts from file");
-    
     // 4) print header
     print_hdr(&kc, cmdl);
     // 5) open fq for reading

@@ -277,10 +277,8 @@ fa_read(struct gzfh_t* fh, Key_t* kc)
 
     /* TODO: load dbSNP and known sites, and mark them. */
     _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");
-    _ACTION(save_seqb2(fh, kc), "writing seqb2: %s", fh[0].name);
-    _ACTION(save_kc(fh + 3, kc), "writing keycounts file: %s", fh[3].name);
-    _ACTION(reopen(fh + 1, ".nn", ".bd"), "");
-    _ACTION(save_boundaries(fh + 1, kc), "writing boundaries: %s", fh[1].name);
+    _ACTION(save_seqb2(fh + 1, kc), "writing seqb2: %s", fh[1].name);
+    _ACTION(save_kc(fh, kc), "writing keycounts file: %s", fh[0].name);
 
     res = 0;
 err:

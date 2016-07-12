@@ -82,10 +82,10 @@ packed_struct Mantra { // not yet covered by unique keys
 enum ensembl_part {ID, SEQTYPE, IDTYPE,
         IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR = 1};
 
-struct Hdr {
-    uint32_t len, end;  // 2bit length of this contig
-    uint32_t ido;     // id contains offset to kc->id character for the header ID.
-    uint8_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
+packed_struct Hdr {
+    uint32_t len, end; // 2bit length of this contig
+    uint32_t ido;      // id contains offset to kc->id character for the header ID.
+    uint32_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
 // variables only used while extending keys
@@ -125,12 +125,13 @@ struct Key_t {
                         // per extension per contig.
 
     Mantra* bnd;
-
+    uint32_t h_l, id_l;
     uint64_t s_l, totNts;
-    uint32_t id_l, kct_l, hkoffs_l, h_l, ext_iter_l, ct, bnd_l;
-    uint32_t readlength;
+
+    uint32_t kct_l, ext_iter_l, bnd_l, hkoffs_l;
+    uint32_t ct, readlength;
     uint32_t ext, reserved;        // current to final extension.
-    uint8_t id_m, s_m, contxt_idx_m, h_m, kct_m, hkoffs_m, ext_iter_m, bnd_m;
+    uint8_t contxt_idx_m, kct_m, ext_iter_m, bnd_m, hkoffs_m, h_m, id_m, s_m;
     // could be possible to move bnd here.
 };
 
@@ -158,12 +159,9 @@ int fa_index(struct gzfh_t*, uint64_t optm, unsigned readlength);
 
 int save_seqb2(struct gzfh_t*, Key_t*);
 int load_seqb2(struct gzfh_t*, Key_t*);
-int save_boundaries(struct gzfh_t*, Key_t*);
-int load_boundaries(struct gzfh_t*, Key_t*);
 
 int save_kc(struct gzfh_t*, Key_t*);
 int load_kc(struct gzfh_t*, Key_t*);
-int ammend_kc(struct gzfh_t*, Key_t*);
 
 int map_fq_se(struct seqb2_t*, char C*C);
 

@@ -16,7 +16,6 @@
 #include <signal.h>
 #include "fa.h"
 #include "fq.h"
-#include <string.h>
 
 typedef struct option_description
 {
