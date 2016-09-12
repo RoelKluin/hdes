@@ -142,27 +142,20 @@ k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 
 // keys between two uniqs.
 static inline void
-excise_one(Key_t *kc, Ext_t* e, uint32_t *k)
+excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
 {
     keyseq_t seq = {0};
-    NB(k < kc->kct + kc->kct_l);
-    NB(k != kc->kct + kc->kct_l);
-    //*k &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
-    kc->kct[kc->kct_l] = seq.p = *k;
+    NB(q < kc->kct + kc->kct_l);
+    NB(q != kc->kct + kc->kct_l);
+    //*q &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
+    kc->kct[kc->kct_l] = seq.p = *q;
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, e->s, 0);
-    *k ^= *k;//
+    *q ^= *q;//
     *contxt_idx = kc->kct_l++;
     ++e->moved;//S;
 }
 
-static void
-excise(Key_t *kc, Ext_t* e, uint32_t *thisk)
-{
-    for (uint32_t *k = e->tgtk + e->moved; k < thisk; ++k)
-        excise_one(kc, e, k);
-}
-
-//keys not in scope of unique. hot
+// keys not in scope of unique. hot.
 // * can we use a Ext_t.moved and move all keys if none are uniq?
 static void
 move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
@@ -293,7 +286,8 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
                     bnd->s = end + 2;
                     ++k;
                     buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
-                    excise(kc, e, k);
+                    for (uint32_t *q = e->tgtk + e->moved; q < k; ++q)
+                        excise_one(kc, e, q);
                     --k;
                 }
             }
@@ -303,7 +297,8 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
         if (bnd->s + kc->ext >= bnd->e) {
             //P; in scope of start; excision (no bnd copy from e->obnd to kc->bnd)
             buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
-            excise(kc, e, k);
+            for (uint32_t *q = e->tgtk + e->moved; q < k; ++q)
+                excise_one(kc, e, q);
         } else {
             //P; alt
             move_uniq(kc, e, bnd->s, bnd->e - 2);

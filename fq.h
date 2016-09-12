@@ -14,6 +14,7 @@
 #include "seq.h"
 #include "gz.h"
 
+
 int fq_b2(seqb2_t *fq);
 int fq_print(seqb2_t *fq);
 
