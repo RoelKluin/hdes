@@ -173,6 +173,20 @@ finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
     return 0;
 }
 
+static inline void
+addtoseq(Key_t* kc, keyseq_t& seq)
+{
+    seq.rc = ((seq.rc << 2) & KEYNT_MASK) | (seq.t ^ 2);
+    seq.dna = seq.t << KEYNT_TOP | seq.dna >> 2;
+    seq.p += 2; // first bit is for orientation
+    if (kc->s_l & 3) {
+        seq.t = kc->s[kc->s_l>>2] | (seq.t << ((kc->s_l & 3) << 1));
+    } else {
+        buf_grow(kc->s, 1ul, 2);
+    }
+    kc->s[kc->s_l++>>2] = seq.t;
+}
+
 /*
  * process fasta, store 2bit string and count occurances and locations of keys.
  * store per key whether it occurred multiple times the last position.
@@ -195,15 +209,7 @@ case 'A':   seq.t ^= 0x3;
 case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
-            seq_next(seq);
-            if (kc->s_l & 3) {
-                kc->s[kc->s_l>>2] |= seq.t << ((kc->s_l & 3) << 1);
-            } else {
-                buf_grow(kc->s, 1ul, 2);
-                kc->s[kc->s_l>>2] = seq.t;
-            }
-            seq.p += 2;
-            ++kc->s_l;
+            addtoseq(kc, seq);
             if (i == 0) {
                 uint32_t* n = get_kct(kc, seq, 1);
                 if (*n == NO_K) {
