@@ -18,6 +18,22 @@ version 0.013
 - kctndx => ndxkct, 32 bits
 - efficient kct reusage for memory
 
+version 0.014:
+- mapping of `perfect' reads, high percentage correct.
+(mostly tweaks to get mapping right)
+
+version 0.015:
+- removed next Nt based approach. unnecessary and complicated
+
+version 0.016:
+- rewriting
+
+version 0.017:
+- fixing
+
+version 0.018:
+- debugging
+
 TODO:
 - store:
  - separate seqb2: better for verification of key.

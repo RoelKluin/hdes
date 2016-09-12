@@ -55,24 +55,10 @@ seq_next(struct keyseq_t &seq)
     kc->contxt_idx + seq.t;\
 })
 
-#define _addtoseq(buf, seq)\
-    do {\
-        seq_next(seq);\
-        if ((buf ## _l & 3) == 0) {\
-            buf_grow(buf, 1ul, 2);\
-            buf[buf ## _l>>2] = '\0';\
-        }\
-        buf[buf ## _l>>2] |= seq.t << ((buf ## _l & 3) << 1);\
-    } while(0)
 
-#define next_seqpos(buf, seq)\
-    do {\
-        seq.p += 2;\
-        ++(buf ## _l);\
-    } while(0)
 
-packed_struct Mantra { // not yet covered by unique keys
-    uint32_t ho;   // which contig
+struct Mantra { // not yet covered by unique keys
+    uint32_t ho;   // which contig (header offfset)
     uint32_t s;    // start pos
     uint32_t corr; // 'real' position correction
     uint32_t e;    // end of mantra
@@ -92,11 +78,11 @@ packed_struct Hdr {
 struct Ext_t {
     uint32_t *tgtk; // pointer to where keys are stored that have not yet become unique.
                     // unique keys are initially removed and appended to kct, but after compression
-                    // this is undone. There may be another strategy, but it's hard to implement.
-                    // because the contig needs to remain known.
-    Mantra* obnd;   // for a new iteration old regions with mantras (kc->bnd) is swapped here.
-    uint8_t* s;     // offset of sequence for contig. first is not shifted.
-    unsigned fk;    // first key of config (only needed to recognise a same key within scope.
+                    // this is undone. There may be another strategy, swapping keys, but it's hard
+                    // to implement because the contig needs to remain known.
+    Mantra* obnd;   // for a next iteration old regions with mantras (kc->bnd) are stored here.
+    uint8_t* s;     // offset of sequence for contig. first starts at 1st 2bit (not shifted).
+    unsigned fk;    // first key of contig, only needed to recognise a same key within scope.
     unsigned obnd_l, obnd_m;
     unsigned moved; // offset to 1st of keys to be moved to start (the remaining non-uniques)
                     // this occurs unless keys are not in scope.
@@ -115,10 +101,10 @@ struct Key_t {
                    // If a key is found to be incorrect, One or more mismatches must have occurred
                    // within this key, + extension n. a 0-th (no) extension exists. If beyond
                    // readlength we cannot be conclusive about which position is right. (TODO:
-                   // hash and storage of combination of positions?)
+                   // hash storage of remaining combinations of positions?)
 
-    uint32_t* kct; // contains first occurrant position, strand and dupbit if not yet uniq.
-                   // we could also store ndx for faster conversion.
+    uint32_t* kct; // contains first occurrent position, strand and dupbit if not yet uniq.
+                   // we could also store ndx for faster conversion, if 64 bit.
 
     uint32_t* ext_iter; // iterations per extension. TODO: remove iteration without keys.
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's

@@ -47,7 +47,7 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
     elif [ "$k" = "n" ]; then
         $hdesdir/tst ${ref}.fa.gz -c -m ${KL} -L ${RL}
     elif [ "$k" = "v" ]; then
-        $hdesdir/tst ${ref}.fa.gz -c -m ${KL} -v -L ${RL}
+        $hdesdir/tst ${ref}.fa.gz -m ${KL} -v -L ${RL}
     elif [ "$k" = "b" ]; then
         ($hdesdir/bwatest/run -B -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     elif [ "$k" = "l" ]; then

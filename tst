@@ -10,7 +10,7 @@ die() {
 }
 USAGE="$0 [-g] [-c|--clean] [-C|--callgrind] [-p|--part] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] [-v|--valgrind] [-l|--leak-check] fasta.gz"
 
-TEMP=`getopt -o m:L:pcCvlg --long make:,length:,clean,callgrind,part,valgrind,leak-check:gdb -n "$0" -- "$@"`
+TEMP=`getopt -o m:L:pcvlg --long make:,length:,clean,callgrind,part,valgrind,leak-check:gdb -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!

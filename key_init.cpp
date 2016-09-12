@@ -24,12 +24,12 @@ get_header_part(char *s, ensembl_part tgt)
 
 #define ENS_HDR_PARTCT 10
 static int
-parse_header_parts(Key_t* kc, void* g, int (*gc) (void*), uint32_t* part)
+parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
 {
     int p = ID;
     part[p] = kc->id_l;
     int c;
-    while ((c = gc(g)) != -1) {
+    while ((c = GZTC(gz)) != -1) {
         //EPR("%u\t%c", p, c);
         switch (c) {
             case '\n': buf_grow_add(kc->id, 1ul, 0, '\0'); break;
@@ -96,10 +96,10 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
-new_header(Key_t* kc, Hdr* h, void* g, int (*gc) (void*), Hdr_umap& lookup, uint32_t endpos)
+new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
 {
     uint32_t part[ENS_HDR_PARTCT] = {0};
-    int res = parse_header_parts(kc, g, gc, part);
+    int res = parse_header_parts(kc, gz, part);
     if (res < 0)
         return NULL;
 
@@ -178,28 +178,32 @@ finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
  * store per key whether it occurred multiple times the last position.
  */
 static int
-fa_kc(Key_t* kc, struct gzfh_t* fhin)
+fa_kc(Key_t* kc, struct gzfh_t* fhin, gzin_t* gz)
 {
-    void* g;
-    int (*gc) (void*);
     uint32_t corr = 0;
     unsigned i = ~0u; // skip until '>'
     int res;
     Hdr* h = NULL;
     keyseq_t seq = {0};
     Hdr_umap lookup;
-    set_readfunc(fhin, &g, &gc);
 
     // TODO: realpos based dbsnp or known site boundary insertion.
-    while ((seq.t = gc(g)) <= 0xff) {
+    while ((seq.t = GZTC(gz)) <= 0xff) {
         switch(seq.t & ~0x20) {
 case 'U':   seq.t ^= 0x2;
 case 'A':   seq.t ^= 0x3;
 case 'T':
 case 'C':   seq.t ^= 0x2;
 case 'G':   seq.t &= 0x3;
-            _addtoseq(kc->s, seq);
-            next_seqpos(kc->s, seq);
+            seq_next(seq);
+            if (kc->s_l & 3) {
+                kc->s[kc->s_l>>2] |= seq.t << ((kc->s_l & 3) << 1);
+            } else {
+                buf_grow(kc->s, 1ul, 2);
+                kc->s[kc->s_l>>2] = seq.t;
+            }
+            seq.p += 2;
+            ++kc->s_l;
             if (i == 0) {
                 uint32_t* n = get_kct(kc, seq, 1);
                 if (*n == NO_K) {
@@ -243,7 +247,7 @@ case 0x1e: // new contig
                 }
                 seq.p = 0;
             }
-            h = new_header(kc, h, g, gc, lookup, seq.p);
+            h = new_header(kc, h, gz, lookup, seq.p);
             NB(h != NULL);
             i = KEY_WIDTH - 1;
             break;
@@ -264,6 +268,7 @@ int
 fa_read(struct gzfh_t* fh, Key_t* kc)
 {
     int res = -ENOMEM;
+    gzin_t gz = {0};
 
     kc->kct = buf_init(kc->kct, 8);
     kc->id = buf_init(kc->id, 8);
@@ -276,7 +281,8 @@ fa_read(struct gzfh_t* fh, Key_t* kc)
         kc->contxt_idx[i] = NO_K;
 
     /* TODO: load dbSNP and known sites, and mark them. */
-    _ACTION(fa_kc(kc, fh + 2), "read and intialized keycounts");
+    set_readfunc(fh + 2, &gz);
+    _ACTION(fa_kc(kc, fh + 2, &gz), "read and intialized keycounts");
     _ACTION(save_seqb2(fh + 1, kc), "writing seqb2: %s", fh[1].name);
     _ACTION(save_kc(fh, kc), "writing keycounts file: %s", fh[0].name);
 

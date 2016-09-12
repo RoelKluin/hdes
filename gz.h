@@ -15,6 +15,13 @@
 #include <zlib.h>
 #include "util.h"
 
+struct gzin_t {
+    void* g;
+    int (*c) (void*);
+};
+
+#define GZTC(gz) ((gz)->c((gz)->g))
+
 typedef struct gzfh_t {
     char* name;
     FILE *fp;
@@ -29,5 +36,5 @@ int set_stdio_fh(struct gzfh_t* fh, uint64_t* mode);
 int set_io_fh(struct gzfh_t* fh, int force);
 int rclose(gzfh_t *fh);
 int reopen(struct gzfh_t*, const char*, const char*);
-void set_readfunc(struct gzfh_t*, void**, int (**)(void*));
+void set_readfunc(struct gzfh_t*, gzin_t*);
 #endif //RK_GZ_H

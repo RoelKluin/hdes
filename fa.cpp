@@ -179,43 +179,40 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
         rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
         dna = t << KEYNT_TOP | dna >> 2;
 
-        // build complement independent index
+        // build complement independent index (orientation bit extracted)
         unsigned dev = dna ^ rc;
-        t = dev & -dev;           /* isolate deviant bit */
-        unsigned ori = !((t | !t) & dna); /* for palindromes: have to set one. was devbit set? */
-        t = dna ^ (-ori & dev); /* dna or rc dependent on devbit */
-        dev = t & KEYNT_BUFSZ;
-        t ^= (-!!(t & KEYNT_BUFSZ)) & SNDX_TRUNC_MASK; /*shorten index by one */
+        t = dev & -dev;            /* isolate deviant bit */
+        t |= !t;                   /* for palindromes: have to set one. */
+        unsigned ori = !(t & dna); /* orientation: was devbit set? */
+        t = dna ^ (-ori & dev);    /* index is based on dna or rc dependent on orientation */
+        unsigned top = t & KEYNT_BUFSZ;  /* if the top bit is set.. */
+        t ^= (-!!top) & SNDX_TRUNC_MASK; /* ..flip all bits to shorten index by one */
 
         p += 2;
         uint32_t *k = kc->kct + kc->contxt_idx[t];
         if (k > e->tgtk) {
             //O; 1st occurance
-            ++kc->ct;    // unique or decremented later.
-            *k = p | ori;      // set new pos and strand, unset dupbit
+            ++kc->ct;           // unique or decremented later.
+            *k = p | ori;       // set new pos and strand, unset dupbit
 
             *e->tgtk = *k;
             *k ^= *k;//
             kc->contxt_idx[t] = e->tgtk - kc->kct;
-            if (e->tgtk[e->moved]) {
-                NB(e->moved);
-                --e->moved;
-            }
+            e->moved -= (e->tgtk[e->moved] != 0);
             ++e->tgtk;
         } else if (k < e->tgtk) {
             //O; second+ occurance (may still be in scope)
             // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-            if ((~*k & DUP_BIT) && (k - kc->kct < e->fk || b2pos_of(*k) + kc->ext < p)) {
-                //P; no dup after all
+            t = (~*k & DUP_BIT) && (k - kc->kct < e->fk || b2pos_of(*k) + kc->ext < p);
+            //P; no dup after all if t is set.
 
-                *k |= DUP_BIT;
-                --kc->ct;
-            }
+            *k |= -t & DUP_BIT;
+            kc->ct -= t;
         } else {
 
             //O; also 1st occurance
-            ++kc->ct;    // unique or decremented later.
-            *k = p | ori;      // set new pos and strand, unset dupbit
+            ++kc->ct;     // unique or decremented later.
+            *k = p | ori; // set new pos and strand, unset dupbit
 
             ++e->tgtk;
         }
@@ -227,10 +224,10 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
  * secondary uniques arise when all but one key are already covered by primary unique keys.
  *
  * 1) iterate over as of yet ambiguous keys, determine which ones have become unique.
- * 2) determine uniques and shrink remaining ambiguous regions (mantra) accordingly.
+ * 2) shrink remaining ambiguous regions (mantra) in scope of unique keys.
  *
- * keys are kept ordered. Ambiguous keys are kept ordered upon first occurance. unique keys are
- * isolated and ordered on extension, contig and position.
+ * keys are kept ordered. Ambiguous keys are kept ordered upon first occurance. Unique keys are
+ * isolated and ordered on extension, contig and thirdly on position.
  *
  */
 static void
@@ -282,14 +279,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
 
             if (IS_UQ(k)) { //~ uniq
                 unsigned end = b2pos_of(*k);
-                if (bnd->s + kc->ext >= end) {
-                    //P; in scope of start; excision
-                    bnd->s = end + 2;
-                    ++k;
-                    buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
-                    excise(kc, e, k);
-                    --k;
-                } else {
+                if (bnd->s + kc->ext < end) {
                     //P; out of scope.
                     move_uniq(kc, e, bnd->s, end - 2);
                     Mantra copy = *bnd;
@@ -298,6 +288,13 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
                     bnd->s = end + 2;
                     buf_grow_ks(kc, e, 1, &k);
                     excise_one(kc, e, k);
+                } else {
+                    //P; in scope of start; excision
+                    bnd->s = end + 2;
+                    ++k;
+                    buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
+                    excise(kc, e, k);
+                    --k;
                 }
             }
             ++k;
@@ -329,6 +326,8 @@ extd_uniqbnd(Key_t *kc)
 {
     int res;
     Ext_t e = {0};
+    // FIXME: don't stop at a certain readlength, stop if there are no more dups or
+    // no more that can become one
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
     kc->ext_iter = buf_init(kc->ext_iter, 1);
     for (kc->ext = 0; kc->ext != end; kc->ext += 2) {
@@ -359,7 +358,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
     kc.readlength = readlength;
     unsigned mode;
 
-    C char *ext[4] = {".fa", ".2b", ".kc", ".uq"};
+    C char *ext[4] = {".fa", ".2b", ".kc", ".uq"}; // .kc is a temp file
 
     if (fh[0].name) {
         len = strlen(fh[0].name);

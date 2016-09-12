@@ -301,6 +301,8 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     const char* ext[3] = {".kc",".2b", ".uq"};
     char file[512];
     Key_t kc = {0};
+    gzin_t gz = {0};
+
     kc.readlength = sb2->readlength;
     ASSERT(fhio[1]->name != NULL, return -EFAULT);
     unsigned len = strlen(fhio[1]->name) + 1;
@@ -328,7 +330,8 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     // 4) print header
     print_hdr(&kc, cmdl);
     // 5) open fq for reading
-    _ACTION(fq_read(&kc, sb2), "mapping reads");
+    set_readfunc(sb2->fh, &gz);
+    _ACTION(fq_read(&kc, sb2, &gz), "mapping reads");
     //...
     EPR("All seems fine.");
 err:
