@@ -158,12 +158,20 @@ int load_kc(struct gzfh_t* fhin, Key_t* kc)
     hkoffs = kc->hkoffs;
     for (uint32_t *k = kc->kct; k != kc->kct + kc->kct_l; ++k) {
 
-        while (k >= kc->kct + *hkoffs) {
-            s += h++->len;
+        while (K_OFFS(kc, k) == *hkoffs) {
+            if (h - kc->h != kc->h_l - 1) {
+                s += h++->len;
+            } else {
+                h = kc->h;
+                s = kc->s;
+            }
             ++hkoffs;
         }
         // construct index from sequence
-        keyseq_t seq = {.p = *k};
+        // there can be keys with a dupbit set. They have a position, but that's just one of
+        // many possible.
+        keyseq_t seq = {.p = *k & ~DUP_BIT};
+        NB((seq.p >> 1) < h->end + h->corr, "%x", seq.p);
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
