@@ -61,7 +61,7 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
                             EPR("\nWARNING: aligning against cDNA");
                         } else if (strncmp(q, "pep", strlen(q)) == 0) {
                             EPR("\nERROR: peptide alignment?");
-                            return NULL;
+                            return -EFAULT;
                         } else if (strncmp(q, "rna", strlen(q)) == 0) {
                             EPR("\nWARNING: aligning against rna");
                         } // else could still be ok.
@@ -117,7 +117,7 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
         lookup.insert(hdr_entry);
 
         buf_grow(kc->bnd, 1ul, 0);
-        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH};
+        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = NT_WIDTH};
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -168,6 +168,7 @@ finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
     h->len = (seq.p >> 3) + !!(seq.p & 6);
     h->end = seq.p;
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    h->corr = kc->bnd[kc->bnd_l-1].corr;
     end_pos(kc, seq.p);
     EPR("processed %u(%lu) Nts for %s", seq.p >> 1, kc->totNts, kc->id + h->ido);
     return 0;
@@ -192,7 +193,7 @@ addtoseq(Key_t* kc, keyseq_t& seq)
  * store per key whether it occurred multiple times the last position.
  */
 static int
-fa_kc(Key_t* kc, struct gzfh_t* fhin, gzin_t* gz)
+fa_kc(Key_t* kc, gzin_t* gz)
 {
     uint32_t corr = 0;
     unsigned i = ~0u; // skip until '>'
@@ -221,8 +222,8 @@ case 'G':   seq.t &= 0x3;
 
                 } else if (!(kc->kct[*n] & DUP_BIT)) {
 
-                    kc->kct[*n] |= DUP_BIT;   // mark it as dup
                     --kc->ct;
+                    kc->kct[*n] |= DUP_BIT;   // mark it as dup
                 }
                 seq.p = b2pos_of(seq.p);
             } else {
@@ -288,7 +289,7 @@ fa_read(struct gzfh_t* fh, Key_t* kc)
 
     /* TODO: load dbSNP and known sites, and mark them. */
     set_readfunc(fh + 2, &gz);
-    _ACTION(fa_kc(kc, fh + 2, &gz), "read and intialized keycounts");
+    _ACTION(fa_kc(kc, &gz), "read and intialized keycounts");
     _ACTION(save_seqb2(fh + 1, kc), "writing seqb2: %s", fh[1].name);
     _ACTION(save_kc(fh, kc), "writing keycounts file: %s", fh[0].name);
 

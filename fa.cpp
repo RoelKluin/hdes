@@ -35,7 +35,7 @@ print_kct(Key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
     Mantra* bnd = kc->bnd_l ? kc->bnd : at;
     uint32_t* hkoffs = kc->hkoffs;
 
-    for (uint32_t*k = kc->kct; k - kc->kct < kc->kct_l;) {
+    for (uint32_t*k = kc->kct; K_OFFS(kc, k) < kc->kct_l;) {
         if (bnd != e->obnd + e->obnd_l) {
             while (h - kc->h != bnd->ho)
                 s += h++->len;
@@ -52,7 +52,7 @@ print_kct(Key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
                 hkoffs = &kc->kct_l;
         }
 
-        while (k - kc->kct < *hkoffs) {
+        while (K_OFFS(kc, k) < *hkoffs) {
             char c = k!=tk?(k!=e->tgtk?' ':'t'):'k';
             EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
@@ -75,8 +75,8 @@ buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
         EPR("buf_grow_ks grew");
         unsigned ok1, ok2;
 
-        ok1 = *k - kc->kct;
-        ok2 = e->tgtk - kc->kct;
+        ok1 = K_OFFS(kc, *k);
+        ok2 = K_OFFS(kc, e->tgtk);
         uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
         if_ever (t == NULL) {
             EPR("buf_grow_ks failed");
@@ -108,26 +108,26 @@ k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 
     NB(hkoffs <= kc->hkoffs + kc->h_l);
     while (hkoffs != kc->hkoffs + kc->h_l)
-        *hkoffs++ = e->tgtk - kc->kct;
+        *hkoffs++ = K_OFFS(kc, e->tgtk);
 
     Hdr* h = kc->h;
     e->s = kc->s;
 
-    while (k - kc->kct != kc->kct_l) {
+    while (K_OFFS(kc, k) != kc->kct_l) {
         NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
-        while (k - kc->kct == *hkoffs) {
+        while (K_OFFS(kc, k) == *hkoffs) {
             if (h - kc->h != kc->h_l - 1) {
                 e->s += h++->len;
             } else {
                 h = kc->h;
                 e->s = kc->s;
             }
-            *hkoffs++ = e->tgtk - kc->kct;
+            *hkoffs++ = K_OFFS(kc, e->tgtk);
         }
         if (*k) {
             if (k != e->tgtk) {
                 keyseq_t seq = {.p = b2pos_of(*k) };
-                kc->contxt_idx[build_ndx_kct(kc, seq, e->s, 0)] = e->tgtk - kc->kct;
+                kc->contxt_idx[build_ndx_kct(kc, seq, e->s, 0)] = K_OFFS(kc, e->tgtk);
                 *e->tgtk = *k;
                 *k ^= *k;//
             }
@@ -135,7 +135,7 @@ k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
         }
         ++k;
     }
-    kc->kct_l = e->tgtk - kc->kct;
+    kc->kct_l = K_OFFS(kc, e->tgtk);
     while (hkoffs != kc->hkoffs + kc->hkoffs_l)
         *hkoffs++ = kc->kct_l;
 }
@@ -145,8 +145,7 @@ static inline void
 excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
 {
     keyseq_t seq = {0};
-    NB(q < kc->kct + kc->kct_l);
-    NB(q != kc->kct + kc->kct_l);
+    NB(K_OFFS(kc, q) < kc->kct_l);
     //*q &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
     kc->kct[kc->kct_l] = seq.p = *q;
     uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, e->s, 0);
@@ -190,13 +189,13 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
 
             *e->tgtk = *k;
             *k ^= *k;//
-            kc->contxt_idx[t] = e->tgtk - kc->kct;
+            kc->contxt_idx[t] = K_OFFS(kc, e->tgtk);
             e->moved -= (e->tgtk[e->moved] != 0);
             ++e->tgtk;
         } else if (k < e->tgtk) {
             //O; second+ occurance (may still be in scope)
             // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-            t = (~*k & DUP_BIT) && (k - kc->kct < e->fk || b2pos_of(*k) + kc->ext < p);
+            t = (~*k & DUP_BIT) && (K_OFFS(kc, k) < e->fk || b2pos_of(*k) + kc->ext < p);
             //P; no dup after all if t is set.
 
             *k |= -t & DUP_BIT;
@@ -247,7 +246,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
 
     e->tgtk = k;
     e->s = kc->s;
-    e->fk = k - kc->kct;
+    e->fk = K_OFFS(kc, k);
     e->moved = 0;//B; initial state
 
     // TODO: skip k up to first promising in previous iteration.
@@ -255,20 +254,20 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
         NB(h - kc->h <= bnd->ho);
         while (h - kc->h != bnd->ho) {
             //~ also update header
-            *hkoffs++ = e->tgtk - kc->kct;
+            *hkoffs++ = K_OFFS(kc, e->tgtk);
             t = hkoffs - kc->hkoffs;
             buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
             hkoffs = kc->hkoffs + t;
             e->s += h++->len;
             EPR0(".");
-            e->fk = k - kc->kct;
+            e->fk = K_OFFS(kc, k);
         }
         NB(hkoffs == kc->hkoffs + bnd->ho);
 
-        //k - kc->kct <= *hkoffs: may be untrue after key excision.
+        //K_OFFS(kc, k) <= *hkoffs: may be untrue after key excision.
         //B; next region
 
-        while ((k - kc->kct) < *hkoffs && b2pos_of(*k) < bnd->e) {
+        while (K_OFFS(kc, k) < *hkoffs && b2pos_of(*k) < bnd->e) {
 
             if (IS_UQ(k)) { //~ uniq
                 unsigned end = b2pos_of(*k);
@@ -398,7 +397,7 @@ fa_index(struct gzfh_t *fh, uint64_t optm, unsigned readlength)
         if (optm & amopt('f')) {
             mode = 0;
         } else if (mode) {
-            EPR("%s file present, refusing to overwrite.", ext[3+mode]);
+            EPR("%s file present, refusing to overwrite.", ext[1+mode]);
             goto err;
         }
         if (found) goto err;

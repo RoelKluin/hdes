@@ -165,7 +165,7 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
     } while (0)
 
 
-// if with_orient is 1, the orientation is stored in the first bit of seq.p (
+// if with_orient is 1, the orientation is stored in the first bit of seq.p
 #define get_ndx(seq, do_store_orientation) ({\
     if ((seq.p & 1) || do_store_orientation > 1) {\
         fprintf(stderr, "orient already set at %s:%u\n",__FILE__,__LINE__);\
@@ -174,8 +174,8 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
     }\
     seq.t = seq.dna ^ seq.rc;\
     seq.t &= -seq.t;                  /* isolate deviant bit */\
-    seq.t |= !seq.t;                  /* for palindromes: have to set one */\
-    seq.t = !(seq.t & seq.dna);       /* was devbit set? */\
+    seq.t |= !seq.t;                  /* for palindromes use first bit (have to use one)*/\
+    seq.t = !(seq.t & seq.dna);       /* was devbit not set in dna? */\
     seq.p |= do_store_orientation & seq.t;\
     seq.t = seq.dna ^ (-seq.t & (seq.dna ^ seq.rc)); /* dna or rc dependent on devbit */\
     seq.t ^= (-!!(seq.t & KEYNT_BUFSZ)) & SNDX_TRUNC_MASK; /*shorten index by one */\

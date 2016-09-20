@@ -28,7 +28,8 @@
 // this is the kct offset: can be 0.
 #define NO_K -1u
 
-#define K_OFFS(kc, k) ((k) ? (k) - (kc)->kct : ~0ul)
+#define K_OFFS(kc, k) ((k) - (kc)->kct)
+//#define K_OFFS(kc, k) ((*(k) >> 32) & 0xffffffff)
 
 #define IS_DUP(k) ({\
     decltype(*(k)) __t = *(k);\
@@ -51,7 +52,6 @@ seq_next(struct keyseq_t &seq)
 #define get_kct(kc, seq, with_orient) ({\
     get_ndx(seq, with_orient);\
     NB(seq.t < KEYNT_BUFSZ);\
-    NB(kc->contxt_idx[seq.t] < kc->kct_l || kc->contxt_idx[seq.t] == NO_K, "%u, %u/%u", seq.t, kc->contxt_idx[seq.t], kc->kct_l);\
     kc->contxt_idx + seq.t;\
 })
 
@@ -71,7 +71,8 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
 packed_struct Hdr {
     uint32_t len, end; // 2bit length of this contig
     uint32_t ido;      // id contains offset to kc->id character for the header ID.
-    uint32_t p_l;      // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
+    uint32_t p_l:8;    // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
+    uint32_t corr:24;  // total of N's + offsets, sums with with .len to contig lenght.
 };
 
 // variables only used while extending keys

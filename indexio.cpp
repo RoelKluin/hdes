@@ -167,7 +167,7 @@ int load_kc(struct gzfh_t* fhin, Key_t* kc)
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
-        kc->contxt_idx[ndx] = k - kc->kct;
+        kc->contxt_idx[ndx] = K_OFFS(kc, k);
     }
     res = 0;
 err:
