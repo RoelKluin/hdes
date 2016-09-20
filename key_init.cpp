@@ -165,12 +165,12 @@ static inline int
 finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
-    h->len = (seq.p >> 3) + !!(seq.p & 6);
-    h->end = seq.p;
+    h->end = seq.p >> 1;
+    h->len = (h->end >> 2) + !!(seq.p & 6);
     buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
     h->corr = kc->bnd[kc->bnd_l-1].corr;
     end_pos(kc, seq.p);
-    EPR("processed %u(%lu) Nts for %s", seq.p >> 1, kc->totNts, kc->id + h->ido);
+    EPR("processed %u(%lu) Nts for %s", h->end, kc->totNts, kc->id + h->ido);
     return 0;
 }
 

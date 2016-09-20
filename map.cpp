@@ -43,8 +43,8 @@ static void
 print_hdr_lines(Key_t *C kc, char C*C commandline)
 {
     for (Hdr* h = kc->h; h != kc->h + kc->h_l; ++h) {
-        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->len + h->corr);
-        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->len + h->corr);
+        OPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->end + h->corr);
+        EPR("@SQ\tSN:%s\tLN:%u", kc->id + h->ido, h->end + h->corr);
     }
     OPR("@PG\tID:%s\tPN:%s\tVN:%s\tCL:%s", PROGRAM_NAME, PROGRAM_NAME,
             PROGRAM_VERSION, commandline);
