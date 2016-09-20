@@ -13,10 +13,15 @@
 #define RK_MAP_H
 #include "fa.h"
 
+struct map_t {
+    uint32_t p; // position and orientation
+    unsigned ho; // header offset
+};
+
+
 struct mapstat_t {
 	unsigned keyct, read_too_long;
 };
-
 
 #endif // RK_MAP_H
 
