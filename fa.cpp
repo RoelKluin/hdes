@@ -21,7 +21,6 @@ free_kc(Key_t *kc)
     buf_free(kc->kct);
     buf_free(kc->h);
     buf_free(kc->hkoffs);
-    buf_free(kc->ext_iter);
     buf_free(kc->contxt_idx);
 }
 
@@ -91,17 +90,20 @@ buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
 /*
  * e->obnd contains ranges per contig for sequence not yet be mappable, but may become so.
  * Initially there are one or more dependent on the presence and number of N-stretches;
- * initialized in key_init.cpp, But as adjacent uniques cover regions, the remaining `mantra'
- * shrinks (here).
+ * initialized in key_init.cpp, But as uniques within read scope of one another cover
+ * regions, this remaining `mantra' shrinks.
  *
- * mantras start at the chr start, the position after a N-stretch or after a region scoped
+ * mantras start at the chr start, the position after a N-stretch or after a region 'scoped'
  * by uniques, the first non-unique after. The mantra ends at chr end, stretch or first non
  * unique before a region scoped by uniques.
  *
- * while the no. regions can grow, the total no. sequence decreases, hence: shrink.
+ * while the no. regions can grow, the total no. sequence decreases.
  */
 
-
+/*
+ * During an iteration over the genome unique keys were excised and added to the end. This
+ * causes k-mer fragmentation. this is undone here.
+ */
 static void
 k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 {
@@ -193,7 +195,7 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
             e->moved -= (e->tgtk[e->moved] != 0);
             ++e->tgtk;
         } else if (k < e->tgtk) {
-            //O; second+ occurance (may still be in scope)
+            //O; second+ occurance (can still be in scope)
             // after &&: do not set dupbit if previous key was within read scope (a cornercase)
             t = (~*k & DUP_BIT) && (K_OFFS(kc, k) < e->fk || b2pos_of(*k) + kc->ext < p);
             //P; no dup after all if t is set.
@@ -212,17 +214,17 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
 }
 
 /*
- * Called for extensions 1+, primary uniques were already determined upon reading the fasta.
- * secondary uniques arise when all but one key are already covered by primary unique keys.
+ * Called for extensions 1+, primary uniques were already determined when the fasta was read.
+ * Secondary uniques arise when all but one key are covered by primary unique keys in scope
+ * of one another.
  *
- * 1) iterate over as of yet ambiguous keys, determine which ones have become unique.
- * 2) shrink remaining ambiguous regions (mantra) in scope of unique keys.
+ * 1) Iterate over as of yet ambiguous keys, determine which ones have become unique, this iter.
+ * 2) shrink the region hence covered (decrease mantra).
  *
  * keys are kept ordered. Ambiguous keys are kept ordered upon first occurance. Unique keys are
  * isolated and ordered on extension, contig and thirdly on position.
- *
  */
-static void
+static unsigned
 ext_uq_iter(Key_t *kc, Ext_t* e)
 {
     uint32_t *k = kc->kct;
@@ -240,6 +242,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
     kroundup32(t);
     kc->bnd_m = __builtin_ctz(t) + 1;
     kc->bnd_l = 0;
+    kc->ct = 0;
 
     buf_realloc(kc->bnd, kc->bnd_m);
     //bnd = e->obnd; (already)
@@ -277,18 +280,17 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
                     Mantra copy = *bnd;
                     copy.e = end;
                     buf_grow_add(kc->bnd, 1ul, 0, copy);
-                    bnd->s = end + 2;
                     buf_grow_ks(kc, e, 1, &k);
                     excise_one(kc, e, k);
                 } else {
                     //P; in scope of start; excision
-                    bnd->s = end + 2;
                     ++k;
                     buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
                     for (uint32_t *q = e->tgtk + e->moved; q < k; ++q)
                         excise_one(kc, e, q);
                     --k;
                 }
+                bnd->s = end + 2;
             }
             ++k;
         }
@@ -313,34 +315,36 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
     k_compression(kc, e, kc->hkoffs + t, k);//K;
 
     NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
+    return kc->ct;
 }
 
 static int
 extd_uniqbnd(Key_t *kc)
 {
-    int res;
     Ext_t e = {0};
-    // FIXME: don't stop at a certain readlength, stop if there are no more dups or
-    // no more that can become one
-    unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
-    kc->ext_iter = buf_init(kc->ext_iter, 1);
-    for (kc->ext = 0; kc->ext != end; kc->ext += 2) {
-        unsigned iter = 0;
-        if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
-            do { // until no no more new uniques
-                kc->ct = 0;
-                ext_uq_iter(kc, &e);
-                EPR("observed %u potential in iteration %u, extension %u\n",
-                    kc->ct, ++iter, kc->ext >> 1);
-            } while (kc->ct > 0);
-        }
-        EPR("----[ end of extension %u ]-------", kc->ext >> 1);
-        buf_grow_add(kc->ext_iter, 1ul, 0, iter);
-    }
-    res = 0;
+    // stop if there are no more dups or no more that can become one
+    kc->ext = 0;
+
+    kc->ct = ext_uq_iter(kc, &e);
+    // first iter always 0, why?
+
+    do { // until no more new uniques
+        EPR("\n----[ %u potential in extension %u, %u keys left ]-------", kc->ct,
+                kc->ext >> 1, kc->hkoffs[kc->h_l-1]);
+
+        kc->ext += 2;
+        kc->ct = ext_uq_iter(kc, &e);
+        // Iterating over the genome within an extension resolves very few keys overall.
+
+    } while (kc->ct && kc->hkoffs[kc->h_l-1]);
+
+
+    // print total number of keys with resolution.
+    EPR("\nunmappable keys left:%u", kc->hkoffs[kc->h_l-1]);
+    // move all remaining duplicate keys to end of array
 err:
     free(e.obnd);
-    return res;
+    return 0;
 }
 
 int

@@ -109,17 +109,14 @@ int save_kc(struct gzfh_t* fhout, Key_t* kc)
     __WRITE_INIT(fhout);
 
     __WRITE_VAL(kc->kct_l, fhout);
-    __WRITE_VAL(kc->ext_iter_l, fhout);
     __WRITE_VAL(kc->bnd_l, fhout);
     __WRITE_VAL(kc->hkoffs_l, fhout);
 
     __WRITE_VAL(kc->kct_m, fhout);
-    __WRITE_VAL(kc->ext_iter_m, fhout);
     __WRITE_VAL(kc->bnd_m, fhout);
     __WRITE_VAL(kc->hkoffs_m, fhout);
 
     __WRITE_PTR(kc->kct, fhout, kc->kct_l);
-    __WRITE_PTR(kc->ext_iter, fhout, kc->ext_iter_l);
     __WRITE_PTR(kc->bnd, fhout, kc->bnd_l);
     __WRITE_PTR(kc->hkoffs, fhout, kc->hkoffs_l);
 
@@ -128,7 +125,7 @@ err:
     rclose(fhout);
     return res;
 }
-// TODO: specialization dependent on kc->ext not 0?
+// TODO: specialization dependent on kc->ext not 0? (wut??)
 int load_kc(struct gzfh_t* fhin, Key_t* kc)
 {
     int res = -EFAULT;
@@ -138,17 +135,14 @@ int load_kc(struct gzfh_t* fhin, Key_t* kc)
     __READ_INIT(fhin);
 
     __READ_VAL(kc->kct_l, fhin);
-    __READ_VAL(kc->ext_iter_l, fhin);
     __READ_VAL(kc->bnd_l, fhin);
     __READ_VAL(kc->hkoffs_l, fhin);
 
     __READ_VAL(kc->kct_m, fhin);
-    __READ_VAL(kc->ext_iter_m, fhin);
     __READ_VAL(kc->bnd_m, fhin);
     __READ_VAL(kc->hkoffs_m, fhin);
 
     __READ_LMPTR(kc->kct, fhin);
-    __READ_LMPTR(kc->ext_iter, fhin);
     __READ_LMPTR(kc->bnd, fhin);
     __READ_LMPTR(kc->hkoffs, fhin);
 
@@ -171,7 +165,7 @@ int load_kc(struct gzfh_t* fhin, Key_t* kc)
         // there can be keys with a dupbit set. They have a position, but that's just one of
         // many possible.
         keyseq_t seq = {.p = *k & ~DUP_BIT};
-        NB((seq.p >> 1) < h->end + h->corr, "%x", seq.p);
+        NB((seq.p >> 3) < kc->s_l, "%x", seq.p);
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
