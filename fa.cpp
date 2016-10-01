@@ -103,7 +103,7 @@ buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
 
 /*
  * During an iteration over the genome unique keys were excised and added to the end. This
- * causes k-mer fragmentation. this is undone here.
+ * causes k-mer fragmentation. this is undone here. hot!
  */
 static void
 k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
@@ -151,9 +151,8 @@ excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
     NB(K_OFFS(kc, q) < kc->kct_l);
     //*q &= ~DUP_BIT; // or keys that were moved after extension still have their dup bit set.
     kc->kct[kc->kct_l] = seq.p = *q;
-    uint32_t *contxt_idx = kc->contxt_idx + build_ndx_kct(kc, seq, e->s, 0);
+    kc->contxt_idx[build_ndx_kct(kc, seq, e->s, 0)] = kc->kct_l++;
     *q ^= *q;//
-    *contxt_idx = kc->kct_l++;
     ++e->moved;//S;
 }
 
@@ -162,56 +161,50 @@ excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
 static void
 move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
 {
-    unsigned dna = 0, rc = 0, t, key_complete = start - 2, p = start - NT_WIDTH;
-    while (p != key_complete) { // build key
-        t = (e->s[p>>3] >> (p&6)) & 3;
+    unsigned dna = 0, rc = 0;
+
+    for (unsigned p = start - NT_WIDTH; p != pend;) {
+
+        unsigned t = (e->s[p>>3] >> (p&6)) & 3;
         rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
         dna = t << KEYNT_TOP | dna >> 2;
         p += 2;
-    }
-    do {
-        t = (e->s[p>>3] >> (p&6)) & 3;
-        rc = ((rc << 2) & KEYNT_MASK) | (t ^ 2);
-        dna = t << KEYNT_TOP | dna >> 2;
 
-        // build complement independent index (orientation bit extracted)
-        unsigned dev = dna ^ rc;
-        t = dev & -dev;            /* isolate deviant bit */
-        t |= !t;                   /* for palindromes: have to set one. */
-        unsigned ori = !(t & dna); /* orientation: was devbit set? */
-        t = dna ^ (-ori & dev);    /* index is based on dna or rc dependent on orientation */
-        unsigned top = t & KEYNT_BUFSZ;  /* if the top bit is set.. */
-        t ^= (-!!top) & SNDX_TRUNC_MASK; /* ..flip all bits to shorten index by one */
+        // once key is complete
+        if (p >= start) {
 
-        p += 2;
-        uint32_t *k = kc->kct + kc->contxt_idx[t];
-        if (k > e->tgtk) {
-            //O; 1st occurance
-            ++kc->ct;           // unique or decremented later.
-            *k = p | ori;       // set new pos and strand, unset dupbit
+            // build complement independent index (orientation bit extracted)
+            unsigned dev = dna ^ rc;
+            t = dev & -dev;            /* isolate deviant bit */
+            t |= !t;                   /* for palindromes: have to set one. */
+            unsigned ori = !(t & dna); /* orientation: was devbit set? */
+            t = dna ^ (-ori & dev);    /* index is based on dna or rc dependent on orientation */
+            unsigned top = t & KEYNT_BUFSZ;  /* if the top bit is set.. */
+            t ^= (-!!top) & SNDX_TRUNC_MASK; /* ..flip all bits to shorten index by one */
 
-            *e->tgtk = *k;
-            *k ^= *k;//
-            kc->contxt_idx[t] = K_OFFS(kc, e->tgtk);
-            e->moved -= (e->tgtk[e->moved] != 0);
-            ++e->tgtk;
-        } else if (k < e->tgtk) {
-            //O; second+ occurance (can still be in scope)
-            // after &&: do not set dupbit if previous key was within read scope (a cornercase)
-            t = (~*k & DUP_BIT) && (K_OFFS(kc, k) < e->fk || b2pos_of(*k) + kc->ext < p);
-            //P; no dup after all if t is set.
+            uint32_t *k = kc->kct + kc->contxt_idx[t];
+            if (k >= e->tgtk) {
+                //O; 1st occurance
+                ++kc->ct;           // unique or decremented later.
+                *k = p | ori;       // set new pos and strand, unset dupbit
+                if (k > e->tgtk) {
+                    *e->tgtk = *k;
+                    *k ^= *k;//
+                    kc->contxt_idx[t] = K_OFFS(kc, e->tgtk);
+                    e->moved -= (e->tgtk[e->moved] != 0);
+                }
+                ++e->tgtk;
+            } else {
+                //O; second+ occurance (can still be in scope)
+                // after &&: do not set dupbit if previous key was within read scope (a cornercase)
+                t = (~*k & DUP_BIT) && (K_OFFS(kc, k) < e->fk || b2pos_of(*k) + kc->ext < p);
+                //P; no dup after all if t is set.
 
-            *k |= -t & DUP_BIT;
-            kc->ct -= t;
-        } else {
-
-            //O; also 1st occurance
-            ++kc->ct;     // unique or decremented later.
-            *k = p | ori; // set new pos and strand, unset dupbit
-
-            ++e->tgtk;
+                *k |= -t & DUP_BIT;
+                kc->ct -= t;
+            }
         }
-    } while (p != pend);
+    }
 }
 
 /*
@@ -323,24 +316,24 @@ static int
 extd_uniqbnd(Key_t *kc)
 {
     Ext_t e = {0};
-    // FIXME: don't stop at a certain readlength, stop if there are no more dups or
-    // no more that can become one
+
+    // should ideally not stop at a certain readlength, but rather when there are
+    // no more dups, but then this goes on and on, for hg38 beyond extension 1845.
+
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
     kc->ext_iter = buf_init(kc->ext_iter, 1);
-    for (kc->ext = 0; kc->ext != end; kc->ext += 2) {
+    for (kc->ext = 0; kc->hkoffs[kc->h_l-1] && kc->ext != end; kc->ext += 2) {
+
         unsigned iter = 0;
-        if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
-            do { // until no no more new uniques
-                kc->ct = 0;
-                ext_uq_iter(kc, &e);
-                EPR("observed %u potential in iteration %u, extension %u\n",
-                    kc->ct, ++iter, kc->ext >> 1);
-            } while (kc->ct > 0);
-        }
+        do { // until no no more new uniques
+            kc->ct = ext_uq_iter(kc, &e);
+            EPR("observed %u potential in iteration %u, extension %u\n",
+                kc->ct, ++iter, kc->ext >> 1);
+        } while (kc->ct > 0);
+
         EPR("----[ end of extension %u ]-------", kc->ext >> 1);
         buf_grow_add(kc->ext_iter, 1ul, 0, iter);
     }
-    res = 0;
 err:
     free(e.obnd);
     return 0;
