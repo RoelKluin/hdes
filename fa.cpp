@@ -21,6 +21,7 @@ free_kc(Key_t *kc)
     buf_free(kc->kct);
     buf_free(kc->h);
     buf_free(kc->hkoffs);
+    buf_free(kc->ext_iter);
     buf_free(kc->contxt_idx);
 }
 
@@ -322,26 +323,24 @@ static int
 extd_uniqbnd(Key_t *kc)
 {
     Ext_t e = {0};
-    // stop if there are no more dups or no more that can become one
-    kc->ext = 0;
-
-    kc->ct = ext_uq_iter(kc, &e);
-    // first iter always 0, why?
-
-    do { // until no more new uniques
-        EPR("\n----[ %u potential in extension %u, %u keys left ]-------", kc->ct,
-                kc->ext >> 1, kc->hkoffs[kc->h_l-1]);
-
-        kc->ext += 2;
-        kc->ct = ext_uq_iter(kc, &e);
-        // Iterating over the genome within an extension resolves very few keys overall.
-
-    } while (kc->ct && kc->hkoffs[kc->h_l-1]);
-
-
-    // print total number of keys with resolution.
-    EPR("\nunmappable keys left:%u", kc->hkoffs[kc->h_l-1]);
-    // move all remaining duplicate keys to end of array
+    // FIXME: don't stop at a certain readlength, stop if there are no more dups or
+    // no more that can become one
+    unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
+    kc->ext_iter = buf_init(kc->ext_iter, 1);
+    for (kc->ext = 0; kc->ext != end; kc->ext += 2) {
+        unsigned iter = 0;
+        if (kc->hkoffs[kc->h_l-1] != 0) { // or all keys were already finished.
+            do { // until no no more new uniques
+                kc->ct = 0;
+                ext_uq_iter(kc, &e);
+                EPR("observed %u potential in iteration %u, extension %u\n",
+                    kc->ct, ++iter, kc->ext >> 1);
+            } while (kc->ct > 0);
+        }
+        EPR("----[ end of extension %u ]-------", kc->ext >> 1);
+        buf_grow_add(kc->ext_iter, 1ul, 0, iter);
+    }
+    res = 0;
 err:
     free(e.obnd);
     return 0;

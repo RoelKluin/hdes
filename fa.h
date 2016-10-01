@@ -107,6 +107,7 @@ struct Key_t {
     uint32_t* kct; // contains first occurrent position, strand and dupbit if not yet uniq.
                    // we could also store ndx for faster conversion, if 64 bit.
 
+    uint32_t* ext_iter; // iterations per extension. TODO: remove iteration without keys.
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
                         // per extension per contig.
 
@@ -114,10 +115,10 @@ struct Key_t {
     uint32_t h_l, id_l;
     uint64_t s_l, totNts;
 
-    uint32_t kct_l, bnd_l, hkoffs_l;
+    uint32_t kct_l, ext_iter_l, bnd_l, hkoffs_l;
     uint32_t ct, readlength;
     uint32_t ext, reserved;        // current to final extension.
-    uint8_t contxt_idx_m, kct_m, bnd_m, hkoffs_m, h_m, id_m, s_m;
+    uint8_t contxt_idx_m, kct_m, ext_iter_m, bnd_m, hkoffs_m, h_m, id_m, s_m;
     // could be possible to move bnd here.
 };
 
