@@ -223,38 +223,29 @@ static unsigned
 ext_uq_iter(Key_t *kc, Ext_t* e)
 {
     uint32_t *k = kc->kct;
+
     uint32_t *hkoffs = kc->hkoffs;
-    Mantra *bnd = kc->bnd;
     Hdr *h = kc->h;
+
     unsigned skctl = kc->kct_l;
-
-    kc->bnd = e->obnd; // buffer will be reused
-    e->obnd = bnd; // swap e->obnd and kc->bnd.
-    e->obnd_l = kc->bnd_l;
-    e->obnd_m = kc->bnd_m;
-
-    unsigned t = e->obnd_l;
-    kroundup32(t);
-    kc->bnd_m = __builtin_ctz(t) + 1;
-    kc->bnd_l = 0;
-    kc->ct = 0;
-
-    buf_realloc(kc->bnd, kc->bnd_m);
-    //bnd = e->obnd; (already)
+    Mantra *bnd = e->obnd;
 
     e->tgtk = k;
     e->s = kc->s;
     e->fk = K_OFFS(kc, k);
     e->moved = 0;//B; initial state
 
+    kc->ct = 0;
+
     // TODO: skip k up to first promising in previous iteration.
     do {
+
         NB(h - kc->h <= bnd->ho);
         while (h - kc->h != bnd->ho) {
             //~ also update header
             *hkoffs++ = K_OFFS(kc, e->tgtk);
-            t = hkoffs - kc->hkoffs;
-            buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+            unsigned t = hkoffs - kc->hkoffs;
+            buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);
             hkoffs = kc->hkoffs + t;
             e->s += h++->len;
             EPR0(".");
@@ -274,7 +265,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
                     move_uniq(kc, e, bnd->s, end - 2);
                     Mantra copy = *bnd;
                     copy.e = end;
-                    buf_grow_add(kc->bnd, 1ul, 0, copy);
+                    buf_grow_add(kc->bnd, 1ul, copy);
                     buf_grow_ks(kc, e, 1, &k);
                     excise_one(kc, e, k);
                 } else {
@@ -298,13 +289,13 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
         } else {
             //P; alt
             move_uniq(kc, e, bnd->s, bnd->e - 2);
-            buf_grow_add(kc->bnd, 1ul, 0, *bnd);//K;
+            buf_grow_add(kc->bnd, 1ul, *bnd);//K;
         }
     } while (++bnd != e->obnd + e->obnd_l);
 
-    t = hkoffs - kc->hkoffs;
+    unsigned t = hkoffs - kc->hkoffs;
     while (h - kc->h != kc->h_l) {
-        buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+        buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);
         ++h;
     }
     k_compression(kc, e, kc->hkoffs + t, k);//K;
@@ -312,6 +303,10 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
     NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
     return kc->ct;
 }
+
+// not valid for same address or with side effects
+#define _TSWAP(t, a, b) do { t=a; a=b; b=t; } while(0)
+#define _XSWAP(a, b) (a^=b, b^=a, a^=b)
 
 static int
 extd_uniqbnd(Key_t *kc)
@@ -324,16 +319,27 @@ extd_uniqbnd(Key_t *kc)
     unsigned end = (kc->readlength - KEY_WIDTH + 1) << 1;
     kc->ext_iter = buf_init(kc->ext_iter, 1);
     for (kc->ext = 0; kc->hkoffs[kc->h_l-1] && kc->ext != end; kc->ext += 2) {
-
         unsigned iter = 0;
         do { // until no no more new uniques
+            Mantra *bnd = e.obnd;
+            e.obnd = kc->bnd;
+            kc->bnd = bnd;
+
+            // The swapping is tricky. _l needs to be overwritten, _m needs to be
+            // swapped to ensure the 1st allocation occurs correctly.
+            e.obnd_l = kc->bnd_l;
+            _XSWAP(e.obnd_m, kc->bnd_m);
+
+            buf_grow(kc->bnd, 0); /* reserve as much space as in previous iteration */
+            kc->bnd_l = 0;        /* ..but consider it as uninitialized: */
+
             kc->ct = ext_uq_iter(kc, &e);
             EPR("observed %u potential in iteration %u, extension %u\n",
                 kc->ct, ++iter, kc->ext >> 1);
         } while (kc->ct > 0);
 
         EPR("----[ end of extension %u ]-------", kc->ext >> 1);
-        buf_grow_add(kc->ext_iter, 1ul, 0, iter);
+        buf_grow_add(kc->ext_iter, 1ul, iter);
     }
 err:
     free(e.obnd);

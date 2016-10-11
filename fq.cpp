@@ -196,7 +196,7 @@ fq_b2(seqb2_t *fq)
         if (l + fq_ent_max >= m) { // grow buffer if insufficient space for another read
             m <<= 1;
             fprintf(stderr, "==realloc at %u reads to 0x%lx\n", nr, m);
-            buf_grow(fq->s, l, 0);
+            buf_grow(fq->s, l);
             b = s + l;
         }
         uint8_t* o = b;

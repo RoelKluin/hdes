@@ -22,8 +22,13 @@
 
 #define C const
 
-#ifndef kroundup32
-#define kroundup32(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4, (x)|=(x)>>8, (x)|=(x)>>16, ++(x))
+#ifndef kroundup
+#define kroundup(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4,\
+                            (x)|=(sizeof(x) > 1 ? (x)>>8 : 0),\
+                            (x)|=(sizeof(x) > 2 ? (x)>>16 : 0),\
+                            (x)|=(sizeof(x) > 4 ? (x)>>32 : 0),\
+                            (x)|=(sizeof(x) > 8 ? (x)>>64 : 0),\
+                            ++(x))
 #endif
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -138,27 +143,22 @@ do {\
     __t;\
 })
 
-#define buf_realloc(buf, m) \
+#define buf_grow_shift(buf, step, shft) \
 do {\
-    decltype(buf) __t = (decltype(buf))realloc(buf, sizeof(*(buf)) << ++m);\
-    if_ever (__t == NULL)\
-        raise(SIGTERM);\
-    buf = __t;\
+    if (((buf##_l + step) >> shft) >= (1ul << buf##_m)) {\
+        decltype(buf##_l) __t = buf##_l + step;\
+        kroundup(__t);\
+        buf##_m = __builtin_ctz(__t) + 1;\
+        buf = (decltype(buf))realloc(buf, sizeof(*(buf)) << buf##_m);\
+        if_ever (buf == NULL)\
+            raise(SIGTERM);\
+    }\
 } while(0)
 
-#define buf_grow_m(buf, step, m, shft) \
-do {\
-    if (((buf##_l + step) >> shft) >= (1ul << m))\
-        buf_realloc(buf, m);\
-} while(0)
+#define buf_grow(buf, step) buf_grow_shift(buf, step, 0)
 
-#define buf_grow(buf, step, shft) buf_grow_m(buf, step, buf##_m, shft)
-#define buf_growm(buf, step, m, shft) buf_grow_m(buf, step, m, shft)
-#define buf_grow0(buf, step) buf_grow_m(buf, step, buf##_m, 0)
-#define buf_grow0m(buf, step, m) buf_grow_m(buf, step, m, 0)
-
-#define buf_grow_add(buf, step, shft, add) ({\
-    buf_grow(buf, step, shft);\
+#define buf_grow_add(buf, step, add) ({\
+    buf_grow_shift(buf, step, 0);\
     buf[buf##_l++] = add;\
 })
 

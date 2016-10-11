@@ -32,9 +32,9 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
     while ((c = GZTC(gz)) != -1) {
         //EPR("%u\t%c", p, c);
         switch (c) {
-            case '\n': buf_grow_add(kc->id, 1ul, 0, '\0'); break;
+            case '\n': buf_grow_add(kc->id, 1ul, '\0'); break;
             case ' ':
-                buf_grow_add(kc->id, 1ul, 0, '\0');
+                buf_grow_add(kc->id, 1ul, '\0');
                 if (p == IDTYPE) {
                     char* q = kc->id + part[p];
                     if (strncmp(q, "chromosome", strlen(q)) != 0 &&
@@ -49,7 +49,7 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
                     part[p] = kc->id_l;
                 continue;
             case ':':
-                buf_grow_add(kc->id, 1ul, 0, '\0');
+                buf_grow_add(kc->id, 1ul, '\0');
                 if (p == ID || p == IDTYPE) {
                     p = UNKNOWN_HDR;
                 } else if (p == SEQTYPE) {
@@ -75,7 +75,7 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
                     c = '\0';
                     p = UNKNOWN_HDR;
                 }
-                buf_grow_add(kc->id, 1ul, 0, c);
+                buf_grow_add(kc->id, 1ul, c);
                 continue;
         }
         break;
@@ -109,14 +109,14 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
     if (got == lookup.end()) {
 
         //    new Hdr;
-        buf_grow(kc->h, 1ul, 0);
+        buf_grow(kc->h, 1ul);
         h = kc->h + kc->h_l++;
         h->ido = part[ID];
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
 
-        buf_grow(kc->bnd, 1ul, 0);
+        buf_grow(kc->bnd, 1ul);
         kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = NT_WIDTH};
     } else {
 
@@ -140,7 +140,7 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
 
             // correction propagation Not thoroughly checked yet...
             uint32_t corr = kc->bnd[kc->bnd_l-1].corr - endpos; // start of current is added later.
-            buf_grow(kc->bnd, 1ul, 0);
+            buf_grow(kc->bnd, 1ul);
             kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH, .corr=corr};
         }
     }
@@ -167,7 +167,7 @@ finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->end = seq.p >> 1;
     h->len = (h->end >> 2) + !!(seq.p & 6);
-    buf_grow_add(kc->hkoffs, 1ul, 0, kc->kct_l);
+    buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);
     h->corr = kc->bnd[kc->bnd_l-1].corr;
     end_pos(kc, seq.p);
     EPR("processed %u(%lu) Nts for %s", h->end, kc->totNts, kc->id + h->ido);
@@ -183,7 +183,7 @@ addtoseq(Key_t* kc, keyseq_t& seq)
     if (kc->s_l & 3) {
         seq.t = kc->s[kc->s_l>>2] | (seq.t << ((kc->s_l & 3) << 1));
     } else {
-        buf_grow(kc->s, 1ul, 2);
+        buf_grow_shift(kc->s, 1ul, 2);
     }
     kc->s[kc->s_l++>>2] = seq.t;
 }
@@ -215,7 +215,7 @@ case 'G':   seq.t &= 0x3;
                 uint32_t* n = get_kct(kc, seq, 1);
                 if (*n == NO_K) {
 
-                    buf_grow(kc->kct, 1, 0);
+                    buf_grow(kc->kct, 1);
                     *n = kc->kct_l++;
                     // set first pos + orient, one based & one left shifted pos
                     kc->kct[*n] = seq.p;
@@ -233,7 +233,7 @@ case 'G':   seq.t &= 0x3;
                         NB((seq.p & 1) == 0);
                         end_pos(kc, seq.p - 2);
                         corr += kc->bnd[kc->bnd_l-1].corr;
-                        buf_grow(kc->bnd, 1ul, 0);
+                        buf_grow(kc->bnd, 1ul);
                         kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2};
                     }
                     kc->bnd[kc->bnd_l-1].corr += corr;
@@ -249,7 +249,7 @@ case 0x1e: // new contig
                 if (kc->s_l & 3) {
                     // the 2bit buffer per contig starts at the first nt 0 of 4.
                     kc->s_l += -kc->s_l & 3;
-                    buf_grow(kc->s, 1ul, 2);
+                    buf_grow_shift(kc->s, 1ul, 2);
                     kc->s[kc->s_l>>2] = '\0';
                 }
                 seq.p = 0;
