@@ -1,0 +1,54 @@
+
+
+source gdb_shared
+
+define break_commands
+    commands $arg0
+        silent
+        printf "Potential hit\tko:%x\t%s\t%s:", ko, upseq - KEY_WIDTH, kc->id + kc->h[map.ho].ido
+        call print_posseq(map.s, map.p, kc->readlength)
+        c
+    end
+end
+python break_re_py2('// potential hit;', 'map.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        set *upseq = '\0'
+        printf "non-existent key:%x\t%s\n", ko, upseq - KEY_WIDTH
+        c
+    end
+end
+python break_re_py2('// non-existent key.', 'map.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        set *upseq = '\0'
+        printf "multimapper key:%x\t%s\t%u\t%u\n", ko, upseq - KEY_WIDTH, ko, kc->hkoffs[kc->h_l - 1]
+        c
+    end
+end
+python break_re_py2('// multimapper;', 'map.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        set *upseq = '\0'
+        printf "Not a k-mer minimum:%x\t%s\n", ko, upseq - KEY_WIDTH
+        c
+    end
+end
+python break_re_py2('// not a k-mer minimum', 'map.cpp', 'break', 1)
+
+
+
+#b load_kc
+
+#b map_fq_se
+
+
+#leave:
+r
+

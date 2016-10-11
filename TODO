@@ -34,6 +34,9 @@ version 0.017:
 version 0.018:
 - debugging
 
+
+
+
 TODO:
 - store:
  - separate seqb2: better for verification of key.

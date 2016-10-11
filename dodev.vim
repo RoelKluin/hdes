@@ -6,12 +6,8 @@ winc r
 44sp fa.cpp
 tabnew fa.cpp
 vs key_init.cpp
-tabnew fa.h
-vs fa.cpp
 tabnew b6.cpp
 vs b6.h
-tabnew gz.cpp
-vs gz.h
 winc r
 44sp mantra.cpp
 tabnew util.h
@@ -22,10 +18,6 @@ tabnew map.cpp
 vs 
 winc r
 44sp map.h
-tabnew fq.cpp
-vs fq.h
-winc r
-44sp fq.cpp
 "tabnew seq.cpp
 "vs seq.h
 "winc r
@@ -58,8 +50,15 @@ vs indexio.cpp
 "vs 
 "winc r
 "44sp documentation.txt
-tabnew .gdbinit
+tabnew gdb_index
+set syntax=gdb
 vs fa.cpp
+
+tabnew gdb_map
+set syntax=gdb
+vs map.cpp
+
+
 tabnew dodev
 vs dodev.vim
 
@@ -78,6 +77,34 @@ vs runtests/KW3_RL5_no4.fa
 winc r
 wincmd j
 vs runtests/KW3_RL5_no1.fa
+
+tabnew runtests/KW3_RL5_no2.fq
+60sp runtests/KW3_RL5_no3.fq
+40sp runtests/KW3_RL4_no1.fq
+20sp runtests/KW1_RL2_no2.fq
+10sp runtests/KW1_RL2_no1.fq
+vs runtests/KW5_RL7_no2.fq
+winc r
+wincmd j
+vs runtests/KW5_RL7_no1.fq
+winc r
+wincmd j
+vs runtests/KW3_RL5_no4.fq
+winc r
+wincmd j
+vs runtests/KW3_RL5_no1.fq
+
+tabnew .gdbinit
+vs gdb_shared
+set syntax=gdb
+
+tabnew gz.cpp
+vs gz.h
+
+tabnew fq.cpp
+vs fq.h
+winc r
+44sp fq.cpp
 
 "winc r
 "44sp dodev

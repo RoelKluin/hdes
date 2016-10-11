@@ -1,0 +1,62 @@
+
+
+source gdb_py/frame_filter.py
+
+#break -source fa.cpp -function get_next_nt_seq  if p >= (kc->s_l << 2)
+
+#ASSERT(seq.p < pend, return -EFAULT, "%lu >= %lu?", seq.p, pend);\
+#ASSERT(pend < (kc->s_l << 2), return -EFAULT, "%lu/%lu?", pend, kc->s_l);\
+#break -source fa.cpp -function
+
+
+define pbuf
+    if $argc != 2
+        help pbuf
+    else
+        set $i = $arg0[$arg1]
+        printf "%c%c%c%c\n", b6(($i&3)<<1), b6(($i&0xc)>>1), b6(($i&0x30)>>3), b6(($i&0xc0)>>5)
+    end
+end
+
+document pbuf
+	Prints buf as dna quad.
+	Syntax: pbuf <buffer> <offset>
+end
+
+define pdna
+    if $argc != 2
+        help pdna
+    else
+        call print_dna($arg0, $arg1, KEY_WIDTH)
+    end
+end
+
+document pdna
+	Prints dna.
+	Syntax: pdna <dna (or number)> <delimitor>
+end
+
+#define hook-run
+#    shell make cleartest
+#end
+
+
+#define hook-quit
+#    set confirm off
+#end
+
+#set prompt \033[01;31mgdb$ \033[0m
+
+define break_re
+    if $argc != 3
+        help break_re
+    else
+        python break_re_py($arg0, $arg1, $arg2)
+    end
+end
+
+document break_re
+	Insert specified break in file where match occurs [must be only one].
+	Syntax: break_re <match> <file> <break|tbreak>
+end
+

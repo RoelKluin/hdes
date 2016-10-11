@@ -347,21 +347,22 @@ got:
 addr2line -e uqct $(
 cat << EOF | sed -n -r "s/^.*\(\+(0x[0-9a-f]+)\).*$/\1/p" | tr "\n" " "
 Error: signal 11:
-./uqct(+0xa7fa)[0x56176f7857fa]
-/usr/lib/libc.so.6(+0x33310)[0x7f62d2d94310]
-./uqct(+0x7b4c)[0x56176f782b4c]
-./uqct(+0x9492)[0x56176f784492]
-./uqct(+0x2488)[0x56176f77d488]
-/usr/lib/libc.so.6(__libc_start_main+0xf1)[0x7f62d2d81741]
-./uqct(+0x25c9)[0x56176f77d5c9]
+/home/roel/dev/git/hdes/uqct(+0xa09a)[0x555f6dda109a]
+/usr/lib/libc.so.6(+0x33310)[0x7f6e1245a310]
+/home/roel/dev/git/hdes/uqct(+0x4e78)[0x555f6dd9be78]
+/home/roel/dev/git/hdes/uqct(+0x37b9)[0x555f6dd9a7b9]
+/home/roel/dev/git/hdes/uqct(+0x2439)[0x555f6dd99439]
+/usr/lib/libc.so.6(__libc_start_main+0xf1)[0x7f6e12447741]
+/home/roel/dev/git/hdes/uqct(+0x2659)[0x555f6dd99659]
 EOF
 echo)
 /usr/include/bits/stdio2.h:98
 ??:0
-/home/roel/dev/git/hdes/fa.cpp:199
-/home/roel/dev/git/hdes/fa.cpp:316
-/home/roel/dev/git/hdes/main.cpp:208
+/home/roel/dev/git/hdes/indexio.cpp:163
+/home/roel/dev/git/hdes/map.cpp:328 (discriminator 6)
+/home/roel/dev/git/hdes/main.cpp:196
 ??:?
+
 
 KW=16
 BASE=hg19

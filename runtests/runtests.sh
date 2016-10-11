@@ -36,15 +36,15 @@ while read BASE KW RL; do
     LASTKW="$KW"
   fi
   if [ "$mode" = "gdb" ];then
-    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
+    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --command=gdb_index --args ./uqct -f ${BASE}.fa -l ${RL}"
     xterm -geometry 119x99-0+0 -b 0 -e \
-        "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fa -l ${RL}"
+        "DEFINES='-DKEY_LENGTH=${KW}' gdb --command=gdb_index --args ./uqct -f ${BASE}.fa -l ${RL}"
 #    xterm -e "gdb --args uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
   elif [ "$mode" = "gdb2" ];then
     valgrind --leak-check=full ./uqct ${BASE}.fa -l ${RL}
-    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
+    echo "DEFINES='-DKEY_LENGTH=${KW}' gdb --command=gdb_map --args ./uqct -f ${BASE}.fq ${BASE}.2b -l ${RL}"
     xterm -geometry 119x99-0+0 -b 0 -e \
-        "DEFINES='-DKEY_LENGTH=${KW}' gdb --args ./uqct ${BASE}.fq ${BASE}.2b -l ${RL}"
+        "DEFINES='-DKEY_LENGTH=${KW}' gdb --command=gdb_map --args ./uqct ${BASE}.fq ${BASE}.2b -l ${RL}"
   else
     valgrind --leak-check=full ./uqct ${BASE}.fa -l ${RL}
     valgrind --leak-check=full ./uqct ${BASE}.fq ${BASE}.2b -l ${RL} |
