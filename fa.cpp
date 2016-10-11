@@ -174,11 +174,11 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
         if (p >= start) {
 
             // build complement independent index (orientation bit extracted)
-            unsigned dev = dna ^ rc;
-            t = dev & -dev;            /* isolate deviant bit */
-            t |= !t;                   /* for palindromes: have to set one. */
-            unsigned ori = !(t & dna); /* orientation: was devbit set? */
-            t = dna ^ (-ori & dev);    /* index is based on dna or rc dependent on orientation */
+            rc ^= dna;                  /* becomes deviant */
+            t = rc & -rc;               /* isolate deviant bit */
+            unsigned ori = !((t | !t) & dna);  /* orientation: 1st devbit or 1st bit for palidromes */
+            t = dna ^ (-ori & rc);      /* index is based on dna or rc dependent on orientation */
+            rc ^= dna;
             unsigned top = t & KEYNT_BUFSZ;  /* if the top bit is set.. */
             t ^= (-!!top) & SNDX_TRUNC_MASK; /* ..flip all bits to shorten index by one */
 
@@ -187,18 +187,19 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
                 //O; 1st occurance
                 ++kc->ct;           // unique or decremented later.
                 *k = p | ori;       // set new pos and strand, unset dupbit
-                if (k > e->tgtk) {
+
+                if (k > e->tgtk) { // one earlier, this iteration, was in scope and excised.
                     *e->tgtk = *k;
                     *k ^= *k;//
                     kc->contxt_idx[t] = K_OFFS(kc, e->tgtk);
-                    e->moved -= (e->tgtk[e->moved] != 0);
+                    if (e->tgtk[e->moved])
+                        --e->moved;
                 }
                 ++e->tgtk;
             } else {
-                //O; second+ occurance (can still be in scope)
-                // after &&: do not set dupbit if previous key was within read scope (a cornercase)
+                // O; second+ occurance, but can still be both in same scope (:after &&)!
                 t = (~*k & DUP_BIT) && (K_OFFS(kc, k) < e->fk || b2pos_of(*k) + kc->ext < p);
-                //P; no dup after all if t is set.
+                //P; no dup after all if t is set. TODO: move in this case!
 
                 *k |= -t & DUP_BIT;
                 kc->ct -= t;
