@@ -16,6 +16,7 @@
 struct map_t {
     uint32_t p; // position and orientation
     unsigned ho; // header offset
+    uint8_t* s;
 };
 
 

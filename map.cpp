@@ -51,10 +51,12 @@ print_hdr_lines(Key_t *C kc, char C*C commandline)
 }
 
 static inline void
-skip_to_1st_hdr(gzin_t* gz)
+skip_plus_line(gzin_t* gz)
 {
     int c;
-    while ((c = GZTC(gz)) != '@')
+    NB(GZTC(gz) == '\n');
+    NB(GZTC(gz) == '+');
+    while ((c = GZTC(gz)) != '\n')
         NB(c != -1);
 }
 
@@ -62,6 +64,8 @@ static inline void
 print_hdr(gzin_t* gz)
 {
     int c;
+    NB(GZTC(gz) == '@');
+
     while ((c = GZTC(gz)) != '\n') {
         NB(c != -1);
         fputc(c, stdout);
@@ -69,18 +73,20 @@ print_hdr(gzin_t* gz)
     fputc('\t', stdout);
 }
 
-// build seq for minimal key.
+// find minimal key, hopefully unique within extension.
 static unsigned
 getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
 {
-    uint32_t* hkoffs = kc->hkoffs;
-    unsigned iend = kc->readlength;
+    uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - 1;
+    Hdr* h = kc->h + kc->h_l - 1;
+    unsigned i = 0, iend = kc->readlength;
     int remain = kc->readlength;
     uint32_t t, dna = 0u, rc = 0u;
 
     uint32_t prevko = -1u;
+    map.s = kc->s + kc->s_l;
 
-    for (unsigned i = 0; i != iend; ++i) {
+    while (i != iend) {
         int c = GZTC(gz);
         if (c == '\n' || c == -1)
             return -1u;
@@ -100,7 +106,8 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
             case 'A':
             default: rc ^= t;
                 dna ^= t << KEYNT_TOP;
-                if (i < KEY_WIDTH) // first complete key
+
+                if (++i < KEY_WIDTH) // first complete key
                     continue;
 
                 rc ^= dna;            /* rc becomes all deviant bits */
@@ -122,27 +129,40 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
 //                    unkey[i >> 3] |= 1 << (i & 7); (or set bit in upseq?)
                     continue;
                 }
-                if (IS_DUP(kc->kct + ko))
-                    continue;
-
                 if (ko >= prevko)
-                    continue;
+                    continue; // not a k-mer minimum
+
+                if (ko <= kc->hkoffs[kc->h_l])
+                    continue; // multimapper;
 
                 // if t is set, key orientation corresponds with read orientation
                 // if kc->kct[ko] & 1 is set, key orientation is template orientation
                 // so if map.p & 1 == 0, read orientation is template orientation
                 prevko = ko;
-                map.p = (t & 1) ^ kc->kct[ko];
+
+                // if the DUP_BIT is set this indicates a unique key was excised; there
+                // should then be another key on this read, also indicating this position.
+                map.p = (t & 1) ^ (kc->kct[ko] & ~DUP_BIT);
 
                 // hkoffs indicates how many k's per extension per contig.
-                while (ko > *hkoffs) {
-                    ++hkoffs;
-                    NB(hkoffs - kc->hkoffs < kc->hkoffs_l);
-                    if ((hkoffs - kc->hkoffs) % kc->h_l == 0)
+                // TODO: rather than per contig, iterate per u32 for multiple contigs.
+
+                while (ko < *hkoffs) {
+                    NB(hkoffs - kc->hkoffs);
+                    --hkoffs;
+                    if (h - kc->h) {
+                        map.s -= --h->len;
+                    } else {
                         --remain;
+                        h = kc->h + kc->h_l - 1;
+                        map.s = kc->s + kc->s_l - h->len;
+                    }
                 }
+                // potential hit;
                 NB(remain > 0);
                 iend = i + remain;
+                if (iend > kc->readlength)
+                    iend = kc->readlength;
         }
     }
     map.ho = (hkoffs - kc->hkoffs) % kc->h_l;
@@ -243,7 +263,10 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
         flag = (flag << 4) | 0x42;
         tid = kc->id + kc->h[map.ho].ido;
         // header was already printed.
+
+        // XXX: add .corr to map.p ! (after sorting?)
     }
+
     OPR0("%u\t%s\t%u\t%u\t%uM\t%s\t%u\t%d\t",
         flag, tid, map.p >> 1, mq, kc->readlength, mtd, mps, tln);
 
@@ -284,7 +307,7 @@ fq_read(Key_t* kc, gzin_t* gz)
     int res, c = kc->readlength;
     map_t map = {0};
 
-    // upseq to store sequence before key.
+    // upseq: to store sequence before key.
     char* upseq = (char*)malloc(c);
 
     c = (c >> 3) + !!(c & 3);
@@ -295,11 +318,9 @@ fq_read(Key_t* kc, gzin_t* gz)
         unkey[c] = mism[c] = 0;
 
     //struct mapstat_t ms = {0};
-
-    skip_to_1st_hdr(gz);
-
     do {
         print_hdr(gz);
+
         unsigned mismatches, iend = getmink(kc, gz, map, upseq);
 
         if (iend < kc->readlength) {
@@ -310,6 +331,8 @@ fq_read(Key_t* kc, gzin_t* gz)
                 mismatches = match_revcmp(kc, gz, upseq, map.p, iend);
             else
                 mismatches = match_template(kc, gz, upseq, map.p, iend);
+
+            skip_plus_line(gz);
 
             if (mismatches) {
 
@@ -327,9 +350,8 @@ fq_read(Key_t* kc, gzin_t* gz)
         }
         _EVAL(writeseq(kc, gz, map, upseq));
 
-        c = GZTC(gz);
-    } while (c >= 0);
-    c = 0;
+    } while (GZTC(gz) == '\n');
+    c = (c == -1); // end of file
 out:
     QARN(c < 0, "error:%d", c);
     free(mism);
