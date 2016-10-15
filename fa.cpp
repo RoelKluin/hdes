@@ -26,7 +26,7 @@ free_kc(Key_t *kc)
 }
 
 static void
-print_kct(Key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
+print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 {
     unsigned i = 0;
     EPR("");
@@ -69,7 +69,7 @@ print_kct(Key_t *kc, Mantra* at, Ext_t* e, uint32_t* tk)
 
 // if kct grows, pointers *thisk, k, e->tgtk become invalid
 static void
-buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
+buf_grow_ks(Key_t *kc, Iter_t* e, unsigned add, uint32_t **k)
 {
     while ((kc->kct_l + add) >= (1ul << kc->kct_m)) {
         EPR("buf_grow_ks grew");
@@ -77,14 +77,10 @@ buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
 
         ok1 = K_OFFS(kc, *k);
         ok2 = K_OFFS(kc, e->tgtk);
-        uint32_t *t = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
-        if_ever (t == NULL) {
-            EPR("buf_grow_ks failed");
-            raise(SIGTRAP);
-        }
-        kc->kct = t;
-        *k = t + ok1;
-        e->tgtk = t + ok2;
+        kc->kct = (uint32_t *)realloc(kc->kct, sizeof(uint32_t) << ++kc->kct_m);
+        NB (kc->kct != NULL);
+        *k = kc->kct + ok1;
+        e->tgtk = kc->kct + ok2;
     }
 }
 
@@ -106,7 +102,7 @@ buf_grow_ks(Key_t *kc, Ext_t* e, unsigned add, uint32_t **k)
  * causes k-mer fragmentation. this is undone here. hot!
  */
 static void
-k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
+k_compression(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
 {
 
     NB(hkoffs <= kc->hkoffs + kc->h_l);
@@ -145,7 +141,7 @@ k_compression(Key_t *kc, Ext_t* e, uint32_t *hkoffs, uint32_t *k)
 
 // keys between two uniqs.
 static inline void
-excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
+excise_one(Key_t *kc, Iter_t* e, uint32_t *q)
 {
     keyseq_t seq = {0};
     NB(K_OFFS(kc, q) < kc->kct_l);
@@ -157,9 +153,9 @@ excise_one(Key_t *kc, Ext_t* e, uint32_t *q)
 }
 
 // keys not in scope of unique. hot.
-// * can we use a Ext_t.moved and move all keys if none are uniq?
+// * can we use a Iter_t.moved and move all keys if none are uniq?
 static void
-move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
+move_uniq(Key_t *kc, Iter_t* e, C unsigned start, C unsigned pend)
 {
     unsigned dna = 0, rc = 0;
 
@@ -220,7 +216,7 @@ move_uniq(Key_t *kc, Ext_t* e, C unsigned start, C unsigned pend)
  * isolated and ordered on extension, contig and thirdly on position.
  */
 static unsigned
-ext_uq_iter(Key_t *kc, Ext_t* e)
+ext_uq_iter(Key_t *kc, Iter_t* e)
 {
     uint32_t *k = kc->kct;
 
@@ -269,7 +265,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
                     buf_grow_ks(kc, e, 1, &k);
                     excise_one(kc, e, k);
                 } else {
-                    //P; in scope of start; excision
+                    //P; in scope of previous unique or start; excision
                     ++k;
                     buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
                     for (uint32_t *q = e->tgtk + e->moved; q < k; ++q)
@@ -282,7 +278,8 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
         }
 
         if (bnd->s + kc->ext >= bnd->e) {
-            //P; in scope of start; excision (no bnd copy from e->obnd to kc->bnd)
+            //P; in scope of previous unique or start; excision
+            // (no bnd copy from e->obnd to kc->bnd)
             buf_grow_ks(kc, e, (k - e->tgtk) - e->moved, &k);
             for (uint32_t *q = e->tgtk + e->moved; q < k; ++q)
                 excise_one(kc, e, q);
@@ -311,7 +308,7 @@ ext_uq_iter(Key_t *kc, Ext_t* e)
 static int
 extd_uniqbnd(Key_t *kc)
 {
-    Ext_t e = {0};
+    Iter_t e = {0};
 
     // should ideally not stop at a certain readlength, but rather when there are
     // no more dups, but then this goes on and on, for hg38 beyond extension 1845.

@@ -23,11 +23,12 @@
 #define C const
 
 #ifndef kroundup
+// g++ may complain if you place shift after test.
 #define kroundup(x) (--(x), (x)|=(x)>>1, (x)|=(x)>>2, (x)|=(x)>>4,\
-                            (x)|=(sizeof(x) > 1 ? (x)>>8 : 0),\
-                            (x)|=(sizeof(x) > 2 ? (x)>>16 : 0),\
-                            (x)|=(sizeof(x) > 4 ? (x)>>32 : 0),\
-                            (x)|=(sizeof(x) > 8 ? (x)>>64 : 0),\
+                            (x)|=(x)>>(sizeof(x) > 1 ? 8 : 0),\
+                            (x)|=(x)>>(sizeof(x) > 2 ? 16 : 0),\
+                            (x)|=(x)>>(sizeof(x) > 4 ? 32 : 0),\
+                            (x)|=(x)>>(sizeof(x) > 8 ? 64 : 0),\
                             ++(x))
 #endif
 
@@ -127,13 +128,6 @@ do {\
         raise(SIGTERM);\
     __t;\
 })
-#define buf_init_m(buf, m) ({\
-    buf##_l = 0;\
-    decltype(buf) __t = (decltype(buf))malloc(sizeof(*(buf)) << m);\
-    if_ever (__t == NULL)\
-        raise(SIGTERM);\
-    __t;\
-})
 
 #define buf_init_arr(buf, sz) ({\
     buf##_m = sz;\
@@ -145,8 +139,8 @@ do {\
 
 #define buf_grow_shift(buf, step, shft) \
 do {\
-    if (((buf##_l + step) >> shft) >= (1ul << buf##_m)) {\
-        decltype(buf##_l) __t = buf##_l + step;\
+    decltype(buf##_l) __t = ((buf##_l + step) >> shft);\
+    if (__t >= (1ul << buf##_m)) {\
         kroundup(__t);\
         buf##_m = __builtin_ctz(__t) + 1;\
         buf = (decltype(buf))realloc(buf, sizeof(*(buf)) << buf##_m);\
@@ -157,9 +151,9 @@ do {\
 
 #define buf_grow(buf, step) buf_grow_shift(buf, step, 0)
 
-#define buf_grow_add(buf, step, add) ({\
+#define buf_grow_add(buf, step, push) ({\
     buf_grow_shift(buf, step, 0);\
-    buf[buf##_l++] = add;\
+    buf[buf##_l++] = push;\
 })
 
 

@@ -199,10 +199,6 @@ int main(int argc, char* const* argv)
             fputc('\n', stderr);
             //fq_print(&seq);
         } else {
-//            if (seq.readlength == 0) {
-//                EPR("== Readlength needed for indexing.");
-//                goto out;
-//            }
             c = fa_index(seq.fh, seq.mode, seq.readlength);
             if (c < 0) {
                 EPR("== failed to create keyct.");

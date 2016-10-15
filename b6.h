@@ -172,12 +172,13 @@ unsigned b6_spec(unsigned c, unsigned cs, unsigned no_u);
         fflush(stderr);\
         raise(SIGTRAP);\
     }\
-    seq.t = seq.dna ^ seq.rc;\
-    seq.t &= -seq.t;                  /* isolate deviant bit */\
+    seq.rc ^= seq.dna;                /* becomes deviant */\
+    seq.t = -seq.rc & seq.rc;                  /* isolate deviant bit */\
     seq.t |= !seq.t;                  /* for palindromes use first bit (have to use one)*/\
     seq.t = !(seq.t & seq.dna);       /* was devbit not set in dna? */\
     seq.p |= do_store_orientation & seq.t;\
-    seq.t = seq.dna ^ (-seq.t & (seq.dna ^ seq.rc)); /* dna or rc dependent on devbit */\
+    seq.t = seq.dna ^ (-seq.t & seq.rc); /* dna or rc dependent on devbit */\
+    seq.rc ^= seq.dna;                /* becomes rc */\
     seq.t ^= (-!!(seq.t & KEYNT_BUFSZ)) & SNDX_TRUNC_MASK; /*shorten index by one */\
 })
 

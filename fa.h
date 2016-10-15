@@ -76,7 +76,7 @@ packed_struct Hdr {
 };
 
 // variables only used while extending keys
-struct Ext_t {
+struct Iter_t {
     uint32_t *tgtk; // pointer to where keys are stored that have not yet become unique.
                     // unique keys are initially removed and appended to kct, but after compression
                     // this is undone. There may be another strategy, swapping keys, but it's hard
