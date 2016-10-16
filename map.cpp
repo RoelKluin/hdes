@@ -151,7 +151,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                     NB(hkoffs - kc->hkoffs);
                     --hkoffs;
                     if (h - kc->h) {
-                        map.s -= --h->len;
+                        map.s -= (--h)->len;
                     } else {
                         --remain;
                         h = kc->h + kc->h_l - 1;
