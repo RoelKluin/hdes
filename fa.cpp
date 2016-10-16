@@ -215,7 +215,7 @@ move_uniq(Key_t *kc, Iter_t* e, C unsigned start, C unsigned pend)
  * keys are kept ordered. Ambiguous keys are kept ordered upon first occurance. Unique keys are
  * isolated and ordered on extension, contig and thirdly on position.
  */
-static unsigned
+static void
 ext_uq_iter(Key_t *kc, Iter_t* e)
 {
     uint32_t *k = kc->kct;
@@ -223,7 +223,6 @@ ext_uq_iter(Key_t *kc, Iter_t* e)
     uint32_t *hkoffs = kc->hkoffs;
     Hdr *h = kc->h;
 
-    unsigned skctl = kc->kct_l;
     Mantra *bnd = e->obnd;
 
     e->tgtk = k;
@@ -296,9 +295,6 @@ ext_uq_iter(Key_t *kc, Iter_t* e)
         ++h;
     }
     k_compression(kc, e, kc->hkoffs + t, k);//K;
-
-    NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
-    return kc->ct;
 }
 
 // not valid for same address or with side effects
@@ -319,6 +315,7 @@ extd_uniqbnd(Key_t *kc)
         unsigned iter = 0;
         do { // until no no more new uniques
             Mantra *bnd = e.obnd;
+            unsigned skctl = kc->kct_l;
             e.obnd = kc->bnd;
             kc->bnd = bnd;
 
@@ -330,7 +327,8 @@ extd_uniqbnd(Key_t *kc)
             buf_grow(kc->bnd, 0); /* reserve as much space as in previous iteration */
             kc->bnd_l = 0;        /* ..but consider it as uninitialized: */
 
-            kc->ct = ext_uq_iter(kc, &e);
+            ext_uq_iter(kc, &e);
+            NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
             EPR("observed %u potential in iteration %u, extension %u\n",
                 kc->ct, ++iter, kc->ext >> 1);
         } while (kc->ct > 0);
