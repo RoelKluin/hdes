@@ -166,11 +166,17 @@ finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->end = seq.p >> 1;
-    h->len = (h->end >> 2) + !!(seq.p & 6);
+    h->len = (h->end >> 2) + !!(h->end & 3);
     buf_grow_add(kc->hkoffs, 1, kc->kct_l);
     h->corr = kc->bnd[kc->bnd_l-1].corr;
     end_pos(kc, seq.p);
     EPR("processed %u(%lu) Nts for %s", h->end, kc->totNts, kc->id + h->ido);
+    if (kc->s_l & 3) {
+        // the 2bit buffer per contig starts at the first nt 0 of 4.
+        kc->s_l += -kc->s_l & 3;
+        buf_grow_shift(kc->s, 1ul, 2);
+        kc->s[kc->s_l>>2] = '\0';
+    }
     return 0;
 }
 
@@ -246,12 +252,6 @@ case 0x1e: // new contig
             if (h) {
                 // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
                 _EVAL(finish_contig(kc, h, seq));
-                if (kc->s_l & 3) {
-                    // the 2bit buffer per contig starts at the first nt 0 of 4.
-                    kc->s_l += -kc->s_l & 3;
-                    buf_grow_shift(kc->s, 1ul, 2);
-                    kc->s[kc->s_l>>2] = '\0';
-                }
                 seq.p = 0;
             }
             h = new_header(kc, h, gz, lookup, seq.p);
