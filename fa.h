@@ -55,7 +55,12 @@ seq_next(struct keyseq_t &seq)
     kc->contxt_idx + seq.t;\
 })
 
-
+#define update_append_hkoffs(kc, e, hkoffs) ({\
+    *hkoffs++ = K_OFFS(kc, e->tgtk);\
+    unsigned __t = hkoffs - kc->hkoffs;\
+    buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);\
+    kc->hkoffs + __t;\
+})
 
 struct Mantra { // not yet covered by unique keys
     uint32_t ho;   // which contig (header offfset)
@@ -107,7 +112,7 @@ struct Key_t {
     uint32_t* kct; // contains first occurrent position, strand and dupbit if not yet uniq.
                    // we could also store ndx for faster conversion, if 64 bit.
 
-    uint32_t* ext_iter; // iterations per extension. TODO: remove iteration without keys.
+    uint32_t* ext_iter; // iterations per extension.
     uint32_t* hkoffs;   // kc->kct keys are kept ordered per contig. hkoffs indicates how many k's
                         // per extension per contig.
 
@@ -154,6 +159,7 @@ int map_fq_se(struct seqb2_t*, char C*C);
 
 // mantra.cpp
 int show_mantras(Key_t C*C kc, Mantra* obnd, unsigned obnd_l, Mantra* at);
+void print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk);
 #endif // RK_FA_H
 
 

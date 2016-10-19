@@ -25,10 +25,10 @@ free_kc(Key_t *kc)
     buf_free(kc->contxt_idx);
 }
 
-static void
+extern void
 print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 {
-    unsigned i = 0;
+    unsigned extension = 0;
     EPR("");
     Hdr* h = kc->h;
     uint8_t *s = kc->s;
@@ -37,6 +37,7 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 
     for (uint32_t*k = kc->kct; K_OFFS(kc, k) < kc->kct_l;) {
         if (bnd != e->obnd + e->obnd_l) {
+            // print correctly, using old baoundaries, if print_kct is called during (ext_uq) iter.
             while (h - kc->h != bnd->ho)
                 s += h++->len;
             hkoffs = kc->hkoffs + bnd->ho;
@@ -44,7 +45,7 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
             if (h - kc->h != kc->h_l - 1) {
                 s += h++->len;
             } else {
-                ++i; // increase extension nr.
+                ++extension;
                 h = kc->h;
                 s = kc->s;
             }
@@ -54,7 +55,8 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 
         while (K_OFFS(kc, k) < *hkoffs) {
             char c = k!=tk?(k!=e->tgtk?' ':'t'):'k';
-            EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, i, *hkoffs, *k & DUP_BIT?'*':' ');
+            EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, extension,
+                    *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
             else
@@ -104,11 +106,6 @@ buf_grow_ks(Key_t *kc, Iter_t* e, unsigned add, uint32_t **k)
 static void
 k_compression(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
 {
-
-    NB(hkoffs <= kc->hkoffs + kc->h_l);
-    while (hkoffs != kc->hkoffs + kc->h_l)
-        *hkoffs++ = K_OFFS(kc, e->tgtk);
-
     Hdr* h = kc->h;
     e->s = kc->s;
 
@@ -238,13 +235,10 @@ ext_uq_iter(Key_t *kc, Iter_t* e)
         NB(h - kc->h <= bnd->ho);
         while (h - kc->h != bnd->ho) {
             //~ also update header
-            *hkoffs++ = K_OFFS(kc, e->tgtk);
-            unsigned t = hkoffs - kc->hkoffs;
-            buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);
-            hkoffs = kc->hkoffs + t;
+            hkoffs = update_append_hkoffs(kc, e, hkoffs);
             e->s += h++->len;
-            EPR0(".");
             e->fk = K_OFFS(kc, k);
+            EPR0(".");
         }
         NB(hkoffs == kc->hkoffs + bnd->ho);
 
@@ -289,12 +283,11 @@ ext_uq_iter(Key_t *kc, Iter_t* e)
         }
     } while (++bnd != e->obnd + e->obnd_l);
 
-    unsigned t = hkoffs - kc->hkoffs;
-    while (h - kc->h != kc->h_l) {
-        buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);
-        ++h;
-    }
-    k_compression(kc, e, kc->hkoffs + t, k);//K;
+    for (; h - kc->h != kc->h_l; ++h)
+        hkoffs = update_append_hkoffs(kc, e, hkoffs);
+
+    k_compression(kc, e, kc->hkoffs + kc->h_l, k);//K;
+    //B; final state
 }
 
 // not valid for same address or with side effects
@@ -328,7 +321,7 @@ extd_uniqbnd(Key_t *kc)
             kc->bnd_l = 0;        /* ..but consider it as uninitialized: */
 
             ext_uq_iter(kc, &e);
-            NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);//B; final state
+            NB(skctl == kc->kct_l, "skctl(%u) != kc->kct_l(%u)", skctl, kc->kct_l);
             EPR("observed %u potential in iteration %u, extension %u\n",
                 kc->ct, ++iter, kc->ext >> 1);
         } while (kc->ct > 0);
