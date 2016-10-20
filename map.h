@@ -15,8 +15,12 @@
 
 struct map_t {
     uint32_t p; // position and orientation
-    unsigned ho; // header offset
+    uint32_t ho; // header offset
+    uint32_t iend; // how many NTs were read in upseq
+    uint32_t readlength;
     uint8_t* s;
+    char* upseq;
+    //uint8_t* mism, unkey;
 };
 
 
