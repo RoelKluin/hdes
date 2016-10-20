@@ -80,11 +80,13 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - 1;
     Hdr* h = kc->h + kc->h_l - 1;
     unsigned i = 0, iend = kc->readlength;
-    int remain = kc->readlength;
+    int extension = kc->readlength - KEY_WIDTH;
     uint32_t t, dna = 0u, rc = 0u;
 
     uint32_t prevko = -1u;
-    map.s = kc->s + kc->s_l;
+    const uint64_t last_hs = (kc->s_l >> 2) - h->len;
+    map.s = kc->s + last_hs;
+
 
     while (i != iend) {
         int c = GZTC(gz);
@@ -135,14 +137,15 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                 if (ko <= kc->hkoffs[kc->h_l])
                     continue; // multimapper k-mer;
 
+                prevko = ko;
+
                 // if t is set, key orientation corresponds with read orientation
                 // if kc->kct[ko] & 1 is set, key orientation is template orientation
                 // so if map.p & 1 == 0, read orientation is template orientation
-                prevko = ko;
+                map.p = (t & 1) ^ (kc->kct[ko] & ~DUP_BIT);
 
                 // if the DUP_BIT is set this indicates a unique key was excised; there
                 // should then be another key on this read, also indicating this position.
-                map.p = (t & 1) ^ (kc->kct[ko] & ~DUP_BIT);
 
                 // hkoffs indicates how many k's per extension per contig.
                 // TODO: rather than per contig, iterate per u32 for multiple contigs.
@@ -153,16 +156,13 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                     if (h - kc->h) {
                         map.s -= (--h)->len;
                     } else {
-                        --remain;
+                        --extension;
                         h = kc->h + kc->h_l - 1;
-                        map.s = kc->s + kc->s_l - h->len;
+                        map.s = kc->s + last_hs;
                     }
                 }
                 // potential hit;
-                NB(remain > 0);
-                iend = i + remain;
-                if (iend > kc->readlength)
-                    iend = kc->readlength;
+                iend = i + extension;
         }
     }
     map.ho = (hkoffs - kc->hkoffs) % kc->h_l;
