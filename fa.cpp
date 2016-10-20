@@ -36,8 +36,8 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
     uint32_t* hkoffs = kc->hkoffs;
 
     for (uint32_t*k = kc->kct; K_OFFS(kc, k) < kc->kct_l;) {
+        // print correctly, using old boundaries, if print_kct is called during (ext_uq) iter.
         if (bnd != e->obnd + e->obnd_l) {
-            // print correctly, using old baoundaries, if print_kct is called during (ext_uq) iter.
             while (h - kc->h != bnd->ho)
                 s += h++->len;
             hkoffs = kc->hkoffs + bnd->ho;
@@ -109,9 +109,12 @@ k_compression(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
     Hdr* h = kc->h;
     e->s = kc->s;
 
+
+    // The k's of which 1st pos lied between uniques, but then appeared still recurrent,
+    // on genome may have caused holes in the k array (kc->kct) these holes are undone here.
     while (K_OFFS(kc, k) != kc->kct_l) {
         NB(hkoffs < kc->hkoffs + kc->hkoffs_l);
-        while (K_OFFS(kc, k) == *hkoffs) {
+        while (K_OFFS(kc, k) == *hkoffs) { // update k offsets
             if (h - kc->h != kc->h_l - 1) {
                 e->s += h++->len;
             } else {
@@ -120,7 +123,7 @@ k_compression(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
             }
             *hkoffs++ = K_OFFS(kc, e->tgtk);
         }
-        if (*k) {
+        if (*k) { // not a 'hole'
             if (k != e->tgtk) {
                 keyseq_t seq = {.p = b2pos_of(*k) };
                 kc->contxt_idx[build_ndx_kct(kc, seq, e->s, 0)] = K_OFFS(kc, e->tgtk);

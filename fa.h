@@ -56,9 +56,9 @@ seq_next(struct keyseq_t &seq)
 })
 
 #define update_append_hkoffs(kc, e, hkoffs) ({\
-    *hkoffs++ = K_OFFS(kc, e->tgtk);\
+    *hkoffs++ = K_OFFS(kc, e->tgtk); /* k offset for dups per contig */\
     unsigned __t = hkoffs - kc->hkoffs;\
-    buf_grow_add(kc->hkoffs, 1ul, kc->kct_l);\
+    buf_grow_add(kc->hkoffs, 1ul, kc->kct_l); /* k offset for uniques per contig */\
     kc->hkoffs + __t;\
 })
 

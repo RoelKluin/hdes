@@ -133,7 +133,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                     continue; // not a k-mer minimum
 
                 if (ko <= kc->hkoffs[kc->h_l])
-                    continue; // multimapper;
+                    continue; // multimapper k-mer;
 
                 // if t is set, key orientation corresponds with read orientation
                 // if kc->kct[ko] & 1 is set, key orientation is template orientation
@@ -273,7 +273,7 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
     // if the orientation is the other, revcmp sequence and reverse qual.
     if (map.p & 1) {
 
-        upseq += kc->readlength;
+        upseq += kc->readlength;// Revcmp orientation
         for (unsigned j = 0; j != kc->readlength; ++j) {
             int c = *--upseq;
             if (c == 'A' || c == 'T')
@@ -289,7 +289,7 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
         }
         OPR("\t%s\tMD:Z:%u\tNM:i:0", upseq, kc->readlength);
     } else {
-        OPR0("%s\t", upseq);
+        OPR0("%s\t", upseq);// Template orientation
         for (unsigned j = 0; j != kc->readlength; ++j) {
             int c = GZTC(gz);
             if (c == '\n' || c == -1)
