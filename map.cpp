@@ -366,7 +366,7 @@ map_fq_se(struct seqb2_t* sb2, char C*C cmdl)
     int res = -ENOMEM;
 
     struct gzfh_t* fhio[2] = { sb2->fh + 1, sb2->fh + 2};
-    const char* ext[3] = {".kc",".2b", ".uq"};
+    const char* ext[2] = {".uq",".2b"};
     char file[512];
     Key_t kc = {0};
     gzin_t gz = {0};
