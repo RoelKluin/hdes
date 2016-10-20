@@ -5,7 +5,7 @@ source gdb_shared
 define break_commands
     commands $arg0
         silent
-        printf "Potential hit\tko:%x\t%s\t%s:", ko, upseq - KEY_WIDTH, kc->id + kc->h[map.ho].ido
+        printf "Potential hit\tko:%x\tk-mer:%s\t>%s(ho:%u,so:%u):\t", ko, upseq - KEY_WIDTH, kc->id + h->ido, h - kc->h, map.s - kc->s
         call print_posseq(map.s, map.p, kc->readlength)
         c
     end
@@ -42,6 +42,23 @@ define break_commands
 end
 python break_re_py2('// not a k-mer minimum', 'map.cpp', 'break', 1)
 
+define break_commands
+    commands $arg0
+        silent
+        printf "Template orientation\n"
+        c
+    end
+end
+python break_re_py2('// Template orientation', 'map.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        printf "Revcmp orientation\n"
+        c
+    end
+end
+python break_re_py2('// Revcmp orientation', 'map.cpp', 'break', 1)
 
 
 #b load_kc
