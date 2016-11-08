@@ -216,7 +216,11 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
     char* upseq = map.upseq;
     Hdr* h = kc->h + kc->h_l - 1;
     unsigned i = 0, iend = map.readlength;
-    int extension = map.readlength - KEY_WIDTH;
+
+    unsigned extension = kc->ext_iter_l - 1;
+    uint32_t* ext_iter = kc->ext_iter + extension;
+    unsigned iteration = *ext_iter--;
+
     uint32_t t, dna = 0u, rc = 0u;
 
     uint32_t prevko = -1u;
@@ -224,7 +228,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
     map.s = kc->s + last_hs;
 
     print_hdr(gz);
-    EPR("Contig: %s, extension: %u (init)", kc->id + h->ido, extension);
+    EPR("Contig: %s, extension: %u, iteration: %u (init)", kc->id + h->ido, extension, iteration);
     while (i != iend) {
         int c = GZTC(gz);
         if (c == '\n' || c == -1)
@@ -287,22 +291,26 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
                 // hkoffs indicates how many k's per extension per contig.
                 // TODO: rather than per contig, iterate per u32 for multiple contigs.
                 EPR("hit");
-                while (ko + 1 < *hkoffs) {
-                    EPR("ko: %u, *hkoffs:%u", ko, *hkoffs);
+                while (ko < *hkoffs) {
                     NB(hkoffs - kc->hkoffs);
                     --hkoffs;
+                    EPR("ko: %u, *hkoffs:%u", ko, *hkoffs);
                     if (h - kc->h) {
                         map.s -= (--h)->len;
                     } else {
-                        --extension;
+                        if (--iteration == 0) {
+                            NB(extension);
+                            --extension;
+                            iteration = *ext_iter--;
+                        }
                         h = kc->h + kc->h_l - 1;
                         map.s = kc->s + last_hs;
                     }
-                    EPR("Contig: %s, extension: %u", kc->id + h->ido, extension);
+                    EPR("Contig: %s, extension: %u, iteration: %u", kc->id + h->ido, extension, iteration);
                 }
                 EPR("end:ko: %u, *hkoffs:%u", ko, *hkoffs);
                 // potential hit;
-                EPR("%u, i:%u, extension:%u", iend, i, extension);
+                EPR("%u, i:%u, extension:%u, iteration: %u", iend, i, extension, iteration);
                 iend = i + extension;
         }
     }
