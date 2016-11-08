@@ -117,10 +117,10 @@ struct Key_t {
                         // per extension per contig.
 
     Mantra* bnd;
-    uint32_t h_l, id_l;
     uint64_t s_l, totNts;
-
     uint32_t kct_l, ext_iter_l, bnd_l, hkoffs_l;
+    uint32_t h_l, id_l;
+
     uint32_t ct, readlength;
     uint32_t ext, reserved;        // current to final extension.
     uint8_t contxt_idx_m, kct_m, ext_iter_m, bnd_m, hkoffs_m, h_m, id_m, s_m;

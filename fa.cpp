@@ -100,11 +100,11 @@ buf_grow_ks(Key_t *kc, Iter_t* e, unsigned add, uint32_t **k)
  */
 
 /*
- * During an iteration over the genome unique keys were excised and added to the end. This
- * causes k-mer fragmentation. this is undone here. hot!
+ * During an iteration over the genome unique keys were excised and added to the end. The
+ * causes a sparse k-mer array. hot!
  */
 static void
-k_compression(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
+denser_k(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)
 {
     Hdr* h = kc->h;
     e->s = kc->s;
@@ -289,7 +289,7 @@ ext_uq_iter(Key_t *kc, Iter_t* e)
     for (; h - kc->h != kc->h_l; ++h)
         hkoffs = update_append_hkoffs(kc, e, hkoffs);
 
-    k_compression(kc, e, kc->hkoffs + kc->h_l, k);//K;
+    denser_k(kc, e, kc->hkoffs + kc->h_l, k);//K;
     //B; final state
 }
 

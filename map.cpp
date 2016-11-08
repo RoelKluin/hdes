@@ -73,21 +73,158 @@ print_hdr(gzin_t* gz)
     fputc('\t', stdout);
 }
 
+static int
+match_revcmp(gzin_t* gz, struct map_t &map)
+{
+    // There can still be mismatches in upseq or post key.
+    unsigned mismatches = 0;
+
+    uint32_t p = (map.p >> 1) + map.iend - 1;
+    EPR("p:%u", p);
+    uint8_t* s = map.s + (p >> 2);
+    char* upseq = map.upseq;
+    unsigned ref_nt = *s >> ((p & 3) << 1);
+
+    for (unsigned j = 0; j != map.readlength; ++j) {
+
+        if (j >= map.iend) {
+            int c = GZTC(gz);
+            if (c == '\n' || c == -1)
+                return -1;
+            *upseq = toupper(c);
+        }
+
+        unsigned read_nt = 2;
+        switch(*upseq++) {
+            case 'C': read_nt = 0;
+            case 'G': read_nt |= 1;
+            case 'U':
+            case 'T': read_nt ^= 2;
+        }
+        EPR("%c <-> %c", (char)b6(read_nt << 1), (char)b6(ref_nt << 1));
+
+        if (read_nt != (ref_nt & 3) ) {
+
+            // TODO: mism[j >> 3] |= 1 << (j & 7);
+            if (++mismatches > 0 /*mismatches_allowed*/)
+                break;
+        }
+        ref_nt = p-- & 3 ? ref_nt >> 2 : *--s;
+    }
+    return mismatches;
+}
+
+// returns no mismatches
+static int
+match_template(gzin_t* gz, struct map_t &map)
+{
+    // There can still be mismatches in upseq or post key.
+    unsigned mismatches = 0;
+
+    uint32_t p = (map.p >> 1) - map.iend;
+    uint8_t* s = map.s + (p >> 2);
+    char* upseq = map.upseq;
+    unsigned ref_nt = *s >> ((p & 3) << 1);
+
+    for (unsigned j = 0; j != map.readlength; ++j) {
+
+        if (j >= map.iend) {
+            int c = GZTC(gz);
+            if (c == '\n' || c == -1)
+                return -1;
+            *upseq = toupper(c);
+        }
+
+        unsigned read_nt = 0;
+        switch(*upseq++) {
+            case 'C': read_nt = 2;
+            case 'G': read_nt |= 1;
+            case 'U':
+            case 'T': read_nt ^= 2;
+        }
+
+        if (read_nt != (ref_nt & 3)) {
+
+            // TODO: mism[j >> 3] |= 1 << (j & 7);
+            if (++mismatches > 0 /*mismatches_allowed*/)
+                break;
+        }
+        ref_nt = ++p & 3 ? ref_nt >> 2 : *++s;
+    }
+    return mismatches;
+}
+
+static int
+writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
+{
+
+    char unknown[] = "*";
+    char* mtd = unknown;
+    char* tid = unknown;
+    char* upseq = map.upseq;
+    unsigned tln = 0, mps = 0, mq = 0, flag = 44;
+    if (map.p) {
+        mq = 37;
+        flag = map.p & 1;
+        flag = (flag << 4) | 0x42;
+        tid = kc->id + kc->h[map.ho].ido;
+        // header was already printed.
+
+        // XXX: add .corr to map.p ! (after sorting?)
+    }
+
+    OPR0("%u\t%s\t%u\t%u\t%uM\t%s\t%u\t%d\t",
+        flag, tid, map.p >> 1, mq, map.readlength, mtd, mps, tln);
+
+    // if the orientation is the other, revcmp sequence and reverse qual.
+    if (map.p & 1) {
+
+        upseq += map.readlength;// Revcmp orientation
+        for (unsigned j = 0; j != map.readlength; ++j) {
+            int c = *--upseq;
+            if (c == 'A' || c == 'T')
+                c ^= 'A' ^ 'T';
+            else if (c == 'C' || c == 'G')
+                c ^= 'C' ^ 'G';
+            fputc(c, stdout);
+
+            c = GZTC(gz);
+            if (c == '\n' || c == -1)
+                return -1;
+            *upseq = c;
+        }
+        OPR("\t%s\tMD:Z:%u\tNM:i:0", upseq, map.readlength);
+    } else {
+        OPR0("%s\t", upseq);// Template orientation
+        for (unsigned j = 0; j != map.readlength; ++j) {
+            int c = GZTC(gz);
+            if (c == '\n' || c == -1)
+                return -1;
+            fputc(c, stdout);
+        }
+        OPR("\tMD:Z:%u\tNM:i:0", map.readlength);
+    }
+    return 0;
+}
+
+
 // find minimal key, hopefully unique within extension.
 static unsigned
-getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
+getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
 {
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - 1;
+    char* upseq = map.upseq;
     Hdr* h = kc->h + kc->h_l - 1;
-    unsigned i = 0, iend = kc->readlength;
-    int extension = kc->readlength - KEY_WIDTH;
+    unsigned i = 0, iend = map.readlength;
+    int extension = map.readlength - KEY_WIDTH;
     uint32_t t, dna = 0u, rc = 0u;
 
     uint32_t prevko = -1u;
     const uint64_t last_hs = (kc->s_l >> 2) - h->len;
     map.s = kc->s + last_hs;
 
-
+    print_hdr(gz);
+    EPR("Contig: %s, extension: %u (init)", kc->id + h->ido, extension);
     while (i != iend) {
         int c = GZTC(gz);
         if (c == '\n' || c == -1)
@@ -134,7 +271,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                 if (ko >= prevko)
                     continue; // not a k-mer minimum
 
-                if (ko <= kc->hkoffs[kc->h_l])
+                if (ko < kc->hkoffs[kc->h_l])
                     continue; // multimapper k-mer;
 
                 prevko = ko;
@@ -142,15 +279,16 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                 // if t is set, key orientation corresponds with read orientation
                 // if kc->kct[ko] & 1 is set, key orientation is template orientation
                 // so if map.p & 1 == 0, read orientation is template orientation
-                map.p = (t & 1) ^ (kc->kct[ko] & ~DUP_BIT);
+                map.p = ((t & 1) ^ (kc->kct[ko] & ~DUP_BIT));
 
                 // if the DUP_BIT is set this indicates a unique key was excised; there
                 // should then be another key on this read, also indicating this position.
 
                 // hkoffs indicates how many k's per extension per contig.
                 // TODO: rather than per contig, iterate per u32 for multiple contigs.
-
-                while (ko < *hkoffs) {
+                EPR("hit");
+                while (ko + 1 < *hkoffs) {
+                    EPR("ko: %u, *hkoffs:%u", ko, *hkoffs);
                     NB(hkoffs - kc->hkoffs);
                     --hkoffs;
                     if (h - kc->h) {
@@ -160,203 +298,75 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
                         h = kc->h + kc->h_l - 1;
                         map.s = kc->s + last_hs;
                     }
+                    EPR("Contig: %s, extension: %u", kc->id + h->ido, extension);
                 }
+                EPR("end:ko: %u, *hkoffs:%u", ko, *hkoffs);
                 // potential hit;
+                EPR("%u, i:%u, extension:%u", iend, i, extension);
                 iend = i + extension;
         }
     }
-    map.ho = (hkoffs - kc->hkoffs) % kc->h_l;
-    return iend;
-}
+    if (iend < map.readlength) {
+        unsigned mismatches;
+        map.ho = (hkoffs - kc->hkoffs) % kc->h_l;
+        map.iend = iend;
+        map.p -= NT_WIDTH;
+        EPR(">%s:%u", kc->id + kc->h[map.ho].ido, map.p >> 1);
+        // possible hit
 
-static int
-match_revcmp(Key_t* kc, gzin_t* gz, char* upseq, uint32_t p, unsigned iend)
-{
-    // There can still be mismatches in upseq or post key.
-    unsigned mismatches = 0;
+        // for orientation, see notes in getmink()
+        if (map.p & 1)
+            mismatches = match_revcmp(gz, map);
+        else
+            mismatches = match_template(gz, map);
 
-    p = (p >> 1) + iend;
-    uint8_t* s = kc->s + (p >> 2);
-    unsigned ref_nt = *s >> ((p & 3) << 1);
+        skip_plus_line(gz);
 
-    for (unsigned j = 0; j != kc->readlength; ++j) {
+        if (mismatches) {
+            EPR("got mismatches");
 
-        if (j > iend) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            *upseq = toupper(c);
+            NB(mismatches != -1u, "sequence truncated?");
+
+            // TODO: try to resolve mismatches.. only if it fails:
+            map.p = 0;
         }
 
-        unsigned read_nt = 2;
-        switch(*upseq++) {
-            case 'C': read_nt = 0;
-            case 'G': read_nt |= 1;
-            case 'U':
-            case 'T': read_nt ^= 2;
-        }
-
-        if (read_nt != (ref_nt & 3) ) {
-            NB(j < iend - KEY_WIDTH || j >= iend, "mismatch in key?!");
-
-            // TODO: mism[j >> 3] |= 1 << (j & 7);
-            if (++mismatches > 0 /*mismatches_allowed*/)
-                break;
-        }
-        ref_nt = p-- & 3 ? ref_nt >> 2 : *--s;
+    } else { // XXX XXX we end up here?
+        EPR("reached end.");
+        NB (iend != -1u, "truncated sequence?");
+        map.p = 0;
     }
-    return mismatches;
-}
-
-
-// returns no mismatches
-static int
-match_template(Key_t* kc, gzin_t* gz, char* upseq, uint32_t p, unsigned iend)
-{
-    // There can still be mismatches in upseq or post key.
-    unsigned mismatches = 0;
-
-    p = (p >> 1) - iend;
-    uint8_t* s = kc->s + (p >> 2);
-    unsigned ref_nt = *s >> ((p & 3) << 1);
-
-    for (unsigned j = 0; j != kc->readlength; ++j) {
-
-        if (j > iend) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            *upseq = toupper(c);
-        }
-
-        unsigned read_nt = 0;
-        switch(*upseq++) {
-            case 'C': read_nt = 2;
-            case 'G': read_nt |= 1;
-            case 'U':
-            case 'T': read_nt ^= 2;
-        }
-
-        if (read_nt != (ref_nt & 3)) {
-            NB(j < iend - KEY_WIDTH || j >= iend, "mismatch in key?!");
-
-            // TODO: mism[j >> 3] |= 1 << (j & 7);
-            if (++mismatches > 0 /*mismatches_allowed*/)
-                break;
-        }
-        ref_nt = ++p & 3 ? ref_nt >> 2 : *++s;
-    }
-    return mismatches;
-}
-
-static int
-writeseq(Key_t* kc, gzin_t* gz, struct map_t &map, char* upseq)
-{
-
-    char unknown[] = "*";
-    char* mtd = unknown;
-    char* tid = unknown;
-    unsigned tln = 0, mps = 0, mq = 0, flag = 44;
-    if (map.p) {
-        mq = 37;
-        flag = map.p & 1;
-        flag = (flag << 4) | 0x42;
-        tid = kc->id + kc->h[map.ho].ido;
-        // header was already printed.
-
-        // XXX: add .corr to map.p ! (after sorting?)
-    }
-
-    OPR0("%u\t%s\t%u\t%u\t%uM\t%s\t%u\t%d\t",
-        flag, tid, map.p >> 1, mq, kc->readlength, mtd, mps, tln);
-
-    // if the orientation is the other, revcmp sequence and reverse qual.
-    if (map.p & 1) {
-
-        upseq += kc->readlength;// Revcmp orientation
-        for (unsigned j = 0; j != kc->readlength; ++j) {
-            int c = *--upseq;
-            if (c == 'A' || c == 'T')
-                c ^= 'A' ^ 'T';
-            else if (c == 'C' || c == 'G')
-                c ^= 'C' ^ 'G';
-            fputc(c, stdout);
-
-            c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            *upseq = c;
-        }
-        OPR("\t%s\tMD:Z:%u\tNM:i:0", upseq, kc->readlength);
-    } else {
-        OPR0("%s\t", upseq);// Template orientation
-        for (unsigned j = 0; j != kc->readlength; ++j) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            fputc(c, stdout);
-        }
-        OPR("\tMD:Z:%u\tNM:i:0", kc->readlength);
-    }
-    return 0;
+    return writeseq(kc, gz, map);
 }
 
 static int
 fq_read(Key_t* kc, gzin_t* gz)
 {
-    int res, c = kc->readlength;
     map_t map = {0};
+    int res, c = map.readlength = kc->readlength;
 
-    // upseq: to store sequence before key.
-    char* upseq = (char*)malloc(c);
+    // upseq: to store sequence before key + null.
+    map.upseq = (char*)malloc(c + 1);
+    map.upseq[c] = '\0';
 
     c = (c >> 3) + !!(c & 3);
-    uint8_t* mism = (uint8_t*)malloc(c);
-    uint8_t* unkey = (uint8_t*)malloc(c);
+    /*map.mism = (uint8_t*)malloc(c);
+    map.unkey = (uint8_t*)malloc(c);
 
     while (c--)
-        unkey[c] = mism[c] = 0;
+        map.unkey[c] = map.mism[c] = 0;*/
 
     //struct mapstat_t ms = {0};
     do {
-        print_hdr(gz);
-
-        unsigned mismatches, iend = getmink(kc, gz, map, upseq);
-
-        if (iend < kc->readlength) {
-            // possible hit
-
-            // for orientation, see notes in getmink()
-            if (map.p & 1)
-                mismatches = match_revcmp(kc, gz, upseq, map.p, iend);
-            else
-                mismatches = match_template(kc, gz, upseq, map.p, iend);
-
-            skip_plus_line(gz);
-
-            if (mismatches) {
-
-                NB(mismatches != -1u, "sequence truncated?");
-
-                // TODO: try to resolve mismatches.. only if it fails:
-                map.p = 0;
-            }
-
-        } else {
-
-            NB (iend != -1u, "truncated sequence?");
-            map.p = 0;
-
-        }
-        _EVAL(writeseq(kc, gz, map, upseq));
+        _EVAL(getmink(kc, gz, map));
 
     } while (GZTC(gz) == '\n');
     c = (c == -1); // end of file
 out:
     QARN(c < 0, "error:%d", c);
-    free(mism);
-    free(unkey);
-    free(upseq);
+    //free(map.mism);
+    //free(map.unkey);
+    free(map.upseq);
     return c;
 }
 

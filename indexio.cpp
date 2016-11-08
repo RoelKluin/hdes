@@ -171,7 +171,7 @@ int load_kc(struct gzfh_t* fhin, Key_t* kc)
         // there can be keys with a dupbit set. They have a position, but that's just one of
         // many possible.
         keyseq_t seq = {.p = *k & ~DUP_BIT};
-        NB((seq.p >> 1) < h->end + h->corr, "%x", seq.p);
+        NB((seq.p >> 1) <= h->end + h->corr, "%x", seq.p);
         uint32_t ndx = build_ndx_kct(kc, seq, s);
         NB(ndx < KEYNT_BUFSZ);
 
