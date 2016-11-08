@@ -28,10 +28,12 @@ free_kc(Key_t *kc)
 extern void
 print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 {
-    unsigned extension = 0;
+    unsigned extension = 0, iteration = 0;
     EPR("");
     Hdr* h = kc->h;
     uint8_t *s = kc->s;
+    uint32_t* ext_iter = kc->ext_iter;
+    uint32_t* beyond_ext_iter = ext_iter + kc->ext_iter_l;
     Mantra* bnd = kc->bnd_l ? kc->bnd : at;
     uint32_t* hkoffs = kc->hkoffs;
 
@@ -45,7 +47,12 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
             if (h - kc->h != kc->h_l - 1) {
                 s += h++->len;
             } else {
-                ++extension;
+                ++iteration;
+                if (ext_iter != beyond_ext_iter && iteration == *ext_iter) {
+                    ++extension;
+                    ++ext_iter;
+                    iteration = 0;
+                }
                 h = kc->h;
                 s = kc->s;
             }
@@ -55,7 +62,7 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
 
         while (K_OFFS(kc, k) < *hkoffs) {
             char c = k!=tk?(k!=e->tgtk?' ':'t'):'k';
-            EPR0("%c>%s:%u\t%u\t%c", c, kc->id + h->ido, extension,
+            EPR0("%c>%s:(e:%u,i:%u)\t%u\t%c", c, kc->id + h->ido, extension, iteration,
                     *hkoffs, *k & DUP_BIT?'*':' ');
             if (*k != 0)
                 print_posseq(s, *k);
