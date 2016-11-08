@@ -14,6 +14,15 @@
 #include <string.h> // memset()
 #include "map.h"
 
+/*#define GZTC(gz) ({\
+  int __c = ((gz)->c((gz)->g));\
+  if (__c != -1)\
+  	EPR0("%c", (char)__c);\
+  else\
+    EPR("<EOF>");\
+  __c;\
+})*/
+
 /**
  * Initialize buffer and fill it with 1's. Safe because the first entry starts at 0.
  */
@@ -51,21 +60,9 @@ print_hdr_lines(Key_t *C kc, char C*C commandline)
 }
 
 static inline void
-skip_plus_line(gzin_t* gz)
-{
-    int c;
-    NB(GZTC(gz) == '\n');
-    NB(GZTC(gz) == '+');
-    while ((c = GZTC(gz)) != '\n')
-        NB(c != -1);
-}
-
-static inline void
 print_hdr(gzin_t* gz)
 {
     int c;
-    NB(GZTC(gz) == '@');
-
     while ((c = GZTC(gz)) != '\n') {
         NB(c != -1);
         fputc(c, stdout);
@@ -73,26 +70,18 @@ print_hdr(gzin_t* gz)
     fputc('\t', stdout);
 }
 
-static int
-match_revcmp(gzin_t* gz, struct map_t &map)
+static unsigned
+match_revcmp(struct map_t &map)
 {
     // There can still be mismatches in upseq or post key.
     unsigned mismatches = 0;
 
     uint32_t p = (map.p >> 1) + map.iend - 1;
-    EPR("p:%u", p);
     uint8_t* s = map.s + (p >> 2);
     char* upseq = map.upseq;
     unsigned ref_nt = *s >> ((p & 3) << 1);
 
     for (unsigned j = 0; j != map.readlength; ++j) {
-
-        if (j >= map.iend) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            *upseq = toupper(c);
-        }
 
         unsigned read_nt = 2;
         switch(*upseq++) {
@@ -101,22 +90,20 @@ match_revcmp(gzin_t* gz, struct map_t &map)
             case 'U':
             case 'T': read_nt ^= 2;
         }
-        EPR("%c <-> %c", (char)b6(read_nt << 1), (char)b6(ref_nt << 1));
 
         if (read_nt != (ref_nt & 3) ) {
 
             // TODO: mism[j >> 3] |= 1 << (j & 7);
-            if (++mismatches > 0 /*mismatches_allowed*/)
-                break;
+            ++mismatches;
         }
-        ref_nt = p-- & 3 ? ref_nt >> 2 : *--s;
+        ref_nt = p-- & 3 ? ref_nt >> 2 : *s--;
     }
     return mismatches;
 }
 
 // returns no mismatches
-static int
-match_template(gzin_t* gz, struct map_t &map)
+static unsigned
+match_template(struct map_t &map)
 {
     // There can still be mismatches in upseq or post key.
     unsigned mismatches = 0;
@@ -127,13 +114,6 @@ match_template(gzin_t* gz, struct map_t &map)
     unsigned ref_nt = *s >> ((p & 3) << 1);
 
     for (unsigned j = 0; j != map.readlength; ++j) {
-
-        if (j >= map.iend) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
-            *upseq = toupper(c);
-        }
 
         unsigned read_nt = 0;
         switch(*upseq++) {
@@ -146,15 +126,14 @@ match_template(gzin_t* gz, struct map_t &map)
         if (read_nt != (ref_nt & 3)) {
 
             // TODO: mism[j >> 3] |= 1 << (j & 7);
-            if (++mismatches > 0 /*mismatches_allowed*/)
-                break;
+            ++mismatches;
         }
         ref_nt = ++p & 3 ? ref_nt >> 2 : *++s;
     }
     return mismatches;
 }
 
-static int
+static void
 writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
 {
 
@@ -173,15 +152,20 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
         // XXX: add .corr to map.p ! (after sorting?)
     }
 
+	// skip plus line
+	int c;
+    NB(GZTC(gz) == '+');
+    while ((c = GZTC(gz)) != '\n')
+        NB(c != -1);
+
     OPR0("%u\t%s\t%u\t%u\t%uM\t%s\t%u\t%d\t",
         flag, tid, map.p >> 1, mq, map.readlength, mtd, mps, tln);
 
     // if the orientation is the other, revcmp sequence and reverse qual.
     if (map.p & 1) {
-
-        upseq += map.readlength;// Revcmp orientation
+        upseq += map.readlength;
         for (unsigned j = 0; j != map.readlength; ++j) {
-            int c = *--upseq;
+            c = *--upseq;
             if (c == 'A' || c == 'T')
                 c ^= 'A' ^ 'T';
             else if (c == 'C' || c == 'G')
@@ -189,22 +173,22 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
             fputc(c, stdout);
 
             c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
+            NB(c != '\n', "Quality line too short (rc).");
+			NB(c != -1, "Fastq truncated in quality (rc).");
             *upseq = c;
         }
         OPR("\t%s\tMD:Z:%u\tNM:i:0", upseq, map.readlength);
     } else {
-        OPR0("%s\t", upseq);// Template orientation
+		EPR("// Template orientation");
+        OPR0("%s\t", upseq);
         for (unsigned j = 0; j != map.readlength; ++j) {
-            int c = GZTC(gz);
-            if (c == '\n' || c == -1)
-                return -1;
+            c = GZTC(gz);
+            NB(c != '\n', "Quality line too short.");
+			NB(c != -1, "Fastq truncated in quality.");
             fputc(c, stdout);
         }
         OPR("\tMD:Z:%u\tNM:i:0", map.readlength);
     }
-    return 0;
 }
 
 
@@ -215,7 +199,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
     uint32_t* hkoffs = kc->hkoffs + kc->hkoffs_l - 1;
     char* upseq = map.upseq;
     Hdr* h = kc->h + kc->h_l - 1;
-    unsigned i = 0, iend = map.readlength;
+    unsigned i = 0, iend = -1u;
 
     unsigned extension = kc->ext_iter_l - 1;
     uint32_t* ext_iter = kc->ext_iter + extension;
@@ -227,17 +211,19 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
     const uint64_t last_hs = (kc->s_l >> 2) - h->len;
     map.s = kc->s + last_hs;
 
-    print_hdr(gz);
-    EPR("Contig: %s, extension: %u, iteration: %u (init)", kc->id + h->ido, extension, iteration);
-    while (i != iend) {
-        int c = GZTC(gz);
-        if (c == '\n' || c == -1)
-            return -1u;
+	int c = GZTC(gz);
+	if (c == -1) return 0; // end of fastq
+	NB(c == '@', "Expected fastq header '@', not '%c'", (char)c);
+	print_hdr(gz);
+
+    while ((c = GZTC(gz)) != '\n') {
+
+		NB (c != -1, "Fastq truncated in sequence?");
 
         // need to preserve N's (if really necessary could use quals though)
         *upseq++ = c = toupper(c);
+		if (++i >= iend) continue; // altijd seq laten aflopen tot aan '\n' XXX >= ?
 
-        NB(c != -1);
         rc = (rc << 2) & KEYNT_MASK;
         dna >>= 2;
         t = 0;
@@ -250,7 +236,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
             default: rc ^= t;
                 dna ^= t << KEYNT_TOP;
 
-                if (++i < KEY_WIDTH) // first complete key
+                if (i < KEY_WIDTH) // first complete key
                     continue;
 
                 rc ^= dna;            /* rc becomes all deviant bits */
@@ -290,11 +276,10 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
 
                 // hkoffs indicates how many k's per extension per contig.
                 // TODO: rather than per contig, iterate per u32 for multiple contigs.
-                EPR("hit");
+
                 while (ko < *hkoffs) {
                     NB(hkoffs - kc->hkoffs);
                     --hkoffs;
-                    EPR("ko: %u, *hkoffs:%u", ko, *hkoffs);
                     if (h - kc->h) {
                         map.s -= (--h)->len;
                     } else {
@@ -306,45 +291,39 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
                         h = kc->h + kc->h_l - 1;
                         map.s = kc->s + last_hs;
                     }
-                    EPR("Contig: %s, extension: %u, iteration: %u", kc->id + h->ido, extension, iteration);
                 }
-                EPR("end:ko: %u, *hkoffs:%u", ko, *hkoffs);
                 // potential hit;
-                EPR("%u, i:%u, extension:%u, iteration: %u", iend, i, extension, iteration);
                 iend = i + extension;
         }
     }
+	map.readlength = i;
+
     if (iend < map.readlength) {
         unsigned mismatches;
         map.ho = (hkoffs - kc->hkoffs) % kc->h_l;
         map.iend = iend;
         map.p -= NT_WIDTH;
-        EPR(">%s:%u", kc->id + kc->h[map.ho].ido, map.p >> 1);
         // possible hit
 
         // for orientation, see notes in getmink()
         if (map.p & 1)
-            mismatches = match_revcmp(gz, map);
+            mismatches = match_revcmp(map);
         else
-            mismatches = match_template(gz, map);
+            mismatches = match_template(map);
 
-        skip_plus_line(gz);
-
-        if (mismatches) {
-            EPR("got mismatches");
-
-            NB(mismatches != -1u, "sequence truncated?");
+        if (mismatches > 0 /*mismatches_allowed*/) {
 
             // TODO: try to resolve mismatches.. only if it fails:
-            map.p = 0;
+            map.p = 0; //Mismatches
         }
 
-    } else { // XXX XXX we end up here?
-        EPR("reached end.");
-        NB (iend != -1u, "truncated sequence?");
-        map.p = 0;
+    } else {
+
+        NB (map.readlength != 0, "Expected sequence, but the line was empty.");
+        map.p = 0; //Multimapper
     }
-    return writeseq(kc, gz, map);
+    writeseq(kc, gz, map);
+	return 1;
 }
 
 static int
@@ -365,13 +344,14 @@ fq_read(Key_t* kc, gzin_t* gz)
         map.unkey[c] = map.mism[c] = 0;*/
 
     //struct mapstat_t ms = {0};
-    do {
-        _EVAL(getmink(kc, gz, map));
+    while (getmink(kc, gz, map)) {
+		c = GZTC(gz);
+		if (c == -1)
+			break;
+		NB(c == '\n');
+	}
+    c = 0; // end of file
 
-    } while (GZTC(gz) == '\n');
-    c = (c == -1); // end of file
-out:
-    QARN(c < 0, "error:%d", c);
     //free(map.mism);
     //free(map.unkey);
     free(map.upseq);
