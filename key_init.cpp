@@ -96,7 +96,7 @@ typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 //ensembl format: >ID SEQTYPE:IDTYPE LOCATION [META]
 // fai does not handle chromosomes with offset.
 static Hdr*
-new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
+new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
 {
     uint32_t part[ENS_HDR_PARTCT] = {0};
     int res = parse_header_parts(kc, gz, part);
@@ -131,7 +131,7 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had at least one KEY_WIDTH of sequence
-        if (endpos != kc->bnd[kc->bnd_l-1].s) {
+        if (kc->bnd[kc->bnd_l-1].s != 0) {
             if (res != NR && res != META) {
                 set_header_type(kc, h, UNKNOWN_HDR, kc->bnd[kc->bnd_l-1].corr);
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
@@ -139,7 +139,7 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
             }
 
             // correction propagation Not thoroughly checked yet...
-            uint32_t corr = kc->bnd[kc->bnd_l-1].corr - endpos; // start of current is added later.
+            uint32_t corr = kc->bnd[kc->bnd_l-1].corr; // start of current is added later.
             buf_grow(kc->bnd, 1ul);
             kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH, .corr=corr};
         }
@@ -249,7 +249,7 @@ case 0x1e: // new contig
                 _EVAL(finish_contig(kc, h, seq.p));
                 seq.p = 0;
             }
-            h = new_header(kc, h, gz, lookup, seq.p);
+            h = new_header(kc, h, gz, lookup);
             NB(h != NULL);
             i = KEY_WIDTH - 1;
             break;
