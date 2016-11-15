@@ -31,17 +31,17 @@ define break_commands
         c
     end
 end
-python break_re_py2('// multimapper;', 'map.cpp', 'break', 1)
+python break_re_py2('// multimapper k-mer;', 'map.cpp', 'break', 1)
 
-define break_commands
-    commands $arg0
-        silent
-        set *upseq = '\0'
-        printf "Not a k-mer minimum:%x\t%s\n", ko, upseq - KEY_WIDTH
-        c
-    end
-end
-python break_re_py2('// not a k-mer minimum', 'map.cpp', 'break', 1)
+#define break_commands
+#    commands $arg0
+#        silent
+#        set *upseq = '\0'
+#        printf "Not a k-mer minimum:%x\t%s\n", ko, upseq - KEY_WIDTH
+#        c
+#    end
+#end
+#python break_re_py2('// not a k-mer minimum', 'map.cpp', 'break', 1)
 
 define break_commands
     commands $arg0
@@ -61,6 +61,33 @@ define break_commands
 end
 python break_re_py2('// Revcmp orientation', 'map.cpp', 'break', 1)
 
+define break_commands
+    commands $arg0
+        silent
+        printf " =>\tObserved mismatches: (%u)\n", map.mismatches
+        c
+    end
+end
+python break_re_py2('//Mismatches$', 'map.cpp', 'break', 1)
+
+define break_commands
+    commands $arg0
+        silent
+        printf " =>\tMultimapper?\n"
+        c
+    end
+end
+python break_re_py2('//Multimapper$', 'map.cpp', 'break', 1)
+
+
+define break_commands
+    commands $arg0
+        silent
+        printf "0x%x <-> 0x%x\n", (read_nt&6)>>1, (ref_nt&6)>>1
+        c
+    end
+end
+python break_re_py2('//Alignment;', 'map.cpp', 'break', 1)
 
 #b load_kc
 
