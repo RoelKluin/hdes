@@ -38,8 +38,8 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
     uint32_t* hkoffs = kc->hkoffs;
 
     for (uint32_t*k = kc->kct; K_OFFS(kc, k) < kc->kct_l;) {
-        // print correctly, using old boundaries, if print_kct is called during (ext_uq) iter.
         if (bnd != e->obnd + e->obnd_l) {
+            // print correctly, using old boundaries, if print_kct is called during (ext_uq) iter.
             while (h - kc->h != bnd->ho)
                 s += h++->len;
             hkoffs = kc->hkoffs + bnd->ho;
@@ -59,7 +59,6 @@ print_kct(Key_t *kc, Mantra* at, Iter_t* e, uint32_t* tk)
             if (++hkoffs == kc->hkoffs + kc->hkoffs_l)
                 hkoffs = &kc->kct_l;
         }
-
         while (K_OFFS(kc, k) < *hkoffs) {
             char c = k!=tk?(k!=e->tgtk?' ':'t'):'k';
             EPR0("%c>%s:(e:%u,i:%u)\t%u\t%c", c, kc->id + h->ido, extension, iteration,
@@ -108,7 +107,7 @@ buf_grow_ks(Key_t *kc, Iter_t* e, unsigned add, uint32_t **k)
 
 /*
  * During an iteration over the genome unique keys were excised and added to the end. The
- * causes a sparse k-mer array. hot!
+ * causes a sparse k-mer array, undone here. hot!
  */
 static void
 denser_k(Key_t *kc, Iter_t* e, uint32_t *hkoffs, uint32_t *k)

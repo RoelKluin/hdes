@@ -155,16 +155,16 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup, uint32_t endpos)
 }
 
 static inline int
-finish_contig(Key_t*C kc, Hdr* h, keyseq_t &seq)
+finish_contig(Key_t*C kc, Hdr* h, uint32_t p)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
-    h->end = seq.p >> 1;
-    h->len = (h->end >> 2) + !!(h->end & 3);
+    h->len = (p >> 3) + !!(p & 6);
+    h->end = (p + kc->bnd[kc->bnd_l-1].corr) >> 1;
+
     buf_grow_add(kc->hkoffs, 1, kc->kct_l);
-    h->corr = kc->bnd[kc->bnd_l-1].corr;
-    kc->bnd[kc->bnd_l-1].e = seq.p + 2;
-    kc->totNts += seq.p + kc->bnd[kc->bnd_l-1].corr;
-    EPR("processed %u(%lu) Nts for %s", h->end, kc->totNts, kc->id + h->ido);
+    kc->bnd[kc->bnd_l-1].e = p + 2;
+    kc->totNts += h->end;
+    EPR("Processed %u Nts for %s => %lu", h->end, kc->id + h->ido, kc->totNts);
     if (kc->s_l & 3) {
         // the 2bit buffer per contig starts at the first nt 0 of 4.
         kc->s_l += -kc->s_l & 3;
@@ -232,7 +232,7 @@ case 'G':   seq.t &= 0x3;
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
                         kc->bnd[kc->bnd_l-1].e = seq.p;
-                        kc->totNts += seq.p + kc->bnd[kc->bnd_l-1].corr - 2;
+                        kc->totNts += (seq.p + kc->bnd[kc->bnd_l-1].corr - 2) >> 1;
                         corr += kc->bnd[kc->bnd_l-1].corr;
                         buf_grow(kc->bnd, 1ul);
                         kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2};
@@ -246,7 +246,7 @@ case 0x1e: // new contig
             NB(seq.t == '>');
             if (h) {
                 // FIXME: Y-contig occurs twice. Need to lookup here and skip if already present.
-                _EVAL(finish_contig(kc, h, seq));
+                _EVAL(finish_contig(kc, h, seq.p));
                 seq.p = 0;
             }
             h = new_header(kc, h, gz, lookup, seq.p);
@@ -259,7 +259,7 @@ default:    if (isspace(seq.t))
             ++corr;
         }
     }
-    res = finish_contig(kc, h, seq);
+    res = finish_contig(kc, h, seq.p);
     kc->ct += kc->kct_l;
     fprintf(stderr, "Initial unique keys: %u / %u\n", kc->ct, kc->kct_l);
 err:

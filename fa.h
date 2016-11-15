@@ -76,8 +76,7 @@ enum ensembl_part {ID, SEQTYPE, IDTYPE,
 packed_struct Hdr {
     uint32_t len, end; // 2bit length of this contig
     uint32_t ido;      // id contains offset to kc->id character for the header ID.
-    uint32_t p_l:8;    // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
-    uint32_t corr:24;  // total of N's + offsets, sums with with .len to contig lenght.
+    uint32_t p_l;    // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
 };
 
 // variables only used while extending keys
