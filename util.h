@@ -156,6 +156,11 @@ do {\
     buf[buf##_l++] = push;\
 })
 
+#define buf_grow_struct_add(buf, ...) ({\
+    buf_grow_shift(buf, 1ul, 0);\
+    buf[buf##_l++] = { __VA_ARGS__ };\
+})
+
 
 
 #define buf_free(buf) \

@@ -83,13 +83,6 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
     return p;
 }
 
-static inline void
-set_header_type(Key_t*C kc, Hdr* h, int type, uint32_t corr)
-{
-    h->p_l = type;
-    kc->bnd[kc->bnd_l-1].corr = corr;
-}
-
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
 
 //enum ensembl_part {ID, SEQTYPE, IDTYPE, IDTYPE2, BUILD, ID2, START, END, NR, META, UNKNOWN_HDR};
@@ -109,15 +102,14 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
     if (got == lookup.end()) {
 
         //    new Hdr;
-        buf_grow(kc->h, 1ul);
-        h = kc->h + kc->h_l++;
-        h->ido = part[ID];
+        buf_grow_struct_add(kc->h, 0); // Note: initializes all members to zero or NULL
+	h = kc->h + (kc->h_l - 1);
+	h->ido = part[ID];
 
         std::pair<std::string,Hdr*> hdr_entry(hdr, h);
         lookup.insert(hdr_entry);
 
-        buf_grow(kc->bnd, 1ul);
-        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = NT_WIDTH};
+        buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s = NT_WIDTH);
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -131,25 +123,29 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had at least one KEY_WIDTH of sequence
-        if (kc->bnd[kc->bnd_l-1].s != 0) {
+        unsigned offs = kc->bnd[kc->bnd_l-1].s;
+        if (offs != 0) {
             if (res != NR && res != META) {
-                set_header_type(kc, h, UNKNOWN_HDR, kc->bnd[kc->bnd_l-1].corr);
+		buf_grow_struct_add(h->noffs, .pos = 0, .corr = offs);
+
+		h->p_l = UNKNOWN_HDR;
                 WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
                 return h;
             }
 
-            // correction propagation Not thoroughly checked yet...
-            uint32_t corr = kc->bnd[kc->bnd_l-1].corr; // start of current is added later.
-            buf_grow(kc->bnd, 1ul);
-            kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s= NT_WIDTH, .corr=corr};
+            buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s= NT_WIDTH);
         }
     }
 
     if (res == NR || res == META) {
         // ensembl coords are 1-based, we use 0-based.
-        set_header_type(kc, h, res, atoi(kc->id + part[START]) - 1);
-    } else { //TODO: hash lookup from fai
-        set_header_type(kc, h, UNKNOWN_HDR, 0);
+        unsigned offs =  atoi(kc->id + part[START]) - 1;
+        if (offs)
+	    buf_grow_struct_add(h->noffs, .pos = 0, .corr = offs);
+
+	h->p_l = res;
+    } else {
+	h->p_l = UNKNOWN_HDR;
     }
     return h;
 }
@@ -159,7 +155,7 @@ finish_contig(Key_t*C kc, Hdr* h, uint32_t p)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (p >> 3) + !!(p & 6);
-    h->end = (p + kc->bnd[kc->bnd_l-1].corr) >> 1;
+    h->end = (p >> 1) + (h->noffs_l ? h->noffs[h->noffs_l-1].corr : 0);
 
     buf_grow_add(kc->hkoffs, 1, kc->kct_l);
     kc->bnd[kc->bnd_l-1].e = p + 2;
@@ -195,7 +191,7 @@ addtoseq(Key_t* kc, keyseq_t& seq)
 static int
 fa_kc(Key_t* kc, gzin_t* gz)
 {
-    uint32_t corr = 0;
+    uint32_t N_count = 0;
     unsigned i = ~0u; // skip until '>'
     int res;
     Hdr* h = NULL;
@@ -232,13 +228,14 @@ case 'G':   seq.t &= 0x3;
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
                         kc->bnd[kc->bnd_l-1].e = seq.p;
-                        kc->totNts += (seq.p + kc->bnd[kc->bnd_l-1].corr - 2) >> 1;
-                        corr += kc->bnd[kc->bnd_l-1].corr;
-                        buf_grow(kc->bnd, 1ul);
-                        kc->bnd[kc->bnd_l++] = {.ho = h - kc->h, .s = seq.p + NT_WIDTH - 2};
+			uint32_t prev_corr = (h->noffs_l ? h->noffs[h->noffs_l-1].corr : 0);
+                        kc->totNts += (seq.p >> 1) + prev_corr;
+
+			uint32_t pos = seq.p + NT_WIDTH - 2;
+                        buf_grow_struct_add(h->noffs, .pos = pos, .corr = N_count + prev_corr);
+			buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s = pos);
                     }
-                    kc->bnd[kc->bnd_l-1].corr += corr;
-                    corr = 0;
+                    N_count = 0;
                 }
             }
             break;
@@ -256,7 +253,7 @@ case 0x1e: // new contig
 default:    if (isspace(seq.t))
                 break;
             i = KEY_WIDTH - 1;
-            ++corr;
+            ++N_count;
         }
     }
     res = finish_contig(kc, h, seq.p);

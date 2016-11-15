@@ -62,10 +62,14 @@ seq_next(struct keyseq_t &seq)
     kc->hkoffs + __t;\
 })
 
+struct NOffset {
+    uint32_t pos;    // position on kc->s for this contig.
+    uint32_t corr;
+};
+
 struct Mantra { // not yet covered by unique keys
-    uint32_t ho;   // which contig (header offfset)
+    uint32_t ho;   // which contig (header offset) // or header pointer?
     uint32_t s;    // start pos
-    uint32_t corr; // 'real' position correction
     uint32_t e;    // end of mantra
 };
 
@@ -77,6 +81,8 @@ packed_struct Hdr {
     uint32_t len, end; // 2bit length of this contig
     uint32_t ido;      // id contains offset to kc->id character for the header ID.
     uint32_t p_l;    // :4 How many parts in the ensembl format occurred (if one there's only an ID, format is unkown)
+    NOffset* noffs;
+    uint32_t noffs_l, noffs_m;
 };
 
 // variables only used while extending keys
