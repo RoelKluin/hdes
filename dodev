@@ -23,7 +23,7 @@ GDB=
 BN="${ref}"
 BA=${BN}-SE_true-RL_${RL}.1
 
-while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [t]ouch, [l]og, t[e]sts, g[c]ov, [C]allgrind or continue?" k; do
+while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]ormal, [v]algrind, [b]wa, [B]wa RC, [t]ouch, [l]og, t[e]sts, g[c]ov, [C]allgrind [R]C or continue?" k; do
     echo
     if [ "$k" = "q" ]; then
         break;
@@ -37,7 +37,8 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
         mv ${BA}.uqct_prev.bam.bai ${BA}.uqct.bam.bai
     elif [ "$k" = "i" ]; then
         echo "loading ${ref}.batchfile" 2>&1
-        $igv -g ${ref}.fa -b <(head ${ref}.batchfile)&
+	head ${ref}.batchfile > tmp.batchfile
+        $igv -g ${ref}.fa -b tmp.batchfile&
     elif [ "$k" = "g" ]; then
         GDB="-g"
     elif [ "$k" = "G" ]; then
@@ -47,11 +48,14 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
         <($samtools view ${BA}.uqct_prev.bam) |
         gview -
     elif [ "$k" = "n" ]; then
-        $hdesdir/tst ${ref}.fa.gz -c -m ${KL} -L ${RL}
+        $hdesdir/tst ${ref}.fa.gz -c -m ${KL} -L $((${RL}*2))
     elif [ "$k" = "v" ]; then
-        $hdesdir/tst ${ref}.fa.gz -m ${KL} -v -L ${RL}
+        $hdesdir/tst ${ref}.fa.gz -m ${KL} -v -L $((${RL}*2))
     elif [ "$k" = "b" ]; then
         ($hdesdir/bwatest/run -B -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
+        elif [ "$k" = "B" ]; then
+        ($hdesdir/bwatest/run -B -m ${KL} -L ${RL} -R $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
+
     elif [ "$k" = "l" ]; then
         gview $hdesdir/last.log
     elif [ "$k" = "e" ]; then
@@ -65,7 +69,7 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
         genhtml $hdesdir/lcov/coverage.info --output-directory lcov
         cd $hdesdir/bwatest
     elif [ "$k" = "C" ]; then
-        $hdesdir/tst ${ref}.fa.gz -c -C -m ${KL} -L ${RL}
+        $hdesdir/tst ${ref}.fa.gz -c -C -m ${KL} -L $((${RL}*2))
         sleep 5s # callgrind.out.* now written?
         cg=$(ls -1rt callgrind.out.* | tail -n 1)
         callgrind_annotate $cg
@@ -76,6 +80,8 @@ while read -n 1 -p "[q]uit, [o]pen, [r]evert, [gG]db, [i]gv or [s]amdiff, [n]orm
     elif [ "$k" = "t" ]; then
         touch $hdesdir/fa.cpp
         ($hdesdir/bwatest/run -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
+    elif [ "$k" = "R" ]; then
+        ($hdesdir/bwatest/run -m ${KL} -L ${RL} -R $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     else
         ($hdesdir/bwatest/run -m ${KL} -L ${RL} $hdesdir/${ref}.fa.gz) 2>&1 | tee $hdesdir/last.log;
     fi

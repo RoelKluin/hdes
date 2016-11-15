@@ -45,3 +45,4 @@ bwatest/snaps/
 cmocka-1.0.1*
 lcov/
 callgrind.out.*
+external/

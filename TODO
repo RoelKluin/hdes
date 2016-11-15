@@ -1,43 +1,14 @@
-version 0.010
-- move excised Nt upwards instead.
-- join fragmented next Nts in signel buffer.
-- store first round keys and next Nts on disk
-- load this from disk
-
-version 0.011
-- fix handling N-stretches before and after contig as well as single
-  N's shortly after another (before the key is completed).
-- the entire human genome is processed without error.
-- store final regions, keys and next Nts on disk.
-
-version 0.012
-- clean up boundary generation - no longer spurious
-
-version 0.013
-- clean up kc
-- kctndx => ndxkct, 32 bits
-- efficient kct reusage for memory
-
-version 0.014:
-- mapping of `perfect' reads, high percentage correct.
-(mostly tweaks to get mapping right)
-
-version 0.015:
-- removed next Nt based approach. unnecessary and complicated
-
-version 0.016:
-- rewriting
-
-version 0.017:
-- fixing
-
-version 0.018:
-- debugging
-
-
-
-
 TODO:
+1) wat is de reden voor mismatches indien indexlength == readlength bij reads met XN == 0?
+2) begin chromo krijgt geen reads ? mogelijk related to 1)..
+3) waarom stop mapping (vrijwel) bij chromo MT? N-related?
+
+
+
+
+
+
+old:
 - store:
  - separate seqb2: better for verification of key.
  - initial boundaries separately.
@@ -71,8 +42,6 @@ version 0.014+
 - create reads iterator and mapper - for perfect reads
 - make use of non-used ndxs: for extended keys
 ....
-######
-#hieronder old todo.
 
 version: 0.003
 

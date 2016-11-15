@@ -345,23 +345,18 @@ gpg -o uqct_0.017.tar.gz.gpg -c uqct_0.017.tar.gz
 
 got:
 addr2line -e uqct $(
-cat << EOF | sed -n -r "s/^.*\(\+(0x[0-9a-f]+)\).*$/\1/p" | tr "\n" " "
+cat << EOF | egrep -o "0x[0-9a-f]+" | tr "\n" " "
 Error: signal 11:
-/home/roel/dev/git/hdes/uqct(+0xa09a)[0x555f6dda109a]
-/usr/lib/libc.so.6(+0x33310)[0x7f6e1245a310]
-/home/roel/dev/git/hdes/uqct(+0x4e78)[0x555f6dd9be78]
-/home/roel/dev/git/hdes/uqct(+0x37b9)[0x555f6dd9a7b9]
-/home/roel/dev/git/hdes/uqct(+0x2439)[0x555f6dd99439]
-/usr/lib/libc.so.6(__libc_start_main+0xf1)[0x7f6e12447741]
-/home/roel/dev/git/hdes/uqct(+0x2659)[0x555f6dd99659]
+/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x40a0ab]
+/lib/x86_64-linux-gnu/libc.so.6(+0x354a0)[0x7fb849d8f4a0]
+/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x403af2]
+/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x401e88]
+/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0xf0)[0x7fb849d7a830]
+/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x402069]
 EOF
 echo)
-/usr/include/bits/stdio2.h:98
-??:0
-/home/roel/dev/git/hdes/indexio.cpp:163
-/home/roel/dev/git/hdes/map.cpp:328 (discriminator 6)
-/home/roel/dev/git/hdes/main.cpp:196
-??:?
+
+
 
 
 KW=16

@@ -5,22 +5,24 @@ die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
 }
-USAGE="$0 [-B] [-m|--make <KEY_LENGTH>] [-L|--length <READLENGTH>] fasta.gz"
+USAGE="$0 [-B] [-m|--make <KEY_LENGTH>] [-R] [-L|--length <READLENGTH>] fasta.gz"
 
-TEMP=`getopt -o m:L:B --long make:length:use-bwa -n "$0" -- "$@"`
+TEMP=`getopt -o m:L:BR --long make:length:use-bwa -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
 eval set -- "$TEMP"
 
 USEBWA=
-MAKE=
+KLEN=
+RC=
 LENGTH=51
 while true; do
   case "$1" in
-    -m|--make) MAKE="$2"; shift;;
+    -m|--make) KLEN="$2"; shift;;
     -B|--use-bwa) USEBWA=1;;
     -L|--length) LENGTH="$2"; shift;;
+    -R) RC="-rc";;
     -- ) shift; break;;
     * ) break;;
   esac
@@ -31,11 +33,11 @@ F="$1"
 [ -e "$F" ] || "$USAGE\n\nno such file: $F"
 
 [[ "$F" =~ \.gz$ ]] && BN="$(basename "$F" ".fa.gz")" || BN="$(basename "$F" ".fa")"
-BA=${BN}-SE_true-RL_${LENGTH}.1
+BA=${BN}-SE_true-RL_${LENGTH}.1${RC}
 
 if [ -n "${USEBWA}" ]; then
   ls -lh ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz
-  (time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz | $samtools view -Sub - |
+  (time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz | $samtools view -Sub - |
   $samtools sort - ${BA}.bwa) 2>&1 |tee ${BA}.bwa.log &&
   $samtools index ${BA}.bwa.bam
   $samtools view -H ${BA}.bwa.bam > ${BA}.1.hdr.sam
@@ -45,21 +47,22 @@ BA="${BA}.uqct"
 
 # compile
 if [ -n "$(find $hdesdir/* -maxdepth 0 -type f -regex ".*\/\(\(fa\|key_init\)\.cpp\|fa\.h\)" -amin -2)" ]; then
-  echo $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
-  $hdesdir/tst ${F} -c -m ${MAKE} -L ${LENGTH}
+  TWICE_LEN=$((${LENGTH}*2))
+  echo $hdesdir/tst ${F} -c -m ${KLEN} -L $TWICE_LEN
+  $hdesdir/tst ${F} -c -m ${KLEN} -L $TWICE_LEN
 else
   cd $hdesdir;
   make clean
-  DEFINES="-DKEY_LENGTH=${MAKE}" make;
+  DEFINES="-DKEY_LENGTH=${KLEN}" make;
   cd -
 fi
 
-BA=${BN}-SE_true-RL_${LENGTH}.1.uqct
+BA=${BN}-SE_true-RL_${LENGTH}.1${RC}.uqct
 if [ -f ${BA}.bam ]; then
   mv ${BA}.bam ${BA}_prev.bam
 fi
 
-time $hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz ${F/.fa/.2b} -l ${LENGTH} |
+time $hdesdir/uqct $hdesdir/fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz ${F/.fa/.2b} -l ${LENGTH} |
 $samtools view -Sub - |
 $samtools sort -m 2000000000 - ${BA}
 
