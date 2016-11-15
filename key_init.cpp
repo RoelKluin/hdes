@@ -80,7 +80,7 @@ parse_header_parts(Key_t* kc, gzin_t* gz, uint32_t* part)
         }
         break;
     }
-    return p;
+    return p == NR || p == META ? p : UNKNOWN_HDR;
 }
 
 typedef std::unordered_map<std::string, Hdr*> Hdr_umap;
@@ -98,6 +98,7 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
 
     const char* hdr = kc->id + part[ID];
     Hdr_umap::const_iterator got = lookup.find(hdr);
+    unsigned offs = 0;
 
     if (got == lookup.end()) {
 
@@ -110,6 +111,9 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
         lookup.insert(hdr_entry);
 
         buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s = NT_WIDTH);
+	// ensembl coords are 1-based, we use 0-based.
+	if (res == NR || res == META)
+	    offs =  atoi(kc->id + part[START]) - 1;
     } else {
 
         EPR("contig occurred twice: %s", hdr);
@@ -123,30 +127,20 @@ new_header(Key_t* kc, Hdr* h, gzin_t* gz, Hdr_umap& lookup)
         NB(h == kc->h + kc->h_l - 1, "Duplicate entries, but not in series");
 
         // only insert when last contig had at least one KEY_WIDTH of sequence
-        unsigned offs = kc->bnd[kc->bnd_l-1].s;
+        offs = kc->bnd[kc->bnd_l-1].s;
         if (offs != 0) {
-            if (res != NR && res != META) {
-		buf_grow_struct_add(h->noffs, .pos = 0, .corr = offs);
+            if (res == NR || res == META) {
 
-		h->p_l = UNKNOWN_HDR;
-                WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
-                return h;
-            }
-
-            buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s= NT_WIDTH);
+                buf_grow_struct_add(kc->bnd, .ho = (uint32_t)(h - kc->h), .s= NT_WIDTH);
+		offs = h->noffs[h->noffs_l - 1].corr;
+		res = h->p_l; // keep status observed in 1st header
+	    } else {
+	        WARN("No offsets recognized in 2nd header, sequence will be concatenated.");
+	    }
         }
     }
-
-    if (res == NR || res == META) {
-        // ensembl coords are 1-based, we use 0-based.
-        unsigned offs =  atoi(kc->id + part[START]) - 1;
-        if (offs)
-	    buf_grow_struct_add(h->noffs, .pos = 0, .corr = offs);
-
-	h->p_l = res;
-    } else {
-	h->p_l = UNKNOWN_HDR;
-    }
+    h->p_l = res;
+    buf_grow_struct_add(h->noffs, .pos = 0, .corr = offs);
     return h;
 }
 
@@ -155,7 +149,7 @@ finish_contig(Key_t*C kc, Hdr* h, uint32_t p)
 {
     // the 2bit buffer per contig starts at the first nt 0 of 4.
     h->len = (p >> 3) + !!(p & 6);
-    h->end = (p >> 1) + (h->noffs_l ? h->noffs[h->noffs_l-1].corr : 0);
+    h->end = (p >> 1) + h->noffs[h->noffs_l-1].corr;
 
     buf_grow_add(kc->hkoffs, 1, kc->kct_l);
     kc->bnd[kc->bnd_l-1].e = p + 2;
@@ -228,7 +222,7 @@ case 'G':   seq.t &= 0x3;
                     if (seq.p > 2u) { // N-stretch, unless at start, needs insertion
                         NB((seq.p & 1) == 0);
                         kc->bnd[kc->bnd_l-1].e = seq.p;
-			uint32_t prev_corr = (h->noffs_l ? h->noffs[h->noffs_l-1].corr : 0);
+			uint32_t prev_corr = h->noffs[h->noffs_l-1].corr;
                         kc->totNts += (seq.p >> 1) + prev_corr;
 
 			uint32_t pos = seq.p + NT_WIDTH - 2;
