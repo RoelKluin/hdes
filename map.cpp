@@ -89,7 +89,8 @@ match_nt(char rdchar, unsigned ref_nt, unsigned read_nt)
 static void
 match_revcmp(struct map_t &map)
 {
-    NB(map.p >= (KEY_WIDTH + map.readlength - map.i) << 1);
+    // FIXME: bnd[]->corr needs to be added to map.p
+    NB(map.p >= (KEY_WIDTH + map.readlength - map.i) << 1, "p(%u) >= KW + len(%u) - i(%u)", map.p, map.readlength, map.i);
     // There can still be mismatches in upseq or post key.
     map.p += (map.i - KEY_WIDTH) << 1;
     uint32_t p = map.p >> 1; // set to last 2bit.
@@ -110,19 +111,17 @@ match_revcmp(struct map_t &map)
 	ref_nt = --p & 3 ? ref_nt >> 2 : *--s;
     }
     *upseq = '\0';
-    map.p -= (map.readlength - 1) << 1; // SAM is one-based.
+    map.p -= map.readlength << 1; // SAM is one-based.
 }
 
 // returns no mismatches
 static void
 match_template(struct map_t &map)
 {
-    // There can still be mismatches in upseq or post key.
-
-    NB(map.p >= (map.i << 1));
-    map.p -= (map.i << 1);
+    // FIXME: bnd[]->corr needs to be added to map.p
+    NB(map.p >= map.i << 1, "p:%u, i:%u", map.p, map.i);
+    map.p -= map.i << 1;
     uint32_t p = map.p >> 1;
-    map.p += 2; // SAM is one-based, and map.p.
     uint8_t* s = map.s + (p >> 2);
 
     char* upseq = map.upseq;
@@ -151,7 +150,7 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
     char* tid = unknown;
     char* upseq = map.upseq;
     unsigned tln = 0, mps = 0, mq = 0, flag = 44;
-    if (map.mismatches != -1) {
+    if (map.mismatches != -1u) {
         mq = 37;
         flag = map.p & 1;
         flag = (flag << 4) | 0x42;
@@ -167,8 +166,9 @@ writeseq(Key_t* kc, gzin_t* gz, struct map_t &map)
     while ((c = GZTC(gz)) != '\n')
         NB(c != -1);
 
+    // SAM is one-based.
     OPR0("%u\t%s\t%u\t%u\t%uM\t%s\t%u\t%d\t",
-        flag, tid, map.p >> 1, mq, map.readlength, mtd, mps, tln);
+        flag, tid, (map.p >> 1) + 1, mq, map.readlength, mtd, mps, tln);
 
     // if the orientation is the other, revcmp sequence and reverse qual.
     if (map.p & 1) {
@@ -349,7 +349,7 @@ getmink(Key_t* kc, gzin_t* gz, struct map_t &map)
         //}
 
     } else {
-	map.mismatches = -1;//multimapper
+	map.mismatches = -1u;//multimapper
 
         NB (map.readlength != 0, "Expected sequence, but the line was empty.");
     }

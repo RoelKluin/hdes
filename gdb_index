@@ -38,14 +38,14 @@ end
 break_re '// key after header/stretch to be rebuilt' 'key_init.cpp' 'break'
 commands
     silent
-    if corr == 0
+    if N_count == 0
         printf "Header "
-        # because printf states: Cannot access memory at address ...
+        # because printf states: Cannot access memory at address..
         output  kc->id[h->ido]
         printf "\n"
     else
         if seq.p != 0
-            printf "N stretch of %u\n", corr
+            printf "N stretch of %u\n", N_count
         else
             printf "N stretch at start of contig (not inserted)\n"
         end
