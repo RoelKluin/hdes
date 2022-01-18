@@ -3,7 +3,9 @@ TODO:
 2) begin chromo krijgt geen reads ? mogelijk related to 1)..
 3) waarom stop mapping (vrijwel) bij chromo MT? N-related?
 
-
+real position correction (offsets after N stretch) isn't applied. This causes assertion
+failure. Correction is now stored per boundary this isn't as it should be.
+Dependent on position we need to apply corrections, we don't want to iterate over boundaries.
 
 
 

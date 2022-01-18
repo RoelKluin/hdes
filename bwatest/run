@@ -5,22 +5,27 @@ die() {
   echo -e "$1"
   [ -z "$2" ] && exit 1 || exit $2;
 }
-USAGE="$0 [-B] [-m|--make <KEY_LENGTH>] [-R] [-L|--length <READLENGTH>] fasta.gz"
+USAGE="$0 [-v] [-B|-b] [-m|--make <KEY_LENGTH>] [-R] [-L|--length <READLENGTH>] fasta.gz"
 
-TEMP=`getopt -o m:L:BR --long make:length:use-bwa -n "$0" -- "$@"`
+TEMP=`getopt -o m:L:bvBR --long make:length:use-bwa -n "$0" -- "$@"`
 if [ $? != 0 ]; then echo "Terminating..." >&2 ; exit 1 ; fi
 
 # Note the quotes around `$TEMP': they are essential!
 eval set -- "$TEMP"
 
-USEBWA=
+SAMMEM=1000000000
+NCPU=8
+USEBWA=0
 KLEN=
 RC=
 LENGTH=51
+PRE=
 while true; do
   case "$1" in
     -m|--make) KLEN="$2"; shift;;
     -B|--use-bwa) USEBWA=1;;
+    -b|--use-bwa-backtrack) USEBWA=2;;
+    -v|--use-valgrind) PRE=valgrind;;
     -L|--length) LENGTH="$2"; shift;;
     -R) RC="-rc";;
     -- ) shift; break;;
@@ -35,11 +40,24 @@ F="$1"
 [[ "$F" =~ \.gz$ ]] && BN="$(basename "$F" ".fa.gz")" || BN="$(basename "$F" ".fa")"
 BA=${BN}-SE_true-RL_${LENGTH}.1${RC}
 
-if [ -n "${USEBWA}" ]; then
+
+if [ ${USEBWA} -eq 1 ]; then
+  echo ${BN}.fa.gz
   ls -lh ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz
-  (time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz | $samtools view -Sub - |
-  $samtools sort - ${BA}.bwa) 2>&1 |tee ${BA}.bwa.log &&
+  ($PRE time $bwa mem ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz | $samtools view -Sub - |
+  $samtools sort -T ${BA}_tmp - -o ${BA}.bwa.bam) 2>&1 |tee ${BA}.bwa.log &&
   $samtools index ${BA}.bwa.bam
+  $samtools view -H ${BA}.bwa.bam > ${BA}.1.hdr.sam
+  exit 0;
+elif [ ${USEBWA} -eq 2 ]; then
+  echo ${BN}.fa.gz
+  ls -lh ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1.fastq.gz
+  ($bwa aln -t $NCPU ${BN}.fa.gz ../fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz |
+   $PRE $bwa samse -r '@RG\tID:A\tCN:RK\tPL:ILLUMINA\tSM:'"${BN}" ${BN}.fa.gz - \
+   ../fakeq/${BN}-SE_true-RL_${LENGTH}.1${RC}.fastq.gz |
+   $samtools view -ubt ${REF}.fai - |
+   $samtools sort -m $SAMMEM -T ${BA}_tmp - -o ${BA}.bwa.bam) 2>&1 |tee ${BA}.bwa.log &&
+   $samtools index ${BA}.bwa.bam
   $samtools view -H ${BA}.bwa.bam > ${BA}.1.hdr.sam
   exit 0;
 fi

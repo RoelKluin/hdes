@@ -342,21 +342,21 @@ time (cat ${bn}.1.hdr.sam; ../uqct ../fakeq/${bn}.1.fastq.gz ../${bn}.2b -l 51) 
 
 gpg -o uqct_0.017.tar.gz.gpg -c uqct_0.017.tar.gz
 
+# paste hereafter error and end with ctrl-D
 
-got:
-addr2line -e uqct $(
-cat << EOF | egrep -o "0x[0-9a-f]+" | tr "\n" " "
-Error: signal 11:
-/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x40a0ab]
-/lib/x86_64-linux-gnu/libc.so.6(+0x354a0)[0x7fb849d8f4a0]
-/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x403af2]
-/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x401e88]
-/lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0xf0)[0x7fb849d7a830]
-/net/NGSanalysis/dvl/roel/git/hdes/uqct[0x402069]
-EOF
-echo)
+alias parse_err="egrep -o "0x[0-9a-f]+" | xargs -n 1 addr2line -e uqct"
 
 
+#addr2line -e uqct $(
+#egrep -o "0x[0-9a-f]+" | xargs -n 1 addr2line -e uqct
+
+
+/usr/include/bits/stdio2.h:98
+??:0
+/home/roel/dev/git/hdes/indexio.cpp:163
+/home/roel/dev/git/hdes/map.cpp:328 (discriminator 6)
+/home/roel/dev/git/hdes/main.cpp:196
+??:?
 
 
 KW=16
